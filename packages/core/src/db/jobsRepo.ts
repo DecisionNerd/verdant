@@ -1,10 +1,33 @@
-import type { Client, Row } from "@libsql/client";
+import type { Client, Row, Transaction } from "@libsql/client";
 import type {
   DigestPlan,
   JobEvent,
   JobStatus,
   PageProgress,
 } from "../types.js";
+
+/** Client or write transaction — both expose execute(). */
+type DbExec = Pick<Client, "execute">;
+
+async function withWriteTx<T>(
+  client: Client,
+  fn: (tx: Transaction) => Promise<T>,
+): Promise<T> {
+  // "write" → BEGIN IMMEDIATE (safe across worker/mcp processes on one file DB)
+  const tx = await client.transaction("write");
+  try {
+    const result = await fn(tx);
+    await tx.commit();
+    return result;
+  } catch (err) {
+    try {
+      await tx.rollback();
+    } catch {
+      // ignore rollback errors
+    }
+    throw err;
+  }
+}
 
 function parseJson<T>(raw: unknown, fallback: T): T {
   if (raw == null || raw === "") return fallback;
@@ -39,10 +62,10 @@ export function rowToJob(row: Row, events: JobEvent[] = []): JobStatus {
 }
 
 export async function loadJobEvents(
-  client: Client,
+  db: DbExec,
   runId: string,
 ): Promise<JobEvent[]> {
-  const rs = await client.execute({
+  const rs = await db.execute({
     sql: "SELECT ts, message, phase FROM job_events WHERE run_id = ? ORDER BY id ASC",
     args: [runId],
   });
@@ -53,8 +76,8 @@ export async function loadJobEvents(
   }));
 }
 
-export async function upsertJobRow(client: Client, job: JobStatus): Promise<void> {
-  await client.execute({
+export async function upsertJobRow(db: DbExec, job: JobStatus): Promise<void> {
+  await db.execute({
     sql: `INSERT INTO jobs (
       run_id, status, created_at, updated_at, payload_json, result_json,
       error, cancel_requested_at, plan_json, page_progress_json
@@ -84,16 +107,16 @@ export async function upsertJobRow(client: Client, job: JobStatus): Promise<void
 }
 
 export async function replaceJobEvents(
-  client: Client,
+  db: DbExec,
   runId: string,
   events: JobEvent[],
 ): Promise<void> {
-  await client.execute({
+  await db.execute({
     sql: "DELETE FROM job_events WHERE run_id = ?",
     args: [runId],
   });
   for (const ev of events) {
-    await client.execute({
+    await db.execute({
       sql: "INSERT INTO job_events (run_id, ts, message, phase) VALUES (?, ?, ?, ?)",
       args: [runId, ev.ts, ev.message, ev.phase ?? null],
     });
@@ -101,13 +124,41 @@ export async function replaceJobEvents(
 }
 
 export async function appendJobEvent(
-  client: Client,
+  db: DbExec,
   runId: string,
   event: JobEvent,
 ): Promise<void> {
-  await client.execute({
+  await db.execute({
     sql: "INSERT INTO job_events (run_id, ts, message, phase) VALUES (?, ?, ?, ?)",
     args: [runId, event.ts, event.message, event.phase ?? null],
+  });
+}
+
+/** Persist job row + optional full event rewrite in one write transaction. */
+export async function persistJobAtomic(
+  client: Client,
+  job: JobStatus,
+  events?: JobEvent[],
+): Promise<void> {
+  await withWriteTx(client, async (tx) => {
+    await upsertJobRow(tx, job);
+    if (events) {
+      await replaceJobEvents(tx, job.runId, events);
+    }
+  });
+}
+
+/** Append one event and update job row atomically. */
+export async function patchJobAtomic(
+  client: Client,
+  job: JobStatus,
+  event?: JobEvent,
+): Promise<void> {
+  await withWriteTx(client, async (tx) => {
+    await upsertJobRow(tx, job);
+    if (event) {
+      await appendJobEvent(tx, job.runId, event);
+    }
   });
 }
 

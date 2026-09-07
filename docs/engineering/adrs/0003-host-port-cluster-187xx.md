@@ -7,7 +7,8 @@
 ## Context
 
 Local developers often already run apps on 3000, 4321, 5432, 8000, etc. Verdant brings Web,
-Docs, MCP, Langfuse, Trigger, and MinIO — colliding ports make first-run fail (NFR-2, FR-1).
+Docs, MCP, Langfuse, Trigger, MinIO, and OpenObserve — colliding ports make first-run fail
+(NFR-2, FR-1).
 
 ## Options considered
 

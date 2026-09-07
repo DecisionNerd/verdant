@@ -10,12 +10,11 @@ import {
 } from "./jobControl.js";
 import { ensureDb } from "./db/client.js";
 import {
-  appendJobEvent,
   listJobRows,
   listRunningJobIds,
+  patchJobAtomic,
+  persistJobAtomic,
   readJobRow,
-  replaceJobEvents,
-  upsertJobRow,
 } from "./db/jobsRepo.js";
 import { emitJobLog } from "./observability.js";
 import type {
@@ -26,7 +25,7 @@ import type {
   PageProgress,
 } from "./types.js";
 
-/** Serialize read-modify-write per runId within this process. */
+/** Serialize read-modify-write per runId within this process (cross-process: SQL write tx). */
 const jobChains = new Map<string, Promise<unknown>>();
 
 function withJobLock<T>(runId: string, fn: () => Promise<T>): Promise<T> {
@@ -44,10 +43,7 @@ function withJobLock<T>(runId: string, fn: () => Promise<T>): Promise<T> {
 
 async function persistJob(job: JobStatus, events?: JobEvent[]): Promise<void> {
   const client = await ensureDb();
-  await upsertJobRow(client, job);
-  if (events) {
-    await replaceJobEvents(client, job.runId, events);
-  }
+  await persistJobAtomic(client, job, events);
 }
 
 export async function writeJob(job: JobStatus): Promise<void> {
@@ -83,20 +79,20 @@ async function patchJob(
     }
 
     const now = new Date().toISOString();
+    let event: JobEvent | undefined;
     if (patch.message) {
-      const event: JobEvent = {
+      event = {
         ts: now,
         message: patch.message,
         ...(patch.phase ? { phase: patch.phase } : {}),
       };
-      await appendJobEvent(client, runId, event);
       job.events = [...(job.events ?? []), event];
       emitJobLog(runId, event.message, event.phase);
     }
     if (patch.plan) job.plan = patch.plan;
     if (patch.pageProgress) job.pageProgress = patch.pageProgress;
     job.updatedAt = now;
-    await upsertJobRow(client, job);
+    await patchJobAtomic(client, job, event);
   });
 }
 

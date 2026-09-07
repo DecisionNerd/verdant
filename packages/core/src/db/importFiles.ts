@@ -4,7 +4,7 @@ import type { Client } from "@libsql/client";
 import { dataRoot, jobsDir, outputsDir } from "../paths.js";
 import type { JobStatus } from "../types.js";
 import type { RunReview } from "../ir/structureTypes.js";
-import { upsertJobRow, replaceJobEvents } from "./jobsRepo.js";
+import { persistJobAtomic } from "./jobsRepo.js";
 
 function legacyConfigPath(): string {
   return path.join(dataRoot(), "config.json");
@@ -50,8 +50,7 @@ async function importJobs(client: Client): Promise<number> {
       const raw = await fs.readFile(path.join(jobsDir(), file), "utf8");
       const job = JSON.parse(raw) as JobStatus;
       if (!job?.runId) continue;
-      await upsertJobRow(client, job);
-      await replaceJobEvents(client, job.runId, job.events ?? []);
+      await persistJobAtomic(client, job, job.events ?? []);
       await fs.rename(
         path.join(jobsDir(), file),
         path.join(jobsDir(), `${file}.migrated`),
