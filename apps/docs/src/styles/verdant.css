@@ -1,0 +1,149 @@
+/**
+ * Verdant docs theme — colors sampled from assets/verdant-logo-transparent.png
+ *
+ * Greens: mid #3d8c31 · lime #a4cd39 · forest #1b4321 · ink #132017
+ * Warm:  terracotta #af5b39 · cream #f9f8e4
+ */
+
+:root,
+::backdrop {
+  /* Logo greens (dark mode defaults) */
+  --verdant-ink: #132017;
+  --verdant-forest: #1b4321;
+  --verdant-green: #3d8c31;
+  --verdant-green-bright: #5fa842;
+  --verdant-lime: #a4cd39;
+  --verdant-cream: #f9f8e4;
+  --verdant-terracotta: #af5b39;
+  --verdant-bg-deep: #0a1510;
+  --verdant-bg-panel: #121f16;
+
+  --sl-hue-green: 112;
+  --sl-hue-orange: 18;
+
+  /* Green-tinted neutrals (dark) */
+  --sl-color-gray-1: hsl(120, 18%, 92%);
+  --sl-color-gray-2: hsl(120, 10%, 76%);
+  --sl-color-gray-3: hsl(130, 8%, 55%);
+  --sl-color-gray-4: hsl(135, 10%, 38%);
+  --sl-color-gray-5: hsl(140, 12%, 22%);
+  --sl-color-gray-6: hsl(140, 14%, 15%);
+  --sl-color-black: var(--verdant-bg-deep);
+
+  --sl-color-green-low: hsl(var(--sl-hue-green), 35%, 18%);
+  --sl-color-green: hsl(var(--sl-hue-green), 48%, 44%);
+  --sl-color-green-high: hsl(78, 55%, 62%);
+
+  --sl-color-orange-low: hsl(var(--sl-hue-orange), 40%, 18%);
+  --sl-color-orange: hsl(var(--sl-hue-orange), 50%, 52%);
+  --sl-color-orange-high: hsl(var(--sl-hue-orange), 55%, 72%);
+
+  --sl-color-accent-low: hsl(var(--sl-hue-green), 38%, 20%);
+  --sl-color-accent: hsl(var(--sl-hue-green), 48%, 48%);
+  --sl-color-accent-high: hsl(78, 55%, 68%);
+
+  --sl-color-text: var(--sl-color-gray-2);
+  --sl-color-text-accent: var(--verdant-lime);
+  --sl-color-text-invert: var(--verdant-forest);
+  --sl-color-bg: var(--verdant-bg-deep);
+  --sl-color-bg-nav: var(--verdant-bg-panel);
+  --sl-color-bg-sidebar: var(--verdant-bg-panel);
+  --sl-color-bg-inline-code: var(--sl-color-gray-5);
+  --sl-color-bg-accent: var(--sl-color-accent);
+  --sl-color-hairline-light: var(--sl-color-gray-5);
+  --sl-color-hairline: hsl(140, 12%, 12%);
+  --sl-color-hairline-shade: var(--verdant-bg-deep);
+
+  --sl-color-backdrop-overlay: hsla(140, 25%, 4%, 0.72);
+
+  --sl-font: "Source Sans 3", var(--sl-font-system);
+}
+
+:root[data-theme="light"],
+[data-theme="light"] ::backdrop {
+  --sl-color-white: var(--verdant-ink);
+  --sl-color-gray-1: hsl(130, 20%, 16%);
+  --sl-color-gray-2: hsl(130, 12%, 26%);
+  --sl-color-gray-3: hsl(130, 8%, 38%);
+  --sl-color-gray-4: hsl(130, 6%, 52%);
+  --sl-color-gray-5: hsl(110, 14%, 78%);
+  --sl-color-gray-6: hsl(105, 22%, 93%);
+  --sl-color-gray-7: hsl(100, 28%, 97%);
+  --sl-color-black: hsl(100, 25%, 98%);
+
+  --sl-color-green-high: hsl(var(--sl-hue-green), 48%, 28%);
+  --sl-color-green: hsl(var(--sl-hue-green), 48%, 38%);
+  --sl-color-green-low: hsl(var(--sl-hue-green), 40%, 92%);
+
+  --sl-color-orange-high: hsl(var(--sl-hue-orange), 55%, 32%);
+  --sl-color-orange: var(--verdant-terracotta);
+  --sl-color-orange-low: hsl(var(--sl-hue-orange), 45%, 92%);
+
+  --sl-color-accent-high: hsl(var(--sl-hue-green), 48%, 28%);
+  --sl-color-accent: var(--verdant-green);
+  --sl-color-accent-low: hsl(100, 35%, 90%);
+
+  --sl-color-text-accent: var(--verdant-green);
+  --sl-color-text-invert: var(--verdant-cream);
+  --sl-color-bg-nav: hsl(100, 28%, 96%);
+  --sl-color-bg-sidebar: var(--sl-color-black);
+  --sl-color-bg-inline-code: hsl(105, 20%, 91%);
+  --sl-color-bg-accent: var(--verdant-green);
+  --sl-color-hairline-light: hsl(110, 18%, 88%);
+  --sl-color-hairline-shade: hsl(110, 18%, 88%);
+
+  --sl-color-backdrop-overlay: hsla(130, 12%, 30%, 0.55);
+}
+
+/* Page atmosphere */
+body {
+  background:
+    radial-gradient(1100px 520px at 8% -8%, hsl(100, 35%, 18%) 0%, transparent 55%),
+    radial-gradient(800px 420px at 100% 0%, hsl(18, 35%, 16%) 0%, transparent 48%),
+    var(--sl-color-bg);
+}
+
+:root[data-theme="light"] body {
+  background:
+    radial-gradient(1100px 520px at 8% -8%, hsl(100, 40%, 88%) 0%, transparent 55%),
+    radial-gradient(800px 420px at 100% 0%, hsl(22, 45%, 90%) 0%, transparent 50%),
+    linear-gradient(180deg, hsl(100, 25%, 94%), hsl(105, 22%, 90%));
+}
+
+.site-title {
+  font-family: Fraunces, Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.hero {
+  --sl-color-white: var(--verdant-cream);
+}
+
+:root[data-theme="light"] .hero {
+  --sl-color-white: var(--verdant-ink);
+}
+
+.sl-link-button.primary {
+  background: linear-gradient(
+    145deg,
+    var(--verdant-green-bright) 0%,
+    var(--verdant-green) 55%,
+    var(--verdant-forest) 100%
+  );
+  border: 1px solid hsl(112, 40%, 28%);
+}
+
+.sl-link-button.primary:hover {
+  filter: brightness(1.06);
+}
+
+:root[data-theme="light"] .sl-link-button.primary {
+  background: linear-gradient(
+    145deg,
+    hsl(112, 48%, 42%) 0%,
+    var(--verdant-green) 100%
+  );
+  border-color: hsl(112, 40%, 32%);
+  color: var(--verdant-cream);
+}

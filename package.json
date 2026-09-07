@@ -1,0 +1,27 @@
+{
+  "name": "verdant",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Visually rich document digestion — image/PDF to Markdown/HTML",
+  "packageManager": "pnpm@10.26.2",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev:web": "pnpm --filter @verdant/web dev",
+    "dev:docs": "pnpm --filter @verdant/docs dev",
+    "dev:cli": "pnpm --filter @verdant/cli dev",
+    "typecheck": "pnpm -r run typecheck",
+    "compose:up": "docker compose up -d --build",
+    "compose:down": "docker compose down",
+    "compose:logs": "docker compose logs -f"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "protobufjs"
+    ]
+  }
+}

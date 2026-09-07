@@ -1,0 +1,19 @@
+# OpenObserve — logs, metrics, and traces (local mode + persistent volume)
+services:
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:latest
+    restart: unless-stopped
+    ports:
+      - "${OPENOBSERVE_PORT:-18706}:5080"
+      - "${OPENOBSERVE_GRPC_PORT:-18707}:5081"
+    environment:
+      ZO_ROOT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:-verdant@example.com}
+      ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:-verdant1}
+      ZO_DATA_DIR: /data
+      ZO_LOCAL_MODE: "true"
+      ZO_TELEMETRY: "false"
+    volumes:
+      - openobserve_data:/data
+
+volumes:
+  openobserve_data:

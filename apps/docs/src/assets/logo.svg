@@ -1,0 +1,195 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Verdant — plant tossing a book">
+  <defs>
+    <linearGradient id="potBody" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0%" stop-color="#e08a55"/>
+      <stop offset="35%" stop-color="#c45f32"/>
+      <stop offset="100%" stop-color="#6e3218"/>
+    </linearGradient>
+    <linearGradient id="potRim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f0a574"/>
+      <stop offset="100%" stop-color="#c4683a"/>
+    </linearGradient>
+    <linearGradient id="soil" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4a3424"/>
+      <stop offset="100%" stop-color="#23160e"/>
+    </linearGradient>
+    <linearGradient id="stem" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#145228"/>
+      <stop offset="40%" stop-color="#2f9142"/>
+      <stop offset="100%" stop-color="#1a5c2e"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5ec468"/>
+      <stop offset="45%" stop-color="#2f9142"/>
+      <stop offset="100%" stop-color="#145228"/>
+    </linearGradient>
+    <radialGradient id="headFill" cx="38%" cy="32%" r="68%">
+      <stop offset="0%" stop-color="#3eab4f"/>
+      <stop offset="42%" stop-color="#1f7a36"/>
+      <stop offset="100%" stop-color="#0f3d1c"/>
+    </radialGradient>
+    <radialGradient id="mouthFill" cx="50%" cy="55%" r="70%">
+      <stop offset="0%" stop-color="#5a221c"/>
+      <stop offset="100%" stop-color="#120806"/>
+    </radialGradient>
+    <linearGradient id="bookCover" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2a6b3a"/>
+      <stop offset="100%" stop-color="#0e2a18"/>
+    </linearGradient>
+    <linearGradient id="spot" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e25545"/>
+      <stop offset="100%" stop-color="#9e2a20"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-10%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.6" flood-color="#132017" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <!-- ground shadow -->
+  <ellipse cx="64" cy="122" rx="28" ry="4" fill="#132017" opacity="0.18"/>
+
+  <!-- terracotta pot -->
+  <g filter="url(#softShadow)">
+    <path
+      d="M39 86.5h50l-4.2 31.5c-1.1 6.2-6.8 10.5-13.2 10.5H56.4c-6.4 0-12.1-4.3-13.2-10.5L39 86.5z"
+      fill="url(#potBody)"
+    />
+    <!-- ceramic band -->
+    <path d="M41.5 102h45.2" stroke="#8a4124" stroke-width="2.2" opacity="0.35" stroke-linecap="round"/>
+    <path d="M42.2 104.5h43.8" stroke="#f0a574" stroke-width="1" opacity="0.2" stroke-linecap="round"/>
+    <!-- rim -->
+    <ellipse cx="64" cy="86.5" rx="29.5" ry="8.2" fill="url(#potRim)"/>
+    <ellipse cx="64" cy="84.8" rx="23.5" ry="5.8" fill="url(#soil)"/>
+    <ellipse cx="58" cy="83.5" rx="7" ry="2.2" fill="#5a4030" opacity="0.35"/>
+  </g>
+
+  <!-- stem -->
+  <path
+    d="M64 84.5c.2-11 .8-24 1.2-36.5"
+    fill="none"
+    stroke="url(#stem)"
+    stroke-width="8.5"
+    stroke-linecap="round"
+  />
+  <path
+    d="M62.2 84c.2-11 .7-23 1-35"
+    fill="none"
+    stroke="#7ed484"
+    stroke-width="2"
+    stroke-linecap="round"
+    opacity="0.35"
+  />
+
+  <!-- right leaf (balance) -->
+  <path
+    d="M67 58c16 1 30 14 33.5 28.5-18.5-4-29-14-35.5-24.5-1.8-2.8.4-4.8 2-4z"
+    fill="url(#leaf)"
+  />
+  <path
+    d="M69 60.5c11 5 20 14 24.5 21"
+    fill="none"
+    stroke="#0f3d1c"
+    stroke-width="1.3"
+    stroke-linecap="round"
+    opacity="0.4"
+  />
+
+  <!-- throwing leaf-arm -->
+  <path
+    d="M61.5 56c-6.5-9-12-18-14.5-28"
+    fill="none"
+    stroke="url(#stem)"
+    stroke-width="5.5"
+    stroke-linecap="round"
+  />
+  <path
+    d="M49 30c-16-4-28 5-31.5 18.5 14.5.5 25.5-1 33.5-8.5 4.2-4 3.2-9-2-10z"
+    fill="url(#leaf)"
+  />
+  <path
+    d="M46.5 32c-9 1.5-16 8-20 14"
+    fill="none"
+    stroke="#0f3d1c"
+    stroke-width="1.2"
+    stroke-linecap="round"
+    opacity="0.4"
+  />
+
+  <!-- book in flight (tossed toward the upward mouth) -->
+  <g transform="translate(34 8) rotate(-38)">
+    <!-- back cover hint -->
+    <rect x="1.5" y="1.5" width="20" height="15" rx="1.4" fill="#0a1f12" opacity="0.55"/>
+    <!-- cover -->
+    <rect x="0" y="0" width="20" height="15" rx="1.4" fill="url(#bookCover)"/>
+    <!-- spine -->
+    <rect x="0" y="0" width="3" height="15" rx="1" fill="#07160d"/>
+    <!-- page block -->
+    <path d="M3.8 1.4h15v12.2h-15z" fill="#f7f1e6"/>
+    <path d="M5.5 4.2h11.5M5.5 7h10.2M5.5 9.8h8.5" stroke="#b9ae96" stroke-width="1.05" stroke-linecap="round"/>
+    <!-- cover badge -->
+    <circle cx="15.5" cy="3.8" r="2" fill="#5ec468"/>
+  </g>
+  <!-- motion ticks -->
+  <path
+    d="M30 22c-2.5-3.5-3-7.5-2-11M34.5 20c-1-3.5-.2-7.5 2-10.5"
+    fill="none"
+    stroke="#1f6b35"
+    stroke-width="1.5"
+    stroke-linecap="round"
+    opacity="0.4"
+  />
+
+  <!-- head -->
+  <g filter="url(#softShadow)">
+    <ellipse cx="67" cy="41" rx="27.5" ry="25.5" fill="url(#headFill)"/>
+    <!-- specular -->
+    <ellipse cx="54" cy="30" rx="10" ry="6" fill="#ffffff" opacity="0.14"/>
+
+    <!-- spots -->
+    <ellipse cx="49" cy="37" rx="5.8" ry="4.6" fill="url(#spot)" transform="rotate(-22 49 37)"/>
+    <ellipse cx="81" cy="33" rx="7.2" ry="5.4" fill="url(#spot)" transform="rotate(18 81 33)"/>
+    <ellipse cx="74" cy="52" rx="4.4" ry="3.4" fill="url(#spot)" transform="rotate(-10 74 52)"/>
+    <ellipse cx="56" cy="51" rx="3.2" ry="2.6" fill="url(#spot)" transform="rotate(12 56 51)"/>
+
+    <!-- upward mouth -->
+    <path
+      d="M48.5 34.5c1.8-13 11-20 18.8-20s17 7 18.8 20c-6.2-5-12.2-7.2-18.8-7.2s-12.6 2.2-18.8 7.2z"
+      fill="url(#mouthFill)"
+    />
+    <!-- lip -->
+    <path
+      d="M47.5 34.8c2.2-12.5 11-19.2 19.8-19.2s17.6 6.7 19.8 19.2"
+      fill="none"
+      stroke="#0a2814"
+      stroke-width="2.6"
+      stroke-linecap="round"
+    />
+    <path
+      d="M49 34c2-10.5 10-16 18.3-16S83.5 23.5 85.5 34"
+      fill="none"
+      stroke="#5ec468"
+      stroke-width="1.2"
+      stroke-linecap="round"
+      opacity="0.35"
+    />
+
+    <!-- upper teeth -->
+    <path d="M52.5 26.5 55.8 18.5 58.8 25.8z" fill="#f7faf4" stroke="#0a2814" stroke-width="0.75"/>
+    <path d="M60.2 21.2 63.4 13.8 66.4 20.6z" fill="#f7faf4" stroke="#0a2814" stroke-width="0.75"/>
+    <path d="M68.2 20.2 71.4 13.2 74.4 19.8z" fill="#f7faf4" stroke="#0a2814" stroke-width="0.75"/>
+    <path d="M76.2 24.2 79.6 16.8 82.5 24z" fill="#f7faf4" stroke="#0a2814" stroke-width="0.75"/>
+    <!-- lower teeth -->
+    <path d="M54.2 33.8 57 39.8 59.6 33.5z" fill="#f7faf4" stroke="#0a2814" stroke-width="0.7"/>
+    <path d="M62.5 35 65.2 41.2 67.9 34.8z" fill="#f7faf4" stroke="#0a2814" stroke-width="0.7"/>
+    <path d="M70.8 34.5 73.6 40.5 76.2 34.2z" fill="#f7faf4" stroke="#0a2814" stroke-width="0.7"/>
+
+    <!-- eyes looking up at the book -->
+    <ellipse cx="51.5" cy="43.5" rx="6.2" ry="6.8" fill="#f7fff5"/>
+    <ellipse cx="52.6" cy="42.2" rx="2.7" ry="3.3" fill="#132017"/>
+    <circle cx="53.6" cy="41" r="1.05" fill="#fff"/>
+
+    <ellipse cx="82" cy="42.5" rx="6.2" ry="6.8" fill="#f7fff5"/>
+    <ellipse cx="80.6" cy="41.2" rx="2.7" ry="3.3" fill="#132017"/>
+    <circle cx="81.5" cy="40" r="1.05" fill="#fff"/>
+  </g>
+</svg>

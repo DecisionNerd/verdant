@@ -1,0 +1,4 @@
+{
+  "description": "Synthetic fixture — replace input.png with a real scanned diagram for meaningful evals",
+  "tags": ["mermaid", "sample"]
+}

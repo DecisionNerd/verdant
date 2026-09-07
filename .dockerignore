@@ -1,0 +1,13 @@
+node_modules
+.git
+.next
+dist
+.turbo
+data/inputs/*
+data/outputs/*
+data/datasets/*
+!data/**/.gitkeep
+.env
+*.md
+.cursor
+agent-transcripts

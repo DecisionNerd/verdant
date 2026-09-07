@@ -70,42 +70,53 @@ web_modules/
 .env.*
 !.env.example
 
+# Verdant local data (keep placeholders + sample fixture)
+data/inputs/**
+!data/inputs/.gitkeep
+!data/inputs/sample.png
+data/outputs/**
+!data/outputs/.gitkeep
+data/jobs/**
+!data/jobs/.gitkeep
+data/turso/**
+!data/turso/.gitkeep
+data/datasets/**/_langfuse-sync.json
+!data/datasets/sample-flowchart/**
+data/config.json
+data/config.json.migrated
+
+# Trigger self-host checkout
+infra/trigger/platform/
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
 
-# Next.js build output
-.next
-out
+# ── Framework / package build artifacts (any workspace package) ──────
+# Patterns without a leading slash match in every package under apps/,
+# packages/, trigger/, etc.
 
-# Nuxt.js build / generate output
-.nuxt
-dist
-.output
+# Next.js
+.next/
+out/
 
-# Gatsby files
+# Astro / Starlight (types, content cache — regenerated on build/dev)
+.astro/
+
+# Generic compile / emit dirs
+dist/
+.output/
+build/
+
+# Nuxt / Gatsby / SvelteKit / VitePress / Docusaurus (unused today; safe)
+.nuxt/
 .cache/
-# Comment in the public line in if your project uses Gatsby and not Next.js
-# https://nextjs.org/blog/next-9-1#public-directory-support
-# public
-
-# vuepress build output
-.vuepress/dist
-
-# vuepress v2.x temp directory
-.temp
-
-# Sveltekit cache directory
 .svelte-kit/
-
-# vitepress build output
-**/.vitepress/dist
-
-# vitepress cache directory
-**/.vitepress/cache
-
-# Docusaurus cache and generated files
-.docusaurus
+.temp/
+.docusaurus/
+.vuepress/dist/
+**/.vitepress/dist/
+**/.vitepress/cache/
 
 # Serverless directories
 .serverless/

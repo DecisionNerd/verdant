@@ -1,0 +1,155 @@
+include:
+  - path: infra/langfuse/docker-compose.yml
+  - path: infra/openobserve/docker-compose.yml
+
+x-data-volumes: &data-volumes
+  - ./data:/data
+
+x-app-env: &app-env
+  DATA_DIR: /data
+  TURSO_DATABASE_URL: ${TURSO_DATABASE_URL:-file:/data/turso/verdant.db}
+  LLM_BASE_URL: ${LLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai/}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_MODEL: ${LLM_MODEL:-gemini-2.5-flash}
+  LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-http://localhost:18703}
+  LANGFUSE_BASE_URL_INTERNAL: http://langfuse-web:3000
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-verdant-local}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-verdant-local-secret}
+  OPENOBSERVE_URL: ${OPENOBSERVE_URL:-http://localhost:18706}
+  OPENOBSERVE_URL_INTERNAL: http://openobserve:5080
+  OPENOBSERVE_ORG: ${OPENOBSERVE_ORG:-default}
+  ZO_ROOT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:-verdant@example.com}
+  ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:-verdant1}
+  TRIGGER_API_URL: ${TRIGGER_API_URL:-http://localhost:18704}
+  TRIGGER_API_URL_INTERNAL: ${TRIGGER_API_URL_INTERNAL:-http://host.docker.internal:18704}
+  TRIGGER_SECRET_KEY: ${TRIGGER_SECRET_KEY:-}
+  TRIGGER_PROJECT_REF: ${TRIGGER_PROJECT_REF:-proj_verdant_local}
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+      target: web
+    ports:
+      - "${VERDANT_WEB_PORT:-18700}:8787"
+    environment:
+      <<: *app-env
+      WORKER_URL: http://worker:8791
+      NEXT_PUBLIC_DOCS_URL: ${NEXT_PUBLIC_DOCS_URL:-http://localhost:18701}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-verdant@example.com}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-verdant1}
+      TRIGGER_LOGIN_EMAIL: ${TRIGGER_LOGIN_EMAIL:-verdant@example.com}
+      # Used by /api/services/* one-click login bridges
+      VERDANT_PUBLIC_URL: ${VERDANT_PUBLIC_URL:-http://localhost:18700}
+    volumes:
+      - ./data:/data
+      # Read Trigger magic-link URLs from webapp logs (local seamless login)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - worker
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+      target: cli
+    command: ["worker", "--port", "8791"]
+    expose:
+      - "8791"
+    environment:
+      <<: *app-env
+      WORKER_HTTP_PORT: "8791"
+      # Worker reaches Langfuse / OpenObserve on the compose network (not localhost).
+      LANGFUSE_BASE_URL: http://langfuse-web:3000
+      OPENOBSERVE_URL: http://openobserve:5080
+    volumes: *data-volumes
+    depends_on:
+      - openobserve
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mcp:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+      target: cli
+    command: ["mcp", "--port", "8790"]
+    ports:
+      - "${VERDANT_MCP_PORT:-18702}:8790"
+    environment:
+      <<: *app-env
+      VERDANT_MCP_PORT: "8790"
+      LANGFUSE_BASE_URL: http://langfuse-web:3000
+      OPENOBSERVE_URL: http://openobserve:5080
+    volumes: *data-volumes
+    depends_on:
+      - worker
+      - openobserve
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  docs:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+      target: docs
+    ports:
+      - "${VERDANT_DOCS_PORT:-18701}:4321"
+    restart: unless-stopped
+
+  cli:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+      target: cli
+    environment:
+      <<: *app-env
+    volumes: *data-volumes
+    entrypoint: ["node", "apps/cli/dist/index.js"]
+    profiles: ["cli"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Bootstraps official Trigger.dev v4 self-host (separate compose project).
+  # Mount the repo at the same absolute host path so nested compose volume
+  # mounts resolve on Docker Desktop (Mac/Windows), not as /workspace/...
+  # First run downloads large images; dashboard at http://localhost:18704
+  trigger:
+    image: alpine:3.20
+    working_dir: ${VERDANT_HOST_ROOT:-${PWD}}
+    volumes:
+      - ${VERDANT_HOST_ROOT:-${PWD}}:${VERDANT_HOST_ROOT:-${PWD}}
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      TRIGGER_IMAGE_TAG: ${TRIGGER_IMAGE_TAG:-v4.0.0}
+      TRIGGER_HOST_PORT: ${TRIGGER_HOST_PORT:-18704}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-verdant}
+      VERDANT_HOST_ROOT: ${VERDANT_HOST_ROOT:-${PWD}}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        apk add --no-cache bash git docker-cli docker-cli-compose wget >/dev/null
+        ROOT="$${VERDANT_HOST_ROOT}"
+        PORT="$${TRIGGER_HOST_PORT:-18704}"
+        chmod +x "$$ROOT/infra/trigger/up.sh"
+        "$$ROOT/infra/trigger/up.sh"
+        echo "Trigger platform bootstrap finished (or already running)."
+        while true; do
+          if wget -q -O /dev/null "http://host.docker.internal:$${PORT}" 2>/dev/null \
+            || wget -q -O /dev/null "http://127.0.0.1:$${PORT}" 2>/dev/null; then
+            echo "Trigger.dev is reachable on :$${PORT}"
+          else
+            echo "Waiting for Trigger.dev on :$${PORT}…"
+          fi
+          sleep 30
+        done
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
