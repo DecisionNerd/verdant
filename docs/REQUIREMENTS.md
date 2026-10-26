@@ -1,56 +1,50 @@
-# Requirements
+# Platform requirements
 
-These requirements describe what a Verdant deployment must demonstrably do for local
-operators and MCP agents: bring up the stack, configure an LLM, digest documents (including
-multipage PDFs), inspect outputs, and evaluate against truth fixtures.
+These are target acceptance conditions, not a report of passing implementation. The baseline is [the supplied reference](engineering/REFERENCE-BASELINE.md); concurrency, recovery, and security scenarios below are derived requirements that make its invariants testable.
 
-## Functional requirements
+| ID | Requirement | Acceptance evidence |
+|---|---|---|
+| FR-01 | Dataset-first registry | Create/discover an owned dataset with no model, experiment, or labeling project. |
+| FR-02 | Shared services | Equivalent REST and MCP requests produce the same authorized result; SDK follows OpenAPI contracts. |
+| FR-03 | Revision identity | Correcting labels adds an annotation revision; replacing bytes adds a sample revision; stable logical sample identity survives. |
+| FR-04 | Version membership | A sample can occur in multiple datasets/versions with distinct pinned annotations and splits. |
+| FR-05 | Immutable publication | Pin sample metadata, annotation/task/label-schema revisions, review evidence, splits, transformation code/configuration/environment, and publication gate evidence; later edits leave historical interpretation and bytes unchanged. |
+| FR-06 | Schema validation | Invalid external inputs, provider payloads, event versions, or manifests are rejected or explicitly quarantined; SQL constraints protect relational integrity. |
+| FR-07 | Async operations | A long-running request returns an operation; status/events persist across API/worker restarts; retries and cancellation have auditable outcomes. |
+| FR-08 | Durable events | State/event/outbox commit atomically; duplicate delivery has one logical consumer effect; failed delivery remains recoverable. |
+| FR-09 | Prefect/DataChain execution | An ingestion/transformation records exact inputs, configuration/code/environment, outputs, lineage, and operation correlation. |
+| FR-10 | Annotation review | Label Studio results normalize to canonical revisions pinned to exact sample/schema identities; duplicate or stale webhooks cannot replace newer accepted state. |
+| FR-11 | Quality gates | Evidently reports pin evaluated content and policy versions; a failed gate prevents publication of that candidate. |
+| FR-12 | Experiments | MLflow runs/models reference exact dataset versions; changing MLflow metadata cannot mutate registry identity. |
+| FR-13 | Authorized access | Human, service, and agent identities are checked at every service boundary, including discovery, events, lineage, and artifact access. |
+| FR-14 | Reproducible consumption | SDK/client verifies a pinned manifest and content digests; unavailable or corrupted artifacts fail explicitly. |
+| FR-15 | Audit and telemetry | An operation is traceable from transport through committed state, delivery, Prefect, processing, and integration result; audit survives telemetry retention. |
+| FR-16 | Execution authority | Operations owns terminal state; Prefect retries tasks within one epoch. Stable logical effect receipts survive attempt-epoch changes; unknown dispatch stops for reconciliation; duplicate or stale results cannot duplicate external effects or reverse committed outcomes. |
+| FR-17 | Domain boundary | Trusted Python workers and remote API workers execute the same authorized domain commands; direct persistence access goes through the application modules and cannot bypass version integrity. Independent integration calls need no Prefect run. |
+| FR-18 | Revocation | Commands/batches and result/finalization check applicable current access without per-record identity-provider calls. Revoked principals cannot register results; storage credential/URL expiry and revocation behavior are documented. |
+| FR-19 | Rebuildable reads | Where asynchronous projections are used, interrupted rebuilds resume without losing authoritative data. Stale search cannot authorize access or publish; SSE disconnect falls back to durable status. |
+| FR-20 | Availability lifecycle | Deprecation/archive preserve authorized pinned reads and bytes; unarchive restores visibility. Archived datasets pause new work/publication without losing admitted work checkpoints. Deletion is separate. |
+| FR-21 | Graceful degradation | Telemetry, optional integration or projection outages do not block authoritative reads or work independent of the failed component; required gates still cannot report false success. |
+| FR-22 | Concurrent editing/publication | Publish an explicit frozen candidate while the draft advances; only explicit current-draft publication requires equality at finalization. Show both revisions and reuse valid preparation after conflicts. |
+| FR-23 | Retention promotion | Preparation durably protects and verifies the complete generation; finalization promotes one retention group atomically with publication. Expiry/collection cannot race it into dangling references. |
+| FR-24 | Organizational cluster SSO | One Keycloak login enters the frontend and every enabled dashboard as the correct individual, with no second password; service clients use noninteractive authenticated paths. Each dashboard's edition/plugin, roles, provisioning, logout/revocation and bypass prevention are verified. Unqualified optional profiles remain unavailable; no SaaS identity dependency is required. |
+| FR-25 | Portable object storage | SeaweedFS OSS is the local S3 default. Qualify Verdant and enabled MLflow/Mimir/Loki/Tempo clients against each backend; placement/signing configuration may change without changing logical artifact/version identity or immutable manifest bytes. Existing data cutover copies/verifies retained objects with a tested rollback boundary. |
 
-| ID | Requirement | Derived from | Acceptance behavior |
-|---|---|---|---|
-| FR-1 | The system shall start Web, Docs, MCP, worker, OpenObserve, Langfuse, and Trigger via Docker Compose with documented host ports. | PRODUCT goals | Given a machine with Docker, when `docker compose up -d --build` succeeds, then the Web UI responds on the configured web port (default 18700). |
-| FR-2 | The system shall let an operator configure an LLM provider (Gemini, OpenAI, Anthropic, OpenRouter, Bedrock, or Custom) and persist credentials/model under `data/config.json`. | PRODUCT goals | Given Settings is open, when credentials are tested successfully, then digests use that active provider/model on subsequent runs. |
-| FR-3 | The system shall accept PNG, JPEG, WebP, or PDF input and write run outputs under `data/outputs/<runId>/`. | PRODUCT problem | Given a supported file, when a digest completes, then `document.md` (and optional HTML) exist under that run directory. |
-| FR-4 | For PDFs, the system shall diagnose pages, skip near-blank pages per plan, digest content pages with validation/retry, and stitch into a single document. | PRODUCT vision | Given a multipage PDF, when digest finishes, then `plan.json`, per-page `pages/page-NNN.md`, and stitched `document.md` exist; blank-only pages are not required as content digests. |
-| FR-5 | The Web UI shall show job history and reopen a selected run’s status, pipeline events, and Markdown/HTML preview. | DESIGN task-over-chrome | Given a completed job, when the operator selects it, then the run panel shows status and preview content for that `runId`. |
-| FR-6 | The CLI shall expose digest, status, outputs, read, dataset sync, eval, worker, and MCP commands runnable via Compose. | Audience: operators | Given Compose is up, when `docker compose run --rm cli digest …` succeeds, then outputs appear on the host `data/` mount. |
-| FR-7 | The system shall expose an always-on MCP HTTP endpoint that can digest, poll status, list/read outputs, sync datasets, and run evals. | Audience: agents | Given MCP is up, when a client calls the documented tools, then responses include host-relative paths under `data/outputs/…`. |
-| FR-8 | The system shall support truth-fixture evaluation (structure + similarity scores) using `data/datasets` and Langfuse when configured. | PRODUCT quality stance | Given a fixture case with `expected.md`, when `cli eval` runs, then a scored experiment result is produced (Langfuse or offline sync artifact). |
+## Cross-cutting proof
 
-## Non-functional requirements
+| ID | Constraint | Acceptance evidence |
+|---|---|---|
+| NFR-01 | Modular Python monolith | FastAPI and FastMCP delegate to shared services; modules do not write each other's tables directly. |
+| NFR-02 | Control/data plane separation | API handles bounded metadata; workers stream/batch bulk objects through S3-compatible storage. |
+| NFR-03 | Concurrency safety | Competing draft updates reject stale revisions; concurrent publication/idempotency requests cannot create divergent snapshots. A sealed membership generation is immutable; finalization scans/copies no membership and performs no external calls. |
+| NFR-04 | Bounded resource use | Representative large datasets prove pagination, bounded memory, backpressure, and cancellation; API/worker pool and concurrency budgets preserve interactive capacity during bulk work and retry storms; deployment budgets are measured before release. |
+| NFR-05 | Recovery and retention | Restore PostgreSQL and object storage together and resolve published manifests; no garbage collection removes retained referenced bytes. |
+| NFR-06 | Compatibility | Old published manifests remain readable through supported readers/adapters; breaking contracts have explicit versions. |
+| NFR-07 | Accessibility | Keyboard, focus, contrast, semantic status, and lineage text alternatives pass the design contract. |
+| NFR-08 | Portable deployment | Static frontend and containerized backend/workers use externalized configuration and narrowly scoped credentials. Docker Compose and Kubernetes prove the same internal organizational lifecycle with self-hosted Keycloak, persistent state, restart recovery and documented bootstrap/start sequences. YAML validation alone is insufficient. |
 
-| ID | Quality attribute | Target / constraint | Why it matters |
-|---|---|---|---|
-| NFR-1 | Local-first data | Inputs, outputs, datasets, and UI config persist under `./data` on the host | Operators keep documents off third-party digesters by default |
-| NFR-2 | Port isolation | Default host ports clustered in `187xx` and overridable via `.env` | Avoid collisions with common local servers |
-| NFR-3 | Multipage memory | PDF page rasters are disk-first; pages loaded as needed, not all base64 at once | Large PDFs must not OOM the worker |
-| NFR-4 | Accessibility (Web) | Contrast and dialog/alert semantics per `DESIGN.md` | Operators use the UI under varied lighting and assistive tech |
-| NFR-5 | Forkable docs | Starlight builds with configurable `SITE`/`BASE` for GitHub Pages | Forks can publish their own operator docs |
+## First end-to-end acceptance
 
-## Behavior trace
+Given an authenticated dataset owner and an uploaded source object, when the owner creates a dataset, ingests a sample into a draft, validates it, and publishes, then a new immutable manifest resolves the exact bytes, quality result, and provenance. A second authorized client retrieves the same manifest; an unauthorized principal cannot discover or read it. Repeating delivery or the publication request creates no second logical result.
 
-| Requirement | Given | When | Then |
-|---|---|---|---|
-| FR-2 | Web UI is open and no LLM is configured | Operator opens Settings, tests a valid Gemini key, picks a model | Status chip shows provider · model; Digest enables when a file is chosen |
-| FR-4 | A multipage PDF is queued | Worker processes diagnose → plan → pages → stitch | UI shows plan summary and page progress; final Markdown preview loads |
-| FR-7 | MCP HTTP is listening | Agent calls `digest_document` then `read_output` | Agent receives `runId` and can read `data/outputs/<runId>/document.md` |
-
-## Constraints & assumptions
-
-- **Constraint:** A vision-capable LLM endpoint is required; Verdant does not ship model weights.
-- **Constraint:** PDF page rasters depend on Poppler (`pdftoppm`) in worker/CLI images.
-- **Assumption:** Operators run Docker Compose on macOS/Linux with bind mounts for `./data`.
-- **Assumption:** Langfuse default seed user exists only on first empty DB init.
-
-## Dependencies
-
-- Docker / Docker Compose
-- Chosen LLM provider APIs (or AWS Bedrock Converse)
-- Poppler in worker/CLI images
-- Optional: self-hosted Trigger.dev stack (`infra/trigger`), Langfuse compose (`infra/langfuse`)
-
-## Open questions
-
-- Whether Trigger dashboard runs should become mandatory for digests (today the filesystem
-  worker queue is sufficient) — maintainers.
-- Public SemVer / release channel for CLI images beyond Compose tags — maintainers.
+See [Testing](engineering/TESTING.md) for proof layers and [Implementation](engineering/IMPLEMENTATION.md) for sequencing.

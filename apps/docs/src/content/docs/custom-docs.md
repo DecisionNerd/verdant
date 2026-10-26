@@ -1,45 +1,12 @@
 ---
-title: Custom docs
-description: Fork-friendly Starlight docs and the in-repo DocSlime tree.
+title: Maintaining documentation
+description: Keep target architecture and availability evidence distinct.
 ---
 
-Verdant keeps **two documentation homes** on purpose:
+Starlight (`apps/docs/`) explains workflows to operators and agents. Repository `docs/` holds product, requirements, design, architecture, implementation plans and ADRs. Starlight is independent of the React/Vite product frontend.
 
-| Audience | Where | How you read it |
-| --- | --- | --- |
-| Operators & agents (how-tos) | `apps/docs/` (this Starlight site) | http://localhost:18701 or GitHub Pages |
-| Maintainers & coding agents (product/engineering) | repo `docs/` (DocSlime) | In your git clone / editor |
+Edit pages in `apps/docs/src/content/docs/`; update `apps/docs/astro.config.mjs` navigation when adding routes. Use `pnpm --filter @verdant/docs dev` to preview and `pnpm --filter @verdant/docs build` to verify. `SITE` and `BASE` configure documentation hosting.
 
-Do **not** copy ADRs and requirements into Starlight wholesale. Keep operator pages short and
-accurate; put durable decisions in `docs/engineering/adrs/`.
+Keep target design distinct from implemented availability. Do not publish speculative installation commands, API method names, ports or provider defaults as operational facts. Update acceptance evidence when implementation actually passes.
 
-## Local Compose (Starlight)
-
-Edit markdown under `apps/docs/src/content/docs/`. The `docs` service serves them at
-http://localhost:18701 with `base: '/'`.
-
-Add operator runbooks, model defaults, or house conventions alongside the upstream pages.
-Update the sidebar in `apps/docs/astro.config.mjs` when you add a page.
-
-## DocSlime tree (`docs/`)
-
-Scaffolded and maintained with the [DocSlime](https://github.com/DecisionNerd/DocSlime) CLI:
-
-```bash
-docslime list
-docslime add adr <slug>
-```
-
-Start from `docs/README.md`, then `PRODUCT.md`, `DESIGN.md`, and `engineering/`.
-
-## GitHub Pages (optional)
-
-This repo deploys Starlight via GitHub Actions. Forks that want public operator docs should:
-
-1. Enable **Settings → Pages → Source: GitHub Actions**
-2. Push changes under `apps/docs/**`
-
-The workflow sets `SITE` and `BASE` from the GitHub context so forks publish to
-`https://<owner>.github.io/<repo>/` without hardcoding the upstream owner.
-
-DocSlime files under `docs/` are **not** published by that workflow; they stay with the source.
+The ADR set contains only decisions currently in force. Add decisions with `docslime add adr <slug>` when needed, and keep the index, decision records and architecture consistent. Detailed architecture remains in the repository rather than being duplicated into every operator page.

@@ -1,37 +1,12 @@
 ---
-title: CLI
-description: Human-facing Verdant CLI via Docker Compose.
+title: Python SDK and clients
+description: Typed dataset access for automation and external clients.
 ---
 
-Run commands inside Compose so paths stay on the host `data/` mount:
+The target programmatic interface is a generated OpenAPI client with typed Python SDK helpers. External systems use FastAPI; agents may use FastMCP. All routes share authorization and application services.
 
-```bash
-docker compose run --rm cli <command>
-```
+A client creates/discovers a dataset, starts an operation, follows durable status, and resolves an immutable version manifest. It verifies schema compatibility and content digests and records exact dataset-version references in experiments. Paginate metadata; process bulk data through authorized object references rather than server-local paths.
 
-## Commands
+Idempotency, stale-revision errors and operation IDs must remain visible to callers. A timeout does not prove external work failed; reconcile status before submitting duplicate work. Treat signed artifact URLs as sensitive and short lived.
 
-```bash
-verdant digest <path> [--format markdown|html|both] [--no-wait] [--model <id>]
-verdant status <runId>
-verdant outputs [runId]
-verdant read <runId> [--file markdown|html]
-verdant sync-dataset [--dir data/datasets] [--name verdant-truth]
-verdant eval [--dir data/datasets] [--name <experiment>]
-verdant worker [--once]
-verdant mcp [--stdio] [--port 8790]
-```
-
-### Examples
-
-```bash
-cp your-scan.pdf data/inputs/
-docker compose run --rm cli digest data/inputs/your-scan.pdf --format both
-docker compose run --rm cli status <runId>
-docker compose run --rm cli read <runId> --file markdown
-```
-
-Paths should be host-relative under `data/...` so results remain visible on the host.
-
-For agent access, prefer the always-on HTTP MCP endpoint instead of spawning stdio for every
-session — see [MCP for agents](../mcp/).
+SDK package names, installation commands, method signatures and CLI commands will be documented after contracts are implemented. Earlier `digest`, worker and evaluation CLI commands are not the new dataset API. The retained `cli` page URL keeps existing documentation navigation working.

@@ -1,30 +1,11 @@
-# Experience
+# Dataset lifecycle journeys
 
-Experience artifacts for Verdant cover **operators**, **CLI users**, and **MCP agents**.
-There is no separate interview research corpus in-repo yet; principles below are derived from
-how the product is actually used.
+The target experience follows create → ingest → annotate → validate → publish → consume → evaluate. Each transition has an authorized principal, durable operation/result, exact revision context and actionable failure.
 
-## Discovery practice
+[First dataset publication](first-digest-journey.md) describes the tracer bullet. The filename is retained for existing links; document digestion is now a possible transformation, not the primary journey.
 
-- Learn from local dogfooding, fork feedback, and eval fixture failures.
-- Promote a finding to [`../REQUIREMENTS.md`](../REQUIREMENTS.md) when it is stable and
-  testable; otherwise keep it as an open question.
-- Coding agents are first-class users — MCP path clarity is part of UX.
+[ADAM: compare process flows and models](adam-flow-model-comparison.md) defines a six-configuration experiment journey, fair quality/performance/cost reporting, and fresh-trial versus recovery-retry behavior. It is a target experience requiring implementation.
 
-## Experience principles
+[BETH: annotation agreement and Pareto tradeoffs](beth-truth-production-pareto.md) covers labeled train/validation/test truth, unlabeled production, independent annotation/adjudication, and cost/speed/quality frontier selection across flows and models. It is a target experience requiring implementation.
 
-- **Time-to-first-digest** — compose up → configure LLM → digest should fit one sitting.
-- **Paths over abstractions** — show `data/outputs/<runId>/…` so humans and agents can open files.
-- **Progress is visible** — multipage runs expose plan, page dots, and pipeline events.
-- **Settings stay secondary** — drawer + alerts; never block the workspace layout permanently.
-
-## Artifact template
-
-When adding a journey or opportunity file, include: problem, evidence, desired outcome,
-hypothesis, and links to requirement IDs. Do not invent quotes or users.
-
-## Index
-
-| Document | Description |
-|---|---|
-| [first-digest-journey.md](first-digest-journey.md) | Operator path from compose up to Markdown preview |
+Agent and human journeys use the same domain services. UI, SDK and MCP differences are presentation/transport concerns, not different authorization or publication rules.

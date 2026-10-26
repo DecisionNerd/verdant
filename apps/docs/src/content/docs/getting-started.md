@@ -1,70 +1,26 @@
 ---
 title: Getting started
-description: Bring up Verdant with Docker Compose.
+description: Readiness and the first dataset lifecycle.
 ---
 
-## Prerequisites
+## Readiness
 
-- Docker + Docker Compose
-- A vision-capable LLM: Gemini, OpenAI, Anthropic, OpenRouter, **AWS Bedrock**, or any
-  OpenAI-compatible endpoint ([Configuration](../configuration/))
+These docs describe the accepted target architecture. The React/Vite + FastAPI/FastMCP dataset platform is not declared implemented by this documentation change. Existing Compose, CLI and web commands may still run the earlier document-digestion tool; they are not a platform installation recipe.
 
-## Start
+## Target prerequisites
 
-```bash
-cp .env.example .env   # optional defaults
-docker compose up -d --build
-```
+A deployment will need an OIDC/OAuth 2.0 provider, PostgreSQL, S3-compatible storage, the Python control plane/workers, Prefect/DataChain execution, the static React/Vite frontend, and OpenTelemetry with Grafana OSS, Mimir, Loki and Tempo. Label Studio, MLflow and Evidently integrations are introduced as their lifecycle slices pass acceptance. Supported versions, provider topology and environment-variable names must be established with implementation.
 
-Open the Web UI → **Settings** → configure your LLM (saved to `data/config.json`). You can
-still set `LLM_API_KEY` in `.env` instead; the UI key takes precedence for API-key providers.
+## First lifecycle
 
-### URLs
+Create a dataset → register source objects → ingest into a draft → inspect sample revisions → validate against a policy → publish an immutable manifest → consume that exact version from another authorized client. Attach annotations and experiments to dataset versions rather than creating dataset identity inside those systems.
 
-| Service | URL | Login |
-| --- | --- | --- |
-| Web UI | http://localhost:18700 | — |
-| Docs (this site) | http://localhost:18701 | — |
-| MCP | http://localhost:18702/mcp | — |
-| Langfuse | http://localhost:18703 | `verdant@example.com` / `verdant1` |
-| Trigger.dev | http://localhost:18704 | `verdant@example.com` (instant magic link) |
-| OpenObserve | http://localhost:18706 | `verdant@example.com` / `verdant1` |
+Before availability is claimed, verify digest integrity, unauthorized denial, repeated idempotent requests, worker restart/recovery and unchanged old versions after edits. The repository's `docs/engineering/IMPLEMENTATION.md` defines the delivery plan.
 
-All host ports sit in the **187xx** cluster so they do not collide with typical local servers.
+## Preview these docs
 
-No signup step — OpenObserve and Langfuse seed that user on first boot; Trigger local mode
-signs in via magic link (printed to container logs).
+With the repository's pnpm dependencies installed, run `pnpm --filter @verdant/docs dev` from the repo root. The Astro development server reports its address. `pnpm --filter @verdant/docs build` verifies the static site. These are documentation commands only.
 
-From the Web UI, use **Services → OpenObserve / Langfuse / Trigger**. If auto-login fails,
-open **Services → All services** for credentials and manual links.
+## Local deployment target
 
-## Persist data
-
-Host directory `./data` is bind-mounted:
-
-- `data/inputs` — uploads
-- `data/outputs` — digest results (`document.md`, `pages/`, `artifacts/`, …)
-- `data/datasets` — truth fixtures
-- `data/turso/verdant.db` — jobs, settings, reviews (libSQL / Turso)
-
-OpenObserve persists in the Compose named volume `openobserve_data`.
-
-Secrets live in root `.env` (gitignored).
-
-## First digest
-
-**Web:** see [Web UI](../web-ui/).
-
-**CLI:**
-
-```bash
-cp your-scan.pdf data/inputs/
-docker compose run --rm cli digest data/inputs/your-scan.pdf --format both
-```
-
-PDFs are rasterized with Poppler and digested **one page at a time**, then stitched with a
-deterministic code join by default (`VERDANT_STITCH_MODE=code`) so the final Markdown is not
-bounded by LLM context. Set `llm` for hierarchical LLM stitch. Results
-appear under `data/outputs/<runId>/`.
-
-**Agent:** [MCP for agents](../mcp/).
+Docker Compose and Kubernetes are self-hosted internal organizational targets with Keycloak as the common identity authority. The root Compose file currently runs the earlier digestion stack, so target-platform local availability is not yet established. Repository `docs/infra/docker-compose.md` defines bootstrap, persistent dependencies, real login and end-to-end restart/recovery acceptance; `docs/infra/local-auth.md` defines the canonical browser/container issuer and client setup. No SaaS identity provider is required. Full dashboard SSO still requires compatible self-hosted editions/plugins: Label Studio currently has a documented Enterprise SSO prerequisite; Grafana OSS uses built-in Keycloak OAuth without a paid SSO dependency. The core can run with unqualified optional dashboards disabled; that is not full-cluster SSO.
