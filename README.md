@@ -2,7 +2,7 @@
 
 Verdant is being redefined as a **dataset-first production ML data platform**. Datasets are the primary managed assets; annotations, transformations, quality reports, experiments, and models attach to them.
 
-**Documentation status:** these docs define the accepted target architecture. This documentation refactor does not implement the platform. Existing source, containers, commands, and deployments may still implement the earlier document-digestion tool. Do not treat them as a working platform installation.
+**Documentation status:** these docs define the accepted target architecture. The Python registry foundation is available; the complete platform remains under implementation. Existing source, containers, commands, and deployments may still implement the earlier document-digestion tool. Do not treat them as a working platform installation.
 
 ## Target stack
 
@@ -41,4 +41,4 @@ pnpm --filter @verdant/docs dev
 pnpm --filter @verdant/docs build
 ```
 
-These commands serve or build documentation only. Platform setup commands will be published when implementation acceptance passes. Existing Compose definitions are not the target deployment contract.
+These commands serve or build documentation only. See [Python foundation setup and proof](docs/engineering/PLATFORM-FOUNDATION.md) for the bounded registry backend. Existing Compose definitions are not the target deployment contract.
