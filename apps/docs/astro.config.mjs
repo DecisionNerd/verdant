@@ -12,7 +12,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "Verdant",
-      description: "Local image/PDF digestion to Markdown/HTML with Mermaid, Trigger.dev, and Langfuse evals.",
+      description: "Dataset-first ML data platform for humans and agents.",
       logo: {
         src: "./src/assets/logo.png",
         alt: "Verdant",
@@ -83,7 +83,7 @@ export default defineConfig({
           label: "Use Verdant",
           items: [
             { label: "Web UI", slug: "web-ui" },
-            { label: "CLI", slug: "cli" },
+            { label: "Python SDK and clients", slug: "cli" },
             { label: "MCP for agents", slug: "mcp" },
             { label: "Evaluation", slug: "evaluation" },
           ],
@@ -92,7 +92,7 @@ export default defineConfig({
           label: "Understand",
           items: [
             { label: "Architecture", slug: "architecture" },
-            { label: "Custom docs & DocSlime", slug: "custom-docs" },
+            { label: "Maintaining documentation", slug: "custom-docs" },
           ],
         },
       ],

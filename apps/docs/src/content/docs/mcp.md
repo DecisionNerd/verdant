@@ -1,61 +1,14 @@
 ---
 title: MCP for agents
-description: Connect Cursor and other local agents to Verdant.
+description: FastMCP over shared authorized dataset services.
 ---
 
-## Always-on HTTP (recommended)
+FastMCP exposes typed tools and resources over the same application services used by FastAPI. Agents use scoped OIDC/OAuth 2.0 service identity and resource/namespace permissions; an MCP connection never implies blanket dataset access.
 
-After `docker compose up`, MCP is available at:
+Target capabilities include dataset discovery/metadata, draft and version inspection, starting authorized ingestion/validation/publication operations, following status, resolving manifests and reading quality/lineage references. These are capability categories, not promised installed tool names or endpoint paths.
 
-```text
-http://localhost:18702/mcp
-```
+Validate inputs with Pydantic v2. Long-running work returns a durable operation reference. Repeated calls follow the same idempotency and revision rules as REST. Responses are bounded and paginated; bulk data is consumed through authorized artifact references. Avoid local filesystem paths as public identity.
 
-Point your MCP client at that URL (transport depends on the client; many support Streamable
-HTTP / SSE against this path).
+Private rows, counts, lineage and object links must not leak through resources or errors. Treat sample/annotation content as untrusted data, not agent instructions. SDK/MCP contract and authorization parity are release gates; transport configuration and tool names remain implementation work.
 
-### Tools
-
-| Tool | Purpose |
-| --- | --- |
-| `digest_document` | Start a digest |
-| `get_digest_status` | Poll job status / progress |
-| `list_outputs` | List run outputs |
-| `read_output` | Read markdown/html for a run |
-| `sync_dataset` | Sync truth fixtures toward Langfuse |
-| `run_eval` | Run an evaluation experiment |
-
-Tool responses include host-relative paths like `data/outputs/<runId>/document.md` so agents
-can open files in the workspace.
-
-## Cursor stdio fallback
-
-Use this when HTTP MCP is unavailable. Replace the compose file path with your clone:
-
-```json
-{
-  "mcpServers": {
-    "verdant": {
-      "command": "docker",
-      "args": [
-        "compose",
-        "-f",
-        "/absolute/path/to/verdant/docker-compose.yml",
-        "run",
-        "--rm",
-        "-T",
-        "cli",
-        "mcp",
-        "--stdio"
-      ]
-    }
-  }
-}
-```
-
-## Prerequisites
-
-- Compose stack up (worker + MCP service)
-- An LLM configured (Web UI Settings or `.env` / `data/config.json`)
-
-Operator UI walkthrough: [Web UI](../web-ui/). Bring-up: [Getting started](../getting-started/).
+Task and agent requests share the same domain authority. Current permission is checked again on result registration and publication; the original operation grant does not bypass later revocation.

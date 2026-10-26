@@ -1,13 +1,13 @@
 ---
 title: Verdant
-description: Local image/PDF digestion to Markdown/HTML for humans and agents.
+description: Dataset-first ML data platform for humans and agents.
 template: splash
 hero:
-  tagline: Image/PDF → Markdown/HTML with Mermaid, artifacts, Trigger.dev, and Langfuse evals — bring it up with docker compose up.
+  tagline: Discover, curate, validate, publish, and consume reproducible datasets.
   image:
     file: ../../assets/logo.png
   actions:
-    - text: Getting started
+    - text: Architecture and readiness
       link: getting-started/
       icon: right-arrow
     - text: MCP for agents
@@ -16,21 +16,20 @@ hero:
       variant: minimal
 ---
 
-## What you get
+## Dataset-first by design
 
-- One-command local stack (`docker compose up`)
-- Web UI, CLI, and MCP for Cursor and other local agents
-- Multipage PDF pipeline (diagnose → plan → page digests → stitch)
-- Self-hosted Trigger.dev + Langfuse
-- Truth-fixture evaluation under `data/datasets`
+Datasets are the primary managed assets. Annotations, quality reports, transformations, experiments and models connect to exact dataset versions.
 
-## Where to go next
+The accepted target combines React/Vite, FastAPI/FastMCP, Pydantic v2 and PostgreSQL with Prefect, DataChain, Label Studio, MLflow, Evidently, S3-compatible storage and OpenTelemetry with Grafana OSS, Mimir, Loki and Tempo.
 
-| If you want to… | Read |
-| --- | --- |
-| Bring the stack up | [Getting started](getting-started/) |
-| Configure providers & ports | [Configuration](configuration/) |
-| Use the browser UI | [Web UI](web-ui/) |
-| Connect an agent | [MCP for agents](mcp/) |
-| Run truth evals | [Evaluation](evaluation/) |
-| Customize docs in a fork | [Custom docs](custom-docs/) |
+**Readiness:** this site describes the target architecture. The documentation refactor does not implement or deploy it; existing source may still run the earlier digestion tool.
+
+| Explore | Read |
+|---|---|
+| Shared services and immutable versions | [Architecture](architecture/) |
+| First lifecycle and readiness | [Getting started](getting-started/) |
+| Deployment configuration responsibilities | [Configuration](configuration/) |
+| Human dataset workspace | [Web UI](web-ui/) |
+| Typed programmatic consumption | [Python SDK and clients](cli/) |
+| Agent access | [MCP](mcp/) |
+| Quality, review and experiments | [Evaluation](evaluation/) |

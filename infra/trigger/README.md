@@ -1,28 +1,7 @@
-# Self-hosted Trigger.dev
+# Legacy Trigger.dev infrastructure
 
-Verdant's digest pipeline runs via the Compose `worker` job queue out of the box.
-To also bring up the official Trigger.dev v4 platform (dashboard + durable runners):
+This directory belongs to the earlier document-digestion runtime. It is outside the accepted dataset-platform execution architecture and is not a setup path for the new platform.
 
-```bash
-./infra/trigger/up.sh
-```
+The target uses **Prefect** for orchestration, **DataChain** for processing, and PostgreSQL outbox/inbox plus durable operations for integration delivery. See [Architecture](../../docs/engineering/ARCHITECTURE.md) and [ADR-0004](../../docs/engineering/adrs/0004-workflows-and-integrations.md).
 
-## Default login (local)
-
-No account creation required:
-
-1. Open http://localhost:18704
-2. Enter **`verdant@example.com`** and continue with magic link
-3. In local mode (`NODE_ENV=development`) Trigger signs you in immediately — no email delivery
-
-That address is auto-promoted to admin via `ADMIN_EMAILS`.
-
-## Optional project key
-
-If you want Verdant workers to talk to Trigger tasks (not required for the local job queue):
-
-1. Create a project in the dashboard
-2. Copy the secret key into Verdant `.env` as `TRIGGER_SECRET_KEY`
-3. Keep `TRIGGER_API_URL=http://localhost:18704`
-
-Task definitions live in `/trigger` (`digest-document`, `run-eval-experiment`).
+This documentation refactor does not remove infrastructure, migrate data, or start services. Do not reuse legacy development login/bootstrap behavior as a production authentication design. Any later retirement must inventory running workloads and retained artifacts, preserve required data, and provide a tested recovery path.

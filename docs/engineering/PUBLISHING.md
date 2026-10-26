@@ -1,71 +1,37 @@
-# Publishing
+# Delivery and operations
 
-Verdant ships as a **Compose-first local stack**. What “publish” means today: rebuild
-container images for local/fork use, and optionally deploy the Starlight docs site to
-GitHub Pages.
+Target deployment uses a static React/Vite frontend and containerized Python control plane, workers and Prefect flows, backed by PostgreSQL and S3-compatible storage. Label Studio, MLflow, Evidently and Grafana OSS are integration/deployment concerns with separately managed credentials and lifecycle. Their exact hosting/version topology is unresolved.
 
-## Artifacts and destinations
+**Readiness:** existing Compose files, Dockerfiles and commands may still deploy the earlier digestion stack. They are not an installation recipe for this architecture. This docs change performs no runtime deployment or data migration.
 
-| Artifact | Destination | Versioned by | Owner |
-|---|---|---|---|
-| `verdant-web` / `verdant-worker` / `cli` / `docs` images | Local Docker (Compose) | Image build from git SHA / local tag | Maintainers |
-| Starlight static site | GitHub Pages | Commit on `main` touching `apps/docs/**` | Maintainers / forks |
-| Source repo | GitHub | Git history | Maintainers |
+Provider procedures and Pulumi ownership are documented in [Infrastructure](../infra/README.md). Follow one provider guide plus the common deployment acceptance contract.
 
-There is no separate public npm release of `@verdant/core` yet.
+## Implementation release gates
 
-## Suggested versioning and change history
+1. Record the exact source, contract/schema versions and migration compatibility window.
+2. Validate authorization, idempotency, publication immutability, outbox/inbox recovery and artifact integrity using [Testing](TESTING.md).
+3. Apply Alembic changes with expand/contract discipline; deploy compatible readers/consumers before new event/manifest producers.
+4. Run an isolated end-to-end acceptance flow, including unauthorized denial, duplicate processing and recovery. Observe actual provider integrations before claiming them ready.
+5. Promote through repository-specific release policy, then run the same live smoke scenario and inspect telemetry/audit. Define numeric SLOs and resource budgets before production release.
 
-- Compose images are currently **source-tied** (rebuild from the repo) rather than SemVer’d
-  on a registry.
-- Consider Conventional Commits and SemVer if/when CLI or core is published as a standalone
-  package; do not enforce without explicit agreement.
-- Docs Pages deploy is independent of app image tags.
+No universal staging/main policy is introduced here. Do not infer production authorization or paid-resource approval from this plan.
 
-## Build and continuous delivery
+## Rollback and recovery
 
-**Local stack**
+Prefer rollback of application code while retaining additive schema changes and compatible readers. Never rewrite published manifests or remove their referenced revisions to roll back a release. Pause failing consumers safely, inspect durable operations/outbox/inbox, and replay only through audited idempotent paths. Reconcile uncertain external runs before resubmission.
 
-```bash
-docker compose up -d --build
-```
+Backups cover PostgreSQL, immutable artifacts/manifests, integration mappings/configuration and recoverable secret references. Restore drills verify every retained snapshot resolves its expected digests. Decide retention, RPO/RTO, encryption and garbage-collection grace periods before enabling deletion. Deprecation/archive policy must distinguish access changes from destruction.
 
-**Docs (CI)**
+## Documentation delivery
 
-- Workflow: [`.github/workflows/deploy-docs.yml`](../../.github/workflows/deploy-docs.yml)
-- Sets `SITE=https://<owner>.github.io` and `BASE=/<repo>` for fork-friendly Pages.
+Starlight remains the documentation site. Build locally with `pnpm --filter @verdant/docs build`; publish using the repository's reviewed documentation workflow. `SITE`/`BASE` configure the static docs site. Documentation publication does not deploy the platform.
 
-**Gates before calling a change “shipped” locally**
+## Deployment simplicity and continuity
 
-1. Relevant package build/typecheck passes.
-2. Compose rebuild of touched services succeeds.
-3. Smoke: Web 200 on configured port; optional MCP/docs ports.
-4. If docs changed: `pnpm --filter @verdant/docs build` (and Pages workflow on `main`).
+Start with the fewest operational boundaries that fit the workload: one Python application deployment plus managed processing workers, with direct service calls when co-located/trusted. Keep third-party integration access separate; network APIs are available where isolation or language/runtime requires them. Avoid making normal work depend on remote identity introspection, telemetry ingestion or a projection being fresh. Validate degraded-mode behavior and background recovery as part of promotion.
 
-## Promotion and environments
+Archiving preserves retained exact-version access and admitted-work checkpoints. Unarchive restores admission/visibility; deletion follows its own retention and authorization policy. See the architecture lifecycle table for transitions.
 
-| Environment | What runs there | How you promote |
-|---|---|---|
-| Developer laptop | Full Compose stack | `docker compose up -d --build` |
-| Fork operator host | Same | Pull fork + compose |
-| GitHub Pages | Static Starlight only | Push to `main` under `apps/docs/**` |
+## Organizational identity release gate
 
-No staging→production app promotion path exists beyond “rebuild Compose on the target host.”
-
-## Rollback
-
-- **App:** redeploy previous git revision (`git checkout` / pin commit) and
-  `docker compose up -d --build`.
-- **Data:** `./data` is not overwritten by image rebuilds; restore from backup if needed.
-- **Docs:** GitHub Pages serves the last successful workflow artifact; revert the docs commit
-  and re-run the workflow.
-- **Langfuse seed user:** only created on empty DB; changing seed credentials may require
-  volume reset.
-
-## Ownership
-
-| Area | Owner |
-|---|---|
-| Compose defaults & images | Maintainers |
-| Starlight / Pages | Maintainers (forks customize `apps/docs`) |
-| DocSlime product docs | Maintainers (keep in sync with behavior) |
+Compose and Kubernetes use self-hosted Keycloak and the [service integration matrix](../infra/local-auth.md). A release claiming full-cluster SSO must demonstrate one frontend login followed by every enabled dashboard as the same individual, plus noninteractive API/service access. Missing SSO licenses/plugins or double-login behavior are explicit unmet prerequisites; do not compensate with shared accounts or label a proxy gate as native identity integration. See the [Kubernetes rollout](../infra/kubernetes.md).
