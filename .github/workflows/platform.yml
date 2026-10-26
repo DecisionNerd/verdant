@@ -29,12 +29,12 @@ jobs:
       - name: Install locked toolchain
         run: |
           python -m pip install uv==0.8.16
-          uv sync --frozen
+          uv sync --locked
       - name: Static checks
         run: |
-          uv run ruff check src migrations tests
-          uv run ruff format --check src migrations tests
+          uv run --locked ruff check src migrations tests
+          uv run --locked ruff format --check src migrations tests
       - name: PostgreSQL lifecycle and contracts
         run: |
-          uv run pytest -q
-          uv run alembic check
+          uv run --locked pytest -q
+          uv run --locked alembic check
