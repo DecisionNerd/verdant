@@ -1,7 +1,7 @@
 import { DraftEditor } from "./draft";
 import { useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { request, type Dataset } from "./catalog";
+import { request, type Dataset } from "./api";
 
 export function DatasetView({ namespace, id, csrf, writable }: { namespace: string; id: string; csrf: string; writable: boolean }) {
   const query = useQuery({ queryKey: ["dataset", namespace, id], queryFn: () => request<Dataset>(`/api/v1/namespaces/${namespace}/datasets/${id}`, csrf) });

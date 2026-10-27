@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { request } from "./catalog";
+import { request } from "./api";
 
 type Member = { sample_id: string; sample_revision_id: string; split: string };
 type DraftPage = { draft_id: string; revision: number; members: Member[]; next_after: string | null };

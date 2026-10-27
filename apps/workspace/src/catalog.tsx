@@ -1,21 +1,10 @@
 import { DatasetView } from "./dataset";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 
 type Namespace = { id: string; name: string; access: "read" | "write" };
-export type Dataset = { id: string; namespace_id: string; owner_id: string; revision: number; slug: string; name: string; modality: string; draft_id: string; created_at: string };
-type Page<T> = { items: T[]; next_after: string | null; total?: number };
-export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
-}
-export async function request<T>(path: string, csrf: string, body?: unknown, method = "POST"): Promise<T> {
-  const response = await fetch(path, { credentials: "same-origin", cache: "no-store",
-    ...(body === undefined ? {} : { method, headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(body) }) });
-  if (!response.ok) throw new ApiError(response.status,
-    response.status === 401 ? "Your session expired. Sign in again." : response.status === 403 ? "You do not have permission for this workspace." : response.status === 409 ? "This record changed. Reload the current revision; your input is preserved." : "The request failed. Retry when the service is available.");
-  return response.json() as Promise<T>;
-}
+import { request, type Dataset, type Page } from "./api";
 function initialRoute() {
   const params = new URLSearchParams(location.search);
   return { namespace: params.get("namespace") ?? "", dataset: params.get("dataset") ?? "" };
@@ -35,13 +24,16 @@ function CatalogView({ csrf, principal }: { csrf: string; principal: string }) {
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const namespaces = useQuery({ queryKey: ["namespaces"], queryFn: () => request<Page<Namespace>>("/api/v1/namespaces?limit=100", csrf) });
+  const namespaces = useInfiniteQuery({ queryKey: ["namespaces"], initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => request<Page<Namespace>>(`/api/v1/namespaces?limit=100${pageParam ? `&after=${pageParam}` : ""}`, csrf),
+    getNextPageParam: page => page.next_after ?? undefined });
+  const namespaceItems = namespaces.data?.pages.flatMap(page => page.items) ?? [];
   useEffect(() => { const update = () => setRoute(initialRoute()); window.addEventListener("popstate", update); return () => window.removeEventListener("popstate", update); }, []);
   function navigate(namespace: string, dataset = "") {
     const query = new URLSearchParams({ namespace }); if (dataset) query.set("dataset", dataset);
     history.pushState(null, "", `/?${query}`); setRoute({ namespace, dataset }); setCursors([null]); setError("");
   }
-  const selected = namespaces.data?.items.find(n => n.id === route.namespace);
+  const selected = namespaceItems.find(n => n.id === route.namespace);
   const params = new URLSearchParams({ limit: "25", search });
   if (modality) params.set("modality", modality);
   if (mine) params.set("owner_id", principal);
@@ -65,9 +57,9 @@ function CatalogView({ csrf, principal }: { csrf: string; principal: string }) {
   return <section className="catalog" aria-labelledby="catalog-title">
     <h1 id="catalog-title">Dataset registry</h1>
     {namespaces.isPending ? <p role="status">Loading workspaces…</p> : namespaces.isError ? <p role="alert">{namespaces.error.message} <button onClick={() => void namespaces.refetch()}>Retry</button></p> : <>
-      <label>Workspace <select value={route.namespace} onChange={event => navigate(event.target.value)}><option value="">Choose a workspace</option>{namespaces.data.items.map(n => <option key={n.id} value={n.id}>{n.name} ({n.access})</option>)}</select></label>
-      {namespaces.data.next_after && <p role="status">Only the first 100 workspaces are shown.</p>}
-      {!namespaces.data.items.length && <p>No workspace access has been granted. Contact your administrator.</p>}
+      <label>Workspace <select value={route.namespace} onChange={event => navigate(event.target.value)}><option value="">Choose a workspace</option>{namespaceItems.map(n => <option key={n.id} value={n.id}>{n.name} ({n.access})</option>)}</select></label>
+      {namespaces.hasNextPage && <button disabled={namespaces.isFetchingNextPage} onClick={() => void namespaces.fetchNextPage()}>Load more workspaces</button>}
+      {!namespaceItems.length && <p>No workspace access has been granted. Contact your administrator.</p>}
       {route.namespace && !selected && <p role="alert">This workspace is unavailable or access was removed.</p>}
       {selected && !route.dataset && <>
         <div className="catalog-tools"><label>Search datasets <input maxLength={200} value={search} onChange={event => { setSearch(event.target.value); setCursors([null]); }} /></label>
