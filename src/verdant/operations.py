@@ -124,6 +124,123 @@ class OperationService:
             )
             return self._view(session.get(OperationRow, operation_id))
 
+    @staticmethod
+    def _record_transition(session, actor: Principal, row: OperationRow):
+        event_id = uuid4()
+        event_type = "operation." + row.status
+        payload = {"operation_id": str(row.id), "epoch": row.epoch, "revision": row.revision}
+        session.add(
+            OperationEventRow(
+                id=event_id,
+                namespace_id=row.namespace_id,
+                operation_id=row.id,
+                revision=row.revision,
+                event_type=event_type,
+                schema_version=1,
+                payload=payload,
+            )
+        )
+        session.flush()
+        session.add(OutboxRow(event_id=event_id))
+        session.add(
+            AuditRow(
+                namespace_id=row.namespace_id,
+                actor_id=actor.id,
+                aggregate_id=row.id,
+                action=event_type,
+                schema_version=1,
+                payload=payload | {"transport": actor.transport, "event_id": str(event_id)},
+            )
+        )
+
+    @observed("operations")
+    def get(self, actor: Principal, namespace_id: UUID, operation_id: UUID) -> Operation:
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id)
+            row = session.scalar(
+                select(OperationRow).where(
+                    OperationRow.namespace_id == namespace_id, OperationRow.id == operation_id
+                )
+            )
+            if row is None:
+                raise NotFound("Operation not found")
+            return self._view(row)
+
+    def _transition(
+        self,
+        actor: Principal,
+        namespace_id: UUID,
+        operation_id: UUID,
+        epoch: int,
+        allowed: set[str],
+        target: str,
+        *,
+        new_attempt: bool = False,
+    ) -> Operation:
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id, write=True)
+            row = session.scalar(
+                select(OperationRow)
+                .where(OperationRow.namespace_id == namespace_id, OperationRow.id == operation_id)
+                .with_for_update()
+            )
+            if row is None:
+                raise NotFound("Operation not found")
+            if row.epoch != epoch:
+                raise Conflict("Operation attempt is stale")
+            if row.status == target and not new_attempt:
+                return self._view(row)
+            if row.status not in allowed:
+                raise Conflict("Operation state does not permit this transition")
+            if row.revision == 9223372036854775807 or (
+                new_attempt and row.epoch == 9223372036854775807
+            ):
+                raise Conflict("Operation revision limit reached")
+            row.status = target
+            row.revision += 1
+            if new_attempt:
+                row.epoch += 1
+            self._record_transition(session, actor, row)
+            return self._view(row)
+
+    @observed("operations")
+    def start(self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int):
+        return self._transition(actor, namespace_id, operation_id, epoch, {"queued"}, "running")
+
+    @observed("operations")
+    def request_cancel(self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int):
+        return self._transition(
+            actor,
+            namespace_id,
+            operation_id,
+            epoch,
+            {"queued", "running"},
+            "cancellation_requested",
+        )
+
+    @observed("operations")
+    def confirm_cancel(self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int):
+        return self._transition(
+            actor, namespace_id, operation_id, epoch, {"cancellation_requested"}, "cancelled"
+        )
+
+    @observed("operations")
+    def fail(self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int):
+        return self._transition(
+            actor,
+            namespace_id,
+            operation_id,
+            epoch,
+            {"queued", "running", "cancellation_requested"},
+            "failed",
+        )
+
+    @observed("operations")
+    def retry(self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int):
+        return self._transition(
+            actor, namespace_id, operation_id, epoch, {"failed"}, "queued", new_attempt=True
+        )
+
     @observed("operations")
     def claim_delivery(
         self, actor: Principal, namespace_id: UUID, limit: int = 25

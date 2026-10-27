@@ -129,3 +129,51 @@ def test_revocation_stops_new_claims_and_acknowledgement(registry, sessions):
         service.claim_delivery(actor, ns)
     with pytest.raises(Forbidden):
         service.acknowledge_delivery(actor, ns, claim.event_id, claim.claim_id)
+
+
+def test_retry_increments_epoch_and_stale_attempt_cannot_change_state(registry, sessions):
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    op = service.admit(actor, ns, OperationRequest(request_key="epochs", kind="qualification"))
+    running = service.start(actor, ns, op.id, 1)
+    assert running.status == "running"
+    assert service.start(actor, ns, op.id, 1) == running
+    failed = service.fail(actor, ns, op.id, 1)
+    assert failed.status == "failed"
+    retried = service.retry(actor, ns, op.id, 1)
+    assert retried.epoch == 2
+    assert retried.status == "queued"
+    with pytest.raises(Conflict, match="stale"):
+        service.fail(actor, ns, op.id, 1)
+    assert service.get(actor, ns, op.id) == retried
+    with sessions() as session:
+        events = session.scalars(
+            select(OperationEventRow)
+            .where(OperationEventRow.operation_id == op.id)
+            .order_by(OperationEventRow.revision)
+        ).all()
+        assert [event.revision for event in events] == [0, 1, 2, 3]
+        assert all(session.get(OutboxRow, event.id) for event in events)
+
+
+def test_cancellation_and_start_race_serializes_on_operation(registry, sessions):
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    op = service.admit(actor, ns, OperationRequest(request_key="cancel-race", kind="qualification"))
+    barrier = Barrier(2)
+
+    def action(cancel):
+        barrier.wait(timeout=5)
+        try:
+            return (service.request_cancel if cancel else service.start)(actor, ns, op.id, 1).status
+        except Conflict:
+            return "conflict"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(action, [True, False]))
+    assert service.get(actor, ns, op.id).status == "cancellation_requested"
+    assert service.confirm_cancel(actor, ns, op.id, 1).status == "cancelled"
+    with pytest.raises(Conflict):
+        service.start(actor, ns, op.id, 1)
+    with pytest.raises(Conflict):
+        service.retry(actor, ns, op.id, 1)
