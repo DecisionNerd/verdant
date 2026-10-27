@@ -39,6 +39,7 @@ export function Workspace() {
       setSession(current);
       setVerifying(false);
       setError("");
+      return current;
     } catch {
       if (attempt !== sessionCheck.current) return;
       setError("The workspace could not check your session. Retry to continue.");
@@ -85,7 +86,10 @@ export function Workspace() {
         headers: { "X-CSRF-Token": session.csrf_token },
       });
       if (!response.ok) {
-        if (response.status === 401 || response.status === 403) await refresh();
+        if (response.status === 401 || response.status === 403) {
+          const current = await refresh();
+          if (current && !current.authenticated) { setBusy(false); return; }
+        }
         throw new Error("Logout unavailable");
       }
       signalSessionChange();
