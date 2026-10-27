@@ -221,6 +221,62 @@ class AuditRow(Base):
     )
 
 
+class OperationRow(Base):
+    __tablename__ = "operations"
+    __table_args__ = (
+        UniqueConstraint("namespace_id", "id", name="uq_operation_namespace_id"),
+        UniqueConstraint("namespace_id", "creator_id", "request_key", name="uq_operation_request"),
+        ForeignKeyConstraint(["namespace_id"], ["namespaces.id"]),
+        ForeignKeyConstraint(["creator_id"], ["principals.id"]),
+        CheckConstraint(
+            "status IN ('queued','running','cancellation_requested','cancelled',"
+            "'failed','succeeded','reconciliation_needed')",
+            name="ck_operation_status",
+        ),
+        CheckConstraint("epoch >= 1 AND revision >= 0", name="ck_operation_revision"),
+        CheckConstraint("request_digest ~ '^[0-9a-f]{64}$'", name="ck_operation_digest"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    creator_id: Mapped[UUID]
+    request_key: Mapped[str] = mapped_column(String(200))
+    request_digest: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(100))
+    inputs: Mapped[dict] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(30), server_default="queued")
+    epoch: Mapped[int] = mapped_column(BigInteger, server_default="1")
+    revision: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OperationEventRow(Base):
+    __tablename__ = "operation_events"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        UniqueConstraint("operation_id", "revision", name="uq_operation_event_revision"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    operation_id: Mapped[UUID]
+    revision: Mapped[int] = mapped_column(BigInteger)
+    event_type: Mapped[str] = mapped_column(String(100))
+    schema_version: Mapped[int] = mapped_column(Integer)
+    payload: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OutboxRow(Base):
+    __tablename__ = "operation_outbox"
+    __table_args__ = (ForeignKeyConstraint(["event_id"], ["operation_events.id"]),)
+    event_id: Mapped[UUID] = mapped_column(primary_key=True)
+    dispatched: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    claim_id: Mapped[UUID | None]
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 def make_sessions(database_url: str) -> sessionmaker[Session]:
     from sqlalchemy.engine import make_url
 
