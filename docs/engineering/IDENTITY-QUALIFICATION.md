@@ -1,6 +1,6 @@
 # Identity implementation and qualification record
 
-Issue #11 implementation has passed local acceptance; final review/CI and merge remain pending. This record distinguishes current implementation and measured proof from remaining acceptance gates. It does not qualify the full roadmap or cluster SSO.
+Issue #11 implementation has passed local acceptance. Delivery review, CI and merge state are tracked in [PR #46](https://github.com/DecisionNerd/verdant/pull/46). This record distinguishes current implementation and measured proof from remaining acceptance gates. It does not qualify the full roadmap or cluster SSO.
 
 ## Current implementation
 
@@ -46,4 +46,4 @@ Shared OTel instrumentation now covers registry, identity and async authenticati
 
 ## Remaining gates
 
-Complete final independent review, exact-head CI, merge and issue-state verification. Production TLS/ingress and the complete platform bootstrap remain separate deployment acceptance in #12. #11 must remain open until its complete acceptance passes. #1 remains open for the full platform roadmap.
+PR #46 records independent review, exact-head CI and delivery status; check that live record rather than inferring merge state from this receipt. Production TLS/ingress and the complete platform bootstrap remain separate deployment acceptance in #12. #1 remains open for the full platform roadmap.

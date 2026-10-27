@@ -81,6 +81,13 @@ def test_browser_session_rotation_csrf_logout_and_replay(login_app, registry):
         assert client.post(path, json=body).status_code == 403
         _, _, namespace = registry
         actor_id = UUID(session["principal_id"])
+        before_grant = client.post(
+            f"/api/v1/namespaces/{namespace}/datasets",
+            json={"slug": "browser-created", "name": "Browser", "modality": "image"},
+            headers={"origin": "https://workspace.test", "x-csrf-token": session["csrf_token"]},
+        )
+        assert before_grant.status_code == 403
+        assert before_grant.json()["detail"] == "Namespace access denied"
         app.state.identity.identities.grant(actor_id, namespace, "write")
         created = client.post(
             f"/api/v1/namespaces/{namespace}/datasets",
