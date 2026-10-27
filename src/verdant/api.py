@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from verdant import contracts as c
 from verdant.application import RegistryService
+from verdant.auth import IdentityRuntime, IdentitySettings
 from verdant.domain import Conflict, DomainError, Forbidden, NotFound, Principal
+from verdant.logging import configure_access_logging
 from verdant.persistence import make_sessions
 
 
@@ -23,10 +25,16 @@ def verified_principal() -> Principal:
 Actor = Annotated[Principal, Depends(verified_principal)]
 
 
-def create_app(sessions: sessionmaker[Session] | None = None) -> FastAPI:
+def create_app(
+    sessions: sessionmaker[Session] | None = None, identity_settings: IdentitySettings | None = None
+) -> FastAPI:
+    configure_access_logging()
     sessions = sessions or make_sessions(os.environ["VERDANT_DATABASE_URL"])
     service = RegistryService(sessions)
     app = FastAPI(title="Verdant platform", version=str(c.CONTRACT_VERSION))
+    identity_settings = identity_settings or IdentitySettings.from_env()
+    if identity_settings is not None:
+        IdentityRuntime(sessions, identity_settings).install(app, verified_principal)
 
     @app.exception_handler(DomainError)
     async def domain_error(request: Request, exc: DomainError):

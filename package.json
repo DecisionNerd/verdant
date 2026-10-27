@@ -2,7 +2,7 @@
   "name": "verdant",
   "private": true,
   "version": "0.1.0",
-  "description": "Visually rich document digestion — image/PDF to Markdown/HTML",
+  "description": "Visually rich document digestion \u2014 image/PDF to Markdown/HTML",
   "packageManager": "pnpm@10.26.2",
   "scripts": {
     "build": "pnpm -r run build",
@@ -12,7 +12,8 @@
     "typecheck": "pnpm -r run typecheck",
     "compose:up": "docker compose up -d --build",
     "compose:down": "docker compose down",
-    "compose:logs": "docker compose logs -f"
+    "compose:logs": "docker compose logs -f",
+    "dev:workspace": "pnpm --filter @verdant/workspace dev"
   },
   "engines": {
     "node": ">=20"

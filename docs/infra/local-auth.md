@@ -6,7 +6,7 @@ Verdant is an internal organizational platform deployed with Docker Compose or K
 
 The same person signs into the local frontend and enabled dashboards using the organizational Keycloak session. No duplicate passwords, shared dashboard admin accounts or second application login are acceptable as the completed cluster-SSO experience. Services retain their own authorization rules; one identity does not mean one unrestricted token or universal administrator role.
 
-**Implementation status:** neither the target Compose identity integration nor Kubernetes manifests are implemented by these documentation changes. The root Compose still describes the earlier digestion runtime. Full-cluster SSO has edition/plugin prerequisites below. No license is purchased or assumed available.
+**Implementation status:** the Python OIDC backend, React/Vite login shell, stable principal mapping and strict REST/MCP service-token path are implemented; see the [qualification record](../engineering/IDENTITY-QUALIFICATION.md) and [operator runbook](identity-operations.md). Canonical host/container/pod issuer routing has passed an isolated fixture. Complete platform Compose and Kubernetes application deployment remain separate acceptance work. The root Compose still describes the earlier digestion runtime. Full-cluster SSO has edition/plugin prerequisites below. No license is purchased or assumed available.
 
 ## Frontend, API and internal identity
 

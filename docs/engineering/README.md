@@ -2,6 +2,7 @@
 
 Verdant's target is a modular Python dataset platform. Existing runtime code is outside this documentation refactor's behavior-preservation boundary.
 
+- [Identity qualification](IDENTITY-QUALIFICATION.md): implementation, measured proof and remaining gates.
 - [Python foundation](PLATFORM-FOUNDATION.md): current backend setup, contracts and proof limits.
 - [Architecture](ARCHITECTURE.md): ownership, canonical entities, flows and invariants.
 - [Supplied reference](REFERENCE-BASELINE.md): preserved source and truncation notice.

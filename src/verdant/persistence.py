@@ -5,11 +5,13 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     String,
     UniqueConstraint,
     create_engine,
@@ -30,6 +32,58 @@ class NamespaceRow(Base):
     __tablename__ = "namespaces"
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+
+
+class PrincipalRow(Base):
+    __tablename__ = "principals"
+    __table_args__ = (CheckConstraint("kind IN ('human', 'service')", name="ck_principal_kind"),)
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    kind: Mapped[str] = mapped_column(String(10))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    session_generation: Mapped[int] = mapped_column(BigInteger, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ExternalIdentityRow(Base):
+    __tablename__ = "external_identities"
+    __table_args__ = (
+        UniqueConstraint("issuer", "subject", name="uq_external_subject"),
+        ForeignKeyConstraint(["principal_id"], ["principals.id"]),
+        CheckConstraint("length(issuer) > 0 AND length(subject) > 0", name="ck_external_subject"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    issuer: Mapped[str] = mapped_column(String(500))
+    subject: Mapped[str] = mapped_column(String(255))
+    principal_id: Mapped[UUID] = mapped_column(unique=True)
+    email: Mapped[str | None] = mapped_column(String(320))
+
+
+class NamespaceGrantRow(Base):
+    __tablename__ = "namespace_grants"
+    __table_args__ = (
+        ForeignKeyConstraint(["principal_id"], ["principals.id"]),
+        ForeignKeyConstraint(["namespace_id"], ["namespaces.id"]),
+        CheckConstraint("access IN ('read', 'write')", name="ck_namespace_access"),
+    )
+    principal_id: Mapped[UUID] = mapped_column(primary_key=True)
+    namespace_id: Mapped[UUID] = mapped_column(primary_key=True)
+    access: Mapped[str] = mapped_column(String(10))
+
+
+class BrowserSessionRow(Base):
+    __tablename__ = "browser_sessions"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class LoginAttemptRow(Base):
+    __tablename__ = "login_attempts"
+    state_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    session_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class DatasetRow(Base):
@@ -149,9 +203,12 @@ class AuditRow(Base):
     __table_args__ = (
         ForeignKeyConstraint(["namespace_id"], ["namespaces.id"]),
         CheckConstraint("schema_version = 1", name="ck_audit_version"),
+        CheckConstraint(
+            "namespace_id IS NOT NULL OR action LIKE 'identity.%'", name="ck_audit_scope"
+        ),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    namespace_id: Mapped[UUID]
+    namespace_id: Mapped[UUID | None]
     actor_id: Mapped[UUID]
     aggregate_id: Mapped[UUID]
     action: Mapped[str] = mapped_column(String(100))

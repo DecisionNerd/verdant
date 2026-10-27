@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from verdant import contracts as c
 from verdant.api import create_app, verified_principal
-from verdant.domain import Conflict, Forbidden, NotFound, Principal
+from verdant.domain import Conflict, Forbidden, NotFound
 from verdant.persistence import AuditRow, MembershipRow, NamespaceRow, SampleRevisionRow
 
 
@@ -169,14 +169,14 @@ def test_command_and_audit_rollback_together(registry, sessions, monkeypatch):
         )
 
 
-def test_namespace_and_sample_reference_constraints(registry, sessions):
+def test_namespace_and_sample_reference_constraints(registry, sessions, principal_factory):
     service, actor, ns = registry
     d = dataset(service, actor, ns)
     r = sample(service, actor, ns)
     other_ns = uuid4()
     with sessions.begin() as session:
         session.add(NamespaceRow(id=other_ns, name="elsewhere"))
-    other_actor = Principal(uuid4(), writable_namespaces=frozenset({other_ns}))
+    other_actor = principal_factory(other_ns)
     other = sample(service, other_actor, other_ns)
     same_namespace_other_sample = sample(service, actor, ns, "different")
     for bad_revision in (other, same_namespace_other_sample):
@@ -240,7 +240,7 @@ def test_database_protects_history_and_intervals(registry, sessions):
         )
 
 
-def test_authorization_parity_and_api_fail_closed(registry, sessions):
+def test_authorization_parity_and_api_fail_closed(registry, sessions, principal_factory):
     service, actor, ns = registry
     d = dataset(service, actor, ns)
     app = create_app(sessions)
@@ -263,7 +263,7 @@ def test_authorization_parity_and_api_fail_closed(registry, sessions):
             ).status_code
             == 422
         )
-        denied = Principal(uuid4())
+        denied = principal_factory()
         app.dependency_overrides[verified_principal] = lambda: denied
         existing = client.get(path)
         absent = client.get(f"/api/v1/namespaces/{ns}/datasets/{uuid4()}")
@@ -274,7 +274,7 @@ def test_authorization_parity_and_api_fail_closed(registry, sessions):
         )
         with pytest.raises(Forbidden):
             service.get_dataset(denied, ns, d.id)
-        reader = Principal(uuid4(), readable_namespaces=frozenset({ns}))
+        reader = principal_factory(ns, "read")
         app.dependency_overrides[verified_principal] = lambda: reader
         assert client.get(path).status_code == 200
         assert (
@@ -302,7 +302,7 @@ def test_bootstrap_and_repeat_upgrade_preserve_state(registry, sessions):
     assert service.list_memberships(actor, ns, d.id).revision == 1
 
 
-def test_duplicate_identity_conflicts_are_scoped(registry, sessions):
+def test_duplicate_identity_conflicts_are_scoped(registry, sessions, principal_factory):
     service, actor, ns = registry
     dataset(service, actor, ns)
     sample(service, actor, ns)
@@ -313,7 +313,7 @@ def test_duplicate_identity_conflicts_are_scoped(registry, sessions):
     other_ns = uuid4()
     with sessions.begin() as session:
         session.add(NamespaceRow(id=other_ns, name="elsewhere"))
-    other = Principal(uuid4(), writable_namespaces=frozenset({other_ns}))
+    other = principal_factory(other_ns)
     assert dataset(service, other, other_ns).namespace_id == other_ns
     assert sample(service, other, other_ns).namespace_id == other_ns
 

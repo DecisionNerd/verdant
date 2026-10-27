@@ -1,0 +1,16 @@
+:root { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #163e36; background: #f2f6f4; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 1160px; margin: auto; padding: 36px 7vw 64px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; padding-bottom: 24px; border-bottom: 1px solid #d9e5df; color: #5d706a; }
+.brand { font-weight: 700; font-size: 1.6rem; letter-spacing: -.05em; color: #163e36; }
+section { padding-top: clamp(56px, 12vh, 120px); }
+h1 { margin: 0 0 56px; font-size: clamp(2.8rem, 6vw, 5rem); letter-spacing: -.045em; line-height: 1.08; font-weight: 600; }
+h2 { font-size: 1.35rem; font-weight: 600; }
+p { max-width: 48ch; line-height: 1.65; margin-bottom: 24px; }
+.access { max-width: 560px; }
+button, .button { display: inline-block; font: inherit; font-weight: 600; background: #006b5a; color: white; border: 0; padding: 14px 20px; border-radius: 6px; text-decoration: none; cursor: pointer; min-height: 48px; }
+button:disabled { opacity: .65; cursor: wait; }
+a:focus-visible, button:focus-visible { outline: 3px solid #163e36; outline-offset: 5px; }
+[role="alert"] { border-left: 3px solid #855026; padding-left: 16px; color: #653c1a; }
+@media (max-width: 520px) { header { align-items: flex-start; flex-direction: column; gap: 8px; } h1 { margin-bottom: 40px; } }

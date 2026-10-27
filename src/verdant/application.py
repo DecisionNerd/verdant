@@ -1,7 +1,6 @@
 """Shared registry use cases. Each command owns one PostgreSQL transaction."""
 
 from contextlib import contextmanager
-from functools import wraps
 from uuid import UUID
 
 from sqlalchemy import select
@@ -10,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from verdant import contracts as c
 from verdant.domain import Conflict, NotFound, Principal
+from verdant.identity import current_principal
 from verdant.persistence import (
     AuditRow,
     DatasetRow,
@@ -20,16 +20,7 @@ from verdant.persistence import (
     SampleRevisionRow,
     SampleRow,
 )
-from verdant.telemetry import registry_operation
-
-
-def observed(method):
-    @wraps(method)
-    def run(*args, **kwargs):
-        with registry_operation(method.__name__):
-            return method(*args, **kwargs)
-
-    return run
+from verdant.telemetry import observed
 
 
 class RegistryService:
@@ -38,9 +29,9 @@ class RegistryService:
 
     @contextmanager
     def _transaction(self, principal: Principal, namespace_id: UUID, *, write: bool = False):
-        principal.require(namespace_id, write=write)
         try:
             with self.sessions.begin() as session:
+                current_principal(session, principal.id).require(namespace_id, write=write)
                 if session.get(NamespaceRow, namespace_id) is None:
                     raise NotFound("Namespace not found")
                 yield RegistryRepository(session)
@@ -67,7 +58,7 @@ class RegistryService:
                 aggregate_id=aggregate_id,
                 action=action,
                 schema_version=c.EVENT_VERSION,
-                payload=payload,
+                payload=payload | {"transport": principal.transport},
             )
         )
 
@@ -85,7 +76,7 @@ class RegistryService:
             created_at=row.created_at,
         )
 
-    @observed
+    @observed("registry")
     def create_dataset(
         self, principal: Principal, namespace_id: UUID, command: c.DatasetCreate
     ) -> c.Dataset:
@@ -111,7 +102,7 @@ class RegistryService:
             )
         return result
 
-    @observed
+    @observed("registry")
     def get_dataset(self, principal: Principal, namespace_id: UUID, dataset_id: UUID) -> c.Dataset:
         with self._transaction(principal, namespace_id) as repo:
             row = repo.dataset(namespace_id, dataset_id)
@@ -129,7 +120,7 @@ class RegistryService:
                 created_at=row.created_at,
             )
 
-    @observed
+    @observed("registry")
     def create_sample(
         self, principal: Principal, namespace_id: UUID, command: c.SampleCreate
     ) -> c.SampleRevision:
@@ -168,7 +159,7 @@ class RegistryService:
         repo.session.flush()
         return row
 
-    @observed
+    @observed("registry")
     def revise_sample(
         self, principal: Principal, namespace_id: UUID, sample_id: UUID, command: c.SampleRevise
     ) -> c.SampleRevision:
@@ -195,7 +186,7 @@ class RegistryService:
             result = self._revision(row)
         return result
 
-    @observed
+    @observed("registry")
     def get_sample_revision(
         self, principal: Principal, namespace_id: UUID, sample_id: UUID, revision_id: UUID
     ) -> c.SampleRevision:
@@ -211,7 +202,7 @@ class RegistryService:
                 raise NotFound("Sample revision not found")
             return self._revision(row)
 
-    @observed
+    @observed("registry")
     def set_membership(
         self,
         principal: Principal,
@@ -277,7 +268,7 @@ class RegistryService:
             raise Conflict("Draft revision changed")
         return draft
 
-    @observed
+    @observed("registry")
     def remove_membership(
         self,
         principal: Principal,
@@ -310,7 +301,7 @@ class RegistryService:
             result = c.DraftChange(draft_id=draft.id, revision=draft.revision)
         return result
 
-    @observed
+    @observed("registry")
     def list_memberships(
         self,
         principal: Principal,
