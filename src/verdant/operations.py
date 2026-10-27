@@ -135,6 +135,14 @@ class InboxOutcome(Contract):
     dispatch: WorkflowDispatch | None = None
 
 
+class VerificationSource(Contract):
+    sample_id: UUID
+    revision_id: UUID
+    object_key: str
+    sha256: str
+    size_bytes: int
+
+
 class OperationService:
     def __init__(self, sessions):
         self.sessions = sessions
@@ -599,6 +607,38 @@ class OperationService:
             row.revision += 1
             self._effect_event(session, actor, operation, row, "reconciled")
             return self._effect_view(row)
+
+    @observed("operations")
+    def verification_source(
+        self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int
+    ) -> VerificationSource:
+        with self.sessions.begin() as session:
+            operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
+            if operation.kind != "verify_sample_artifact":
+                raise Conflict("Unsupported verification operation kind")
+            try:
+                sample_id, revision_id = (
+                    UUID(operation.inputs["sample_id"]),
+                    UUID(operation.inputs["revision_id"]),
+                )
+            except (KeyError, TypeError, ValueError):
+                raise Conflict("Verification request has invalid sample identity") from None
+            revision = session.scalar(
+                select(SampleRevisionRow).where(
+                    SampleRevisionRow.namespace_id == namespace_id,
+                    SampleRevisionRow.sample_id == sample_id,
+                    SampleRevisionRow.id == revision_id,
+                )
+            )
+            if revision is None:
+                raise NotFound("Verification sample revision not found")
+            return VerificationSource(
+                sample_id=sample_id,
+                revision_id=revision_id,
+                object_key=revision.object_key,
+                sha256=revision.sha256,
+                size_bytes=revision.size_bytes,
+            )
 
     @observed("operations")
     def finalize_verification(
