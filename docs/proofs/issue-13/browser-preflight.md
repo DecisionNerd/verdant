@@ -17,3 +17,9 @@ Remaining: complete catalog/draft pagination against representative larger fixtu
 Against candidate `61bf393`, the operator changed the same qualification principal's grant to read. Fresh browser sign-in and dataset deep-link refresh showed read workspace context, disabled metadata fields, and no metadata save, membership save/edit/remove controls. Exact revision inspection returned revision 1, its exact UUID, SHA-256, byte size and modality without private keys. Opening draft revision 1 showed split `train`; current revision 2 had shown `validation`. `read-only.png` records the read-only page.
 
 The operator then revoked the grant. Browser refresh of the exact dataset deep link showed no granted workspaces and the permission-denied message. Dataset metadata and membership rows were absent. `denied.png` records that state. The operator explicitly restored write afterward for subsequent qualification. This tests current authorization changes for the same stable identity; a separate no-grant service identity is covered by API tests.
+
+## Transient failure regression
+
+A live API-stop attempt overlapped qualification-session expiry. The resulting session-check unavailable page does not prove background-input preservation; API service was restarted and readiness recovered. No browser success claim is made for that attempt.
+
+Controlled React/Query integration tests (`apps/workspace/src/dataset.test.tsx`, jsdom) prove that a transient 502 background refetch retains the mounted editor and unsaved name, while a subsequent 403 removes protected metadata. Both tests and the production build passed. CI runs these tests. This is component-level evidence with mocked transport, separate from real browser evidence.
