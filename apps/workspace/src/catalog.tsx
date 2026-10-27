@@ -1,5 +1,5 @@
 import { DatasetView } from "./dataset";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { QueryClient, QueryClientProvider, useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 
@@ -17,6 +17,8 @@ export function Catalog({ csrf, principal }: { csrf: string; principal: string }
 function CatalogView({ csrf, principal }: { csrf: string; principal: string }) {
   const cache = useQueryClient();
   const [route, setRoute] = useState(initialRoute);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { heading.current?.focus(); }, [route.namespace, route.dataset]);
   const [search, setSearch] = useState("");
   const [modality, setModality] = useState("");
   const [mine, setMine] = useState(false);
@@ -57,7 +59,7 @@ function CatalogView({ csrf, principal }: { csrf: string; principal: string }) {
     } catch (failure) { setError((failure as Error).message); } finally { setSaving(false); }
   }
   return <section className="catalog" aria-labelledby="catalog-title">
-    <h1 id="catalog-title">Dataset registry</h1>
+    <h1 id="catalog-title" ref={heading} tabIndex={-1}>Dataset registry</h1>
     {namespaces.isPending ? <p role="status">Loading workspaces…</p> : namespaces.isError && (!namespaces.data || (namespaces.error instanceof ApiError && [401,403].includes(namespaces.error.status))) ? <p role="alert">{namespaces.error.message} <button onClick={() => void namespaces.refetch()}>Retry</button></p> : <>
       {namespaces.isError && <p role="alert">More workspaces could not be loaded. Loaded results remain available. <button onClick={() => void namespaces.fetchNextPage()}>Retry workspace page</button></p>}
       <label>Workspace <select value={route.namespace} onChange={event => navigate(event.target.value)}><option value="">Choose a workspace</option>{selected && !namespaceItems.some(n => n.id === selected.id) && <option value={selected.id}>{selected.name} ({selected.access})</option>}{namespaceItems.map(n => <option key={n.id} value={n.id}>{n.name} ({n.access})</option>)}</select></label>

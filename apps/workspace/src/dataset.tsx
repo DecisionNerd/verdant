@@ -1,5 +1,5 @@
 import { DraftEditor } from "./draft";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, request, type Dataset } from "./api";
 
@@ -11,6 +11,8 @@ export function DatasetView({ namespace, id, csrf, writable }: { namespace: stri
 }
 function MetadataEditor({ dataset, csrf, writable }: { dataset: Dataset; csrf: string; writable: boolean }) {
   const cache = useQueryClient();
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { heading.current?.focus(); }, [dataset.id]);
   const [name, setName] = useState(dataset.name);
   const [slug, setSlug] = useState(dataset.slug);
   const [modality, setModality] = useState(dataset.modality);
@@ -35,7 +37,7 @@ function MetadataEditor({ dataset, csrf, writable }: { dataset: Dataset; csrf: s
       setMessage(`Current revision ${current.revision} loaded. Your inputs are preserved. Review before saving.`);
     } catch (failure) { setError((failure as Error).message); } finally { setBusy(false); }
   }
-  return <article><h2>{dataset.name}</h2><p>Owner: <span className="identifier">{dataset.owner_id}</span><br />Metadata revision: {revision}</p>
+  return <article><h2 ref={heading} tabIndex={-1}>{dataset.name}</h2><p>Owner: <span className="identifier">{dataset.owner_id}</span><br />Metadata revision: {revision}</p>
     <p>Latest saved metadata: {dataset.name}; slug {dataset.slug}; modality {dataset.modality}.</p>
     <form onSubmit={event => void save(event)}><fieldset disabled={!writable || busy}><legend>Catalog metadata</legend>
       <label>Name <input value={name} required maxLength={200} onChange={event => setName(event.target.value)} /></label>

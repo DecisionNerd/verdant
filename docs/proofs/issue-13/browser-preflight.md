@@ -23,3 +23,9 @@ The operator then revoked the grant. Browser refresh of the exact dataset deep l
 A live API-stop attempt overlapped qualification-session expiry. The resulting session-check unavailable page does not prove background-input preservation; API service was restarted and readiness recovered. No browser success claim is made for that attempt.
 
 Controlled React/Query integration tests (`apps/workspace/src/dataset.test.tsx`, jsdom) prove that a transient 502 background refetch retains the mounted editor and unsaved name, while a subsequent 403 removes protected metadata. Both tests and the production build passed. CI runs these tests. This is component-level evidence with mocked transport, separate from real browser evidence.
+
+## Catalog pagination and focus
+
+Sixty synthetic datasets were added through shared services, producing 62 visible datasets in the qualification namespace. Real browser selected the workspace with Down/Return, moved through pages 1, 2 and 3, retained total 62, and disabled Next on final page. `catalog-pagination.png` shows final-page context. Separate PostgreSQL test covers 1,001 datasets across 11 pages with exact sorted identities and no gaps/duplicates.
+
+Route transitions now focus the catalog heading, and loaded dataset detail focuses its heading. The component regression asserts dataset focus while preserving unsaved input on failed refresh. Production build and both component tests passed; the latest focus changes still require a runtime keyboard retest.

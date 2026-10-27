@@ -23,6 +23,7 @@ describe("metadata refresh safety", () => {
   it("preserves unsaved input after transient background refresh failure", async () => {
     const test = setup();
     const input = await screen.findByLabelText("Name");
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Original" }));
     fireEvent.change(input, { target: { value: "Unsaved work" } });
     test.fail(new ApiError(502, "Unavailable")); await test.refresh();
     await screen.findByText(/Refresh failed/);
