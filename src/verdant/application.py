@@ -326,6 +326,36 @@ class RegistryService:
         return result
 
     @observed("registry")
+    def inspect_sample_revision(
+        self, principal: Principal, namespace_id: UUID, sample_id: UUID, revision_id: UUID
+    ) -> c.SampleSummary:
+        with self._transaction(principal, namespace_id) as repo:
+            row = repo.session.execute(
+                select(SampleRow, SampleRevisionRow)
+                .join(
+                    SampleRevisionRow,
+                    (SampleRevisionRow.sample_id == SampleRow.id)
+                    & (SampleRevisionRow.namespace_id == SampleRow.namespace_id),
+                )
+                .where(
+                    SampleRow.namespace_id == namespace_id,
+                    SampleRow.id == sample_id,
+                    SampleRevisionRow.id == revision_id,
+                )
+            ).first()
+            if row is None:
+                raise NotFound("Sample revision not found")
+            sample, revision = row
+            return c.SampleSummary(
+                sample_id=sample.id,
+                revision_id=revision.id,
+                revision=revision.revision,
+                modality=sample.modality,
+                sha256=revision.sha256,
+                size_bytes=revision.size_bytes,
+            )
+
+    @observed("registry")
     def get_sample_revision(
         self, principal: Principal, namespace_id: UUID, sample_id: UUID, revision_id: UUID
     ) -> c.SampleRevision:

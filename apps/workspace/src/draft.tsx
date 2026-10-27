@@ -13,6 +13,8 @@ export function DraftEditor({ namespace, dataset, csrf, writable }: { namespace:
   const [sampleId, setSampleId] = useState("");
   const [revisionId, setRevisionId] = useState("");
   const [split, setSplit] = useState("train");
+  const [inspected, setInspected] = useState<Member | null>(null);
+  const [revisionInput, setRevisionInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -25,6 +27,8 @@ export function DraftEditor({ namespace, dataset, csrf, writable }: { namespace:
   const sampleCursor = sampleCursors.at(-1);
   const samples = useQuery({ queryKey: ["samples", namespace, sampleCursor], enabled: writable,
     queryFn: () => request<{items: Sample[]; next_after: string | null}>(`/api/v1/namespaces/${namespace}/samples?limit=25${sampleCursor ? `&after=${sampleCursor}` : ""}`, csrf) });
+  const inspection = useQuery({ queryKey: ["sample-revision", namespace, inspected?.sample_id, inspected?.sample_revision_id], enabled: inspected !== null,
+    queryFn: () => request<Sample>(`/api/v1/namespaces/${namespace}/samples/${inspected!.sample_id}/revisions/${inspected!.sample_revision_id}/summary`, csrf) });
   async function refresh() { setCursors([null]); setSnapshot(null); await cache.invalidateQueries({ queryKey: key }); }
   async function write(event: FormEvent) {
     event.preventDefault(); if (!draft.data) return;
@@ -41,10 +45,12 @@ export function DraftEditor({ namespace, dataset, csrf, writable }: { namespace:
   }
   return <section className="draft" aria-labelledby="draft-title"><h2 id="draft-title">Draft membership</h2>
     <button disabled={busy} onClick={() => void refresh()}>Load current draft</button>
+    <form onSubmit={event => { event.preventDefault(); setCursors([null]); setSnapshot(Number(revisionInput)); }}><label>Inspect draft revision <input type="number" min="0" max="9007199254740991" step="1" required value={revisionInput} onChange={event => setRevisionInput(event.target.value)} /></label><button>Open revision</button></form>
+    {inspected && <aside aria-label="Exact sample revision"><h3>Exact sample revision</h3>{inspection.isPending ? <p role="status">Loading revision…</p> : inspection.isError ? <p role="alert">{inspection.error.message}</p> : <dl><dt>Sample</dt><dd className="identifier">{inspection.data.sample_id}</dd><dt>Revision</dt><dd>{inspection.data.revision} · {inspection.data.revision_id}</dd><dt>SHA-256</dt><dd className="identifier">{inspection.data.sha256}</dd><dt>Bytes</dt><dd>{inspection.data.size_bytes}</dd><dt>Modality</dt><dd>{inspection.data.modality}</dd></dl>}<button onClick={() => setInspected(null)}>Close inspection</button></aside>}
     {error && <p role="alert">{error} Your selected sample and split are preserved.</p>}{message && <p role="status">{message}</p>}
     {draft.isPending ? <p role="status">Loading draft…</p> : draft.isError ? <p role="alert">{draft.error.message}</p> : <>
       <p>Draft revision {draft.data.revision}{draft.isFetching ? " · Refreshing…" : ""}</p>
-      {!draft.data.members.length ? <p>No samples on this draft page.</p> : <div className="table-scroll"><table><caption>Exact sample revisions in this draft</caption><thead><tr><th scope="col">Sample</th><th scope="col">Revision</th><th scope="col">Split</th>{writable && <th scope="col">Actions</th>}</tr></thead><tbody>{draft.data.members.map(member => <tr key={member.sample_id}><td className="identifier">{member.sample_id}</td><td className="identifier">{member.sample_revision_id}</td><td>{member.split}</td>{writable && <td><button onClick={() => { setSampleId(member.sample_id); setRevisionId(member.sample_revision_id); setSplit(member.split); }}>Edit split</button><button disabled={busy} onClick={() => void remove(member)}>Remove</button></td>}</tr>)}</tbody></table></div>}
+      {!draft.data.members.length ? <p>No samples on this draft page.</p> : <div className="table-scroll"><table><caption>Exact sample revisions in this draft</caption><thead><tr><th scope="col">Sample</th><th scope="col">Revision</th><th scope="col">Split</th>{writable && <th scope="col">Actions</th>}</tr></thead><tbody>{draft.data.members.map(member => <tr key={member.sample_id}><td className="identifier">{member.sample_id}</td><td className="identifier"><button onClick={() => setInspected(member)}>Inspect {member.sample_revision_id}</button></td><td>{member.split}</td>{writable && <td><button onClick={() => { setSampleId(member.sample_id); setRevisionId(member.sample_revision_id); setSplit(member.split); }}>Edit split</button><button disabled={busy} onClick={() => void remove(member)}>Remove</button></td>}</tr>)}</tbody></table></div>}
       <nav aria-label="Draft pages"><button disabled={cursors.length === 1} onClick={() => setCursors(cursors.slice(0,-1))}>Previous</button><button disabled={!draft.data.next_after} onClick={() => { setSnapshot(draft.data.revision); setCursors([...cursors, draft.data.next_after]); }}>Next</button></nav>
       {writable && <form onSubmit={event => void write(event)}><h3>Add sample or change split</h3>
         {samples.isPending ? <p role="status">Loading samples…</p> : samples.isError ? <p role="alert">{samples.error.message}</p> : <>

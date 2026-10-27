@@ -57,6 +57,12 @@ def create_mcp_app(runtime):
             raise ToolError(str(exc)) from None
 
     @mcp.tool()
+    async def sample_revision_inspect(namespace_id: UUID, sample_id: UUID, revision_id: UUID):
+        return (
+            await invoke(service.inspect_sample_revision, namespace_id, sample_id, revision_id)
+        ).model_dump(mode="json")
+
+    @mcp.tool()
     async def samples_list(namespace_id: UUID, after: UUID | None = None, limit: int = 50):
         return (await invoke(service.list_samples, namespace_id, after, limit)).model_dump(
             mode="json"

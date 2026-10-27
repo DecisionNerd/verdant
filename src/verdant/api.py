@@ -119,6 +119,15 @@ def create_app(
         return service.revise_sample(actor, namespace_id, sample_id, command)
 
     @app.get(
+        prefix + "/samples/{sample_id}/revisions/{revision_id}/summary",
+        response_model=c.SampleSummary,
+    )
+    def inspect_sample_revision(
+        namespace_id: UUID, sample_id: UUID, revision_id: UUID, actor: Actor
+    ):
+        return service.inspect_sample_revision(actor, namespace_id, sample_id, revision_id)
+
+    @app.get(
         prefix + "/samples/{sample_id}/revisions/{revision_id}", response_model=c.SampleRevision
     )
     def get_sample_revision(namespace_id: UUID, sample_id: UUID, revision_id: UUID, actor: Actor):

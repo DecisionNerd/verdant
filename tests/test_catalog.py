@@ -164,5 +164,11 @@ def test_sample_discovery_omits_private_keys_and_uses_latest_revision(registry, 
     assert page.items[0].revision == 2
     assert page.next_after is None
     assert "private" not in page.model_dump_json()
+    inspected = service.inspect_sample_revision(actor, ns, first.sample_id, first.id)
+    assert inspected.revision == 1
+    assert inspected.sha256 == "a" * 64
+    assert "private" not in inspected.model_dump_json()
+    with pytest.raises(Forbidden):
+        service.inspect_sample_revision(principal_factory(), ns, first.sample_id, first.id)
     with pytest.raises(Forbidden):
         service.list_samples(principal_factory(), ns)
