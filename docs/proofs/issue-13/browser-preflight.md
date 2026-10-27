@@ -10,7 +10,7 @@ Executed 2026-10-27 against the current issue #13 Compose candidate, schema `000
 - Two browser draft editors held revision 1. First saved split `validation` as revision 2. Second attempted split `test`, received the explicit conflict message and retained sample/revision/split input. Accessibility output verified this outcome.
 - During evidence capture the short local qualification session expired. The UI removed the authenticated workspace and showed `Your session has expired`; screenshot `session-expiry.png` records this state. It is not a screenshot of the preceding conflict.
 
-Remaining: complete catalog/draft pagination against representative larger fixtures, denied/read-only browser identity, keyboard/focus and narrow viewport proof, sample removal, stale/partial/failure states, exact-version inspection scope, and independent review/CI/merge. No completion claim follows from this preflight.
+This initial checkpoint had open pagination, access, focus, removal and inspection checks. Later sections record those results. Final review/CI/merge state is recorded with the pull request; this file distinguishes component evidence from browser evidence.
 
 ## Read-only, exact inspection and denied-access retest
 
@@ -35,3 +35,7 @@ Route transitions now focus the catalog heading, and loaded dataset detail focus
 Against runtime `d79d280`, 30 synthetic memberships were prepared through shared commands. Browser loaded revision 31, paged from 25 members to the final 5 with Next disabled, then removed a synthetic member. The UI confirmed `Membership removed.`, showed revision 32, and reset pagination to first page. Dataset detail received keyboard focus on its heading after loading.
 
 Two actual browser tabs shared the authenticated session. Signing out in tab 2 caused tab 1 to remove its dataset and authenticated catalog automatically, before the organizational logout confirmation was completed. `cross-tab-logout.png` records tab 1 showing the organizational sign-in entry. Tab 2 then completed Keycloak logout and showed signed-out state. Different-account cache replacement is additionally covered by the controlled workspace component regression.
+
+## Final local gate
+
+All 81 PostgreSQL/backend tests passed. Five controlled React/Query tests passed, including partial namespace-page failure preserving edits, valid deep links outside page 1, 502 preservation, 403 removal, and shared-cookie account replacement. Typecheck/build passed. Independent final review at `579fd17` found no remaining merge blockers; the subsequent change adds regression tests only. Live outage-over-session-expiry remains labeled inconclusive rather than used as acceptance evidence.
