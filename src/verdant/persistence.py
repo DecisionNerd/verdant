@@ -326,6 +326,58 @@ class VerificationResultRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class ConsumerInboxRow(Base):
+    __tablename__ = "consumer_inbox"
+    __table_args__ = (
+        ForeignKeyConstraint(["event_id"], ["operation_events.id"]),
+        CheckConstraint(
+            "outcome IN ('applied','stale','ignored','quarantined')", name="ck_inbox_outcome"
+        ),
+    )
+    consumer: Mapped[str] = mapped_column(String(100), primary_key=True)
+    event_id: Mapped[UUID] = mapped_column(primary_key=True)
+    outcome: Mapped[str] = mapped_column(String(20))
+    error: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ConsumerCheckpointRow(Base):
+    __tablename__ = "consumer_checkpoints"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+    )
+    consumer: Mapped[str] = mapped_column(String(100), primary_key=True)
+    operation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    namespace_id: Mapped[UUID]
+    revision: Mapped[int] = mapped_column(BigInteger)
+
+
+class WorkflowDispatchRow(Base):
+    __tablename__ = "workflow_dispatches"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        ForeignKeyConstraint(["event_id"], ["operation_events.id"]),
+        UniqueConstraint("invocation_key", name="uq_workflow_invocation"),
+        UniqueConstraint("event_id", name="uq_workflow_dispatch_event"),
+        CheckConstraint(
+            "status IN ('pending','unknown','submitted')", name="ck_workflow_dispatch_status"
+        ),
+    )
+    operation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    epoch: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    namespace_id: Mapped[UUID]
+    event_id: Mapped[UUID]
+    invocation_key: Mapped[str] = mapped_column(String(200))
+    request_digest: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(20), server_default="pending")
+    provider_reference: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 def make_sessions(database_url: str) -> sessionmaker[Session]:
     from sqlalchemy.engine import make_url
 

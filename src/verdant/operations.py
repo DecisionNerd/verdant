@@ -15,6 +15,8 @@ from verdant.domain import Conflict, NotFound, Principal
 from verdant.identity import current_principal
 from verdant.persistence import (
     AuditRow,
+    ConsumerCheckpointRow,
+    ConsumerInboxRow,
     EffectReceiptRow,
     NamespaceRow,
     OperationEventRow,
@@ -22,6 +24,7 @@ from verdant.persistence import (
     OutboxRow,
     SampleRevisionRow,
     VerificationResultRow,
+    WorkflowDispatchRow,
 )
 from verdant.telemetry import observed
 
@@ -114,6 +117,22 @@ class EffectReconciliation(Contract):
         if (self.outcome == "found") != (self.result is not None):
             raise ValueError("Found reconciliation requires a result; absent must omit it")
         return self
+
+
+class WorkflowDispatch(Contract):
+    operation_id: UUID
+    epoch: int
+    event_id: UUID
+    invocation_key: str
+    request_digest: str
+    status: str
+    provider_reference: str | None
+
+
+class InboxOutcome(Contract):
+    outcome: str
+    error: str | None = None
+    dispatch: WorkflowDispatch | None = None
 
 
 class OperationService:
@@ -645,3 +664,115 @@ class OperationService:
                 extra={"sample_revision_id": str(revision_id), "sha256": revision.sha256},
             )
             return self._view(operation)
+
+    @staticmethod
+    def _dispatch_view(row):
+        if row is None:
+            return None
+        return WorkflowDispatch(
+            **{name: getattr(row, name) for name in WorkflowDispatch.model_fields}
+        )
+
+    @observed("operations")
+    def receive_workflow_event(
+        self, actor: Principal, namespace_id: UUID, event_id: UUID
+    ) -> InboxOutcome:
+        consumer = "workflow-dispatch"
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id, write=True)
+            event = session.scalar(
+                select(OperationEventRow).where(
+                    OperationEventRow.namespace_id == namespace_id, OperationEventRow.id == event_id
+                )
+            )
+            if event is None:
+                raise NotFound("Event not found")
+            operation = self._locked_operation(session, actor, namespace_id, event.operation_id)
+            prior = session.get(ConsumerInboxRow, (consumer, event_id))
+            if prior is not None:
+                dispatch = session.scalar(
+                    select(WorkflowDispatchRow).where(WorkflowDispatchRow.event_id == event_id)
+                )
+                return InboxOutcome(
+                    outcome=prior.outcome, error=prior.error, dispatch=self._dispatch_view(dispatch)
+                )
+            known = {
+                "operation." + value
+                for value in (
+                    "queued",
+                    "running",
+                    "cancellation_requested",
+                    "cancelled",
+                    "failed",
+                    "succeeded",
+                    "effect_prepared",
+                    "effect_dispatched",
+                    "effect_completed",
+                    "effect_reconciled",
+                )
+            }
+            error = None
+            if event.schema_version != 1 or event.event_type not in known:
+                error = "Unsupported workflow event type or schema version"
+            elif (
+                event.payload.get("operation_id") != str(operation.id)
+                or type(event.payload.get("epoch")) is not int
+                or not 1 <= event.payload["epoch"] <= operation.epoch
+            ):
+                error = "Invalid workflow event identity or epoch"
+            outcome, dispatch = "ignored", None
+            if error is not None:
+                outcome = "quarantined"
+            elif event.event_type == "operation.queued":
+                if event.payload["epoch"] != operation.epoch or operation.status != "queued":
+                    outcome = "stale"
+                else:
+                    invocation = f"verdant:{namespace_id}:{operation.id}:{operation.epoch}"
+                    digest = hashlib.sha256(
+                        (invocation + ":" + operation.request_digest).encode()
+                    ).hexdigest()
+                    dispatch = WorkflowDispatchRow(
+                        operation_id=operation.id,
+                        epoch=operation.epoch,
+                        namespace_id=namespace_id,
+                        event_id=event_id,
+                        invocation_key=invocation,
+                        request_digest=digest,
+                    )
+                    session.add(dispatch)
+                    outcome = "applied"
+            session.add(
+                ConsumerInboxRow(consumer=consumer, event_id=event_id, outcome=outcome, error=error)
+            )
+            if error is None:
+                checkpoint = session.get(ConsumerCheckpointRow, (consumer, operation.id))
+                if checkpoint is None:
+                    session.add(
+                        ConsumerCheckpointRow(
+                            consumer=consumer,
+                            operation_id=operation.id,
+                            namespace_id=namespace_id,
+                            revision=event.revision,
+                        )
+                    )
+                else:
+                    checkpoint.revision = max(checkpoint.revision, event.revision)
+            session.add(
+                AuditRow(
+                    namespace_id=namespace_id,
+                    actor_id=actor.id,
+                    aggregate_id=operation.id,
+                    action="operation.event_consumed",
+                    schema_version=1,
+                    payload={
+                        "transport": actor.transport,
+                        "event_id": str(event_id),
+                        "consumer": consumer,
+                        "outcome": outcome,
+                    },
+                )
+            )
+            session.flush()
+            return InboxOutcome(
+                outcome=outcome, error=error, dispatch=self._dispatch_view(dispatch)
+            )

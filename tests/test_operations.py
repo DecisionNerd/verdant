@@ -394,3 +394,115 @@ def test_wrong_artifact_digest_cannot_finalize_success(registry, sessions):
     with pytest.raises(Conflict, match="matching artifact result"):
         service.finalize_verification(actor, ns, op.id, 1)
     assert service.get(actor, ns, op.id).status == "running"
+
+
+def test_duplicate_inbox_delivery_has_one_dispatch_and_atomic_checkpoint(registry, sessions):
+    from verdant.persistence import ConsumerCheckpointRow, ConsumerInboxRow, WorkflowDispatchRow
+
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    op = service.admit(actor, ns, OperationRequest(request_key="inbox", kind="qualification"))
+    with sessions() as session:
+        queued = session.scalar(
+            select(OperationEventRow).where(OperationEventRow.operation_id == op.id)
+        )
+        event_id = queued.id
+    barrier = Barrier(2)
+
+    def consume(_):
+        barrier.wait(timeout=5)
+        return service.receive_workflow_event(actor, ns, event_id)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(consume, range(2)))
+    assert outcomes[0] == outcomes[1]
+    assert outcomes[0].outcome == "applied"
+    with sessions() as session:
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(WorkflowDispatchRow)
+                .where(WorkflowDispatchRow.operation_id == op.id)
+            )
+            == 1
+        )
+        assert session.get(ConsumerInboxRow, ("workflow-dispatch", event_id))
+        assert session.get(ConsumerCheckpointRow, ("workflow-dispatch", op.id)).revision == 0
+
+
+def test_unsupported_event_is_quarantined_without_advancing_checkpoint(registry, sessions):
+    from verdant.persistence import ConsumerCheckpointRow, ConsumerInboxRow
+
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    op = service.admit(actor, ns, OperationRequest(request_key="unsupported", kind="qualification"))
+    event_id = uuid4()
+    with sessions.begin() as session:
+        session.add(
+            OperationEventRow(
+                id=event_id,
+                namespace_id=ns,
+                operation_id=op.id,
+                revision=10,
+                event_type="operation.future",
+                schema_version=2,
+                payload={},
+            )
+        )
+    result = service.receive_workflow_event(actor, ns, event_id)
+    assert result.outcome == "quarantined"
+    assert result.error
+    with sessions() as session:
+        assert session.get(ConsumerInboxRow, ("workflow-dispatch", event_id)).error
+        assert session.get(ConsumerCheckpointRow, ("workflow-dispatch", op.id)) is None
+
+
+def test_out_of_order_events_do_not_regress_checkpoint_or_dispatch_old_attempt(registry, sessions):
+    from verdant.persistence import ConsumerCheckpointRow
+
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    op = service.admit(actor, ns, OperationRequest(request_key="ordered", kind="qualification"))
+    service.start(actor, ns, op.id, 1)
+    service.fail(actor, ns, op.id, 1)
+    service.retry(actor, ns, op.id, 1)
+    with sessions() as session:
+        events = session.scalars(
+            select(OperationEventRow)
+            .where(OperationEventRow.operation_id == op.id)
+            .order_by(OperationEventRow.revision)
+        ).all()
+    assert service.receive_workflow_event(actor, ns, events[0].id).outcome == "stale"
+    assert service.receive_workflow_event(actor, ns, events[3].id).dispatch.epoch == 2
+    assert service.receive_workflow_event(actor, ns, events[1].id).outcome == "ignored"
+    with sessions() as session:
+        assert session.get(ConsumerCheckpointRow, ("workflow-dispatch", op.id)).revision == 3
+
+
+def test_inbox_dispatch_and_checkpoint_roll_back_together_on_audit_failure(registry, sessions):
+    from verdant.persistence import ConsumerCheckpointRow, ConsumerInboxRow, WorkflowDispatchRow
+
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    op = service.admit(
+        actor, ns, OperationRequest(request_key="inbox-rollback", kind="qualification")
+    )
+    with sessions() as session:
+        event_id = session.scalar(
+            select(OperationEventRow.id).where(OperationEventRow.operation_id == op.id)
+        )
+
+    def fail(*_):
+        raise RuntimeError("inbox audit unavailable")
+
+    event.listen(AuditRow, "before_insert", fail)
+    try:
+        with pytest.raises(RuntimeError, match="inbox audit"):
+            service.receive_workflow_event(actor, ns, event_id)
+    finally:
+        event.remove(AuditRow, "before_insert", fail)
+    with sessions() as session:
+        assert session.get(ConsumerInboxRow, ("workflow-dispatch", event_id)) is None
+        assert session.get(ConsumerCheckpointRow, ("workflow-dispatch", op.id)) is None
+        assert session.get(WorkflowDispatchRow, (op.id, 1)) is None
+    assert service.receive_workflow_event(actor, ns, event_id).outcome == "applied"
