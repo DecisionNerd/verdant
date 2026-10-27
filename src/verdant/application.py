@@ -223,6 +223,43 @@ class RegistryService:
             return self._dataset(row, draft.id)
 
     @observed("registry")
+    def list_samples(
+        self, principal: Principal, namespace_id: UUID, after: UUID | None = None, limit: int = 50
+    ) -> c.SamplePage:
+        if not 1 <= limit <= 100:
+            raise ValueError("Page size must be between 1 and 100")
+        with self._transaction(principal, namespace_id) as repo:
+            query = (
+                select(SampleRow, SampleRevisionRow)
+                .join(
+                    SampleRevisionRow,
+                    (SampleRevisionRow.sample_id == SampleRow.id)
+                    & (SampleRevisionRow.namespace_id == SampleRow.namespace_id)
+                    & (SampleRevisionRow.revision == SampleRow.revision),
+                )
+                .where(SampleRow.namespace_id == namespace_id)
+                .order_by(SampleRow.id)
+                .limit(limit + 1)
+            )
+            if after is not None:
+                query = query.where(SampleRow.id > after)
+            rows = repo.session.execute(query).all()
+            return c.SamplePage(
+                items=[
+                    c.SampleSummary(
+                        sample_id=sample.id,
+                        revision_id=revision.id,
+                        revision=revision.revision,
+                        modality=sample.modality,
+                        sha256=revision.sha256,
+                        size_bytes=revision.size_bytes,
+                    )
+                    for sample, revision in rows[:limit]
+                ],
+                next_after=rows[limit - 1][0].id if len(rows) > limit else None,
+            )
+
+    @observed("registry")
     def create_sample(
         self, principal: Principal, namespace_id: UUID, command: c.SampleCreate
     ) -> c.SampleRevision:

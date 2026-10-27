@@ -99,6 +99,15 @@ def create_app(
     def get_dataset(namespace_id: UUID, dataset_id: UUID, actor: Actor):
         return service.get_dataset(actor, namespace_id, dataset_id)
 
+    @app.get(prefix + "/samples", response_model=c.SamplePage)
+    def list_samples(
+        namespace_id: UUID,
+        actor: Actor,
+        after: UUID | None = None,
+        limit: int = Query(default=50, ge=1, le=100),
+    ):
+        return service.list_samples(actor, namespace_id, after, limit)
+
     @app.post(prefix + "/samples", response_model=c.SampleRevision, status_code=201)
     def create_sample(namespace_id: UUID, command: c.SampleCreate, actor: Actor):
         return service.create_sample(actor, namespace_id, command)

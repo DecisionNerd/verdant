@@ -116,6 +116,20 @@ class SampleRevision(Contract):
     created_at: datetime
 
 
+class SampleSummary(Contract):
+    sample_id: UUID
+    revision_id: UUID
+    revision: int
+    modality: str
+    sha256: str
+    size_bytes: int
+
+
+class SamplePage(Contract):
+    items: list[SampleSummary]
+    next_after: UUID | None = None
+
+
 class MembershipWrite(Contract):
     expected_revision: Revision
     sample_revision_id: UUID

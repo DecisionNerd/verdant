@@ -135,3 +135,34 @@ def test_concurrent_metadata_edits_have_one_winner(registry):
     stored = service.get_dataset(actor, ns, dataset.id)
     assert stored.name == winner
     assert stored.revision == 1
+
+
+def test_sample_discovery_omits_private_keys_and_uses_latest_revision(registry, principal_factory):
+    from verdant.contracts import SampleCreate, SampleRevise
+
+    service, actor, ns = registry
+    first = service.create_sample(
+        actor,
+        ns,
+        SampleCreate(
+            source_key="/private/source",
+            modality="image",
+            sha256="a" * 64,
+            object_key="private/secret",
+            size_bytes=1,
+        ),
+    )
+    latest = service.revise_sample(
+        actor,
+        ns,
+        first.sample_id,
+        SampleRevise(expected_revision=1, sha256="b" * 64, object_key="private/new", size_bytes=2),
+    )
+    page = service.list_samples(actor, ns, limit=1)
+    assert len(page.items) == 1
+    assert page.items[0].revision_id == latest.id
+    assert page.items[0].revision == 2
+    assert page.next_after is None
+    assert "private" not in page.model_dump_json()
+    with pytest.raises(Forbidden):
+        service.list_samples(principal_factory(), ns)
