@@ -418,3 +418,25 @@ def test_optional_auth_telemetry_failure_does_not_bypass_admission(login_app, mo
         response = client.get("/auth/callback", params={"state": state, "code": "fixture"})
         assert response.status_code == 403
         assert client.get("/auth/session").json() == {"authenticated": False}
+
+
+@pytest.mark.parametrize(
+    "value,valid", [(" worker , ingest ", True), ("worker,,ingest", False), ("worker, ", False)]
+)
+def test_service_client_environment_normalization(monkeypatch, value, valid):
+    values = {
+        "VERDANT_OIDC_ISSUER": "https://issuer.test/realms/workspace",
+        "VERDANT_OIDC_CLIENT_ID": "browser",
+        "VERDANT_OIDC_CLIENT_SECRET": "fixture-only",
+        "VERDANT_APP_URL": "https://workspace.test",
+        "VERDANT_OIDC_GROUP": "/workspace",
+        "VERDANT_API_AUDIENCE": "verdant-api",
+        "VERDANT_SERVICE_CLIENTS": value,
+    }
+    for name, setting in values.items():
+        monkeypatch.setenv(name, setting)
+    if valid:
+        assert IdentitySettings.from_env().service_clients == frozenset({"worker", "ingest"})
+    else:
+        with pytest.raises(ValueError):
+            IdentitySettings.from_env()

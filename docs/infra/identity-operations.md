@@ -16,7 +16,7 @@ Run the React/Vite workspace and FastAPI behind the same public origin. Keep the
 | `VERDANT_APP_URL` | Exact public HTTPS origin, without a trailing slash |
 | `VERDANT_OIDC_GROUP` | Exact signed ID-token group admitting humans to the workspace |
 | `VERDANT_API_AUDIENCE` | Intended access-token audience for REST/MCP |
-| `VERDANT_SERVICE_CLIENTS` | Comma-separated exact client IDs allowed for service access, without spaces |
+| `VERDANT_SERVICE_CLIENTS` | Comma-separated exact client IDs allowed for service access; surrounding spaces are stripped and empty entries are rejected |
 
 The browser callback is `VERDANT_APP_URL/auth/callback`; post-logout return is `VERDANT_APP_URL/?signed_out=1`. Require S256 PKCE; disable implicit/password/service-account grants on the browser client. Service clients use client credentials, the API audience and exact `verdant` scope. Include a signed ID-token `groups` claim for browser admission. Never use ID tokens as API tokens.
 

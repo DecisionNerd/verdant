@@ -72,7 +72,9 @@ class IdentitySettings:
             app_url=os.environ["VERDANT_APP_URL"],
             admission_group=os.environ["VERDANT_OIDC_GROUP"],
             audience=os.environ["VERDANT_API_AUDIENCE"],
-            service_clients=frozenset(os.environ["VERDANT_SERVICE_CLIENTS"].split(",")),
+            service_clients=frozenset(
+                client.strip() for client in os.environ["VERDANT_SERVICE_CLIENTS"].split(",")
+            ),
             allow_insecure_http=os.environ.get("VERDANT_INSECURE_LOCAL_HTTP") == "1",
         )
 
