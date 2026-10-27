@@ -73,6 +73,18 @@ def create_app(
 
     prefix = "/api/v1/namespaces/{namespace_id}"
 
+    @app.get(prefix + "/datasets", response_model=c.DatasetPage)
+    def list_datasets(
+        namespace_id: UUID,
+        actor: Actor,
+        search: str = Query(default="", max_length=200),
+        modality: str | None = Query(default=None, max_length=50),
+        owner_id: UUID | None = None,
+        after: UUID | None = None,
+        limit: int = Query(default=50, ge=1, le=100),
+    ):
+        return service.list_datasets(actor, namespace_id, search, modality, owner_id, after, limit)
+
     @app.post(prefix + "/datasets", response_model=c.Dataset, status_code=201)
     def create_dataset(namespace_id: UUID, command: c.DatasetCreate, actor: Actor):
         return service.create_dataset(actor, namespace_id, command)

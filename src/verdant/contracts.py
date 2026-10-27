@@ -68,6 +68,12 @@ class Dataset(Contract):
     created_at: datetime
 
 
+class DatasetPage(Contract):
+    items: list[Dataset]
+    total: int
+    next_after: UUID | None = None
+
+
 class SampleContent(Contract):
     sha256: Digest
     object_key: str = Field(min_length=1, max_length=1024)

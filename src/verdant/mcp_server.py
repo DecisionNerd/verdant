@@ -61,6 +61,21 @@ def create_mcp_app(runtime):
         return (await invoke(service.list_namespaces, after, limit)).model_dump(mode="json")
 
     @mcp.tool()
+    async def datasets_list(
+        namespace_id: UUID,
+        search: str = "",
+        modality: str | None = None,
+        owner_id: UUID | None = None,
+        after: UUID | None = None,
+        limit: int = 50,
+    ):
+        return (
+            await invoke(
+                service.list_datasets, namespace_id, search, modality, owner_id, after, limit
+            )
+        ).model_dump(mode="json")
+
+    @mcp.tool()
     async def dataset_get(namespace_id: UUID, dataset_id: UUID):
         """Read a dataset in a currently authorized namespace."""
         return await invoke(service.get_dataset, namespace_id, dataset_id)

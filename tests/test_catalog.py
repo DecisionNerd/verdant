@@ -37,3 +37,34 @@ def test_namespace_page_size_is_bounded(registry):
     for invalid in (0, 101):
         with pytest.raises(ValueError):
             service.list_namespaces(actor, limit=invalid)
+
+
+def test_catalog_filters_counts_and_pages_are_namespace_scoped(registry, principal_factory):
+    from verdant.contracts import DatasetCreate
+
+    service, actor, ns = registry
+    expected = []
+    for i in range(5):
+        expected.append(
+            service.create_dataset(
+                actor,
+                ns,
+                DatasetCreate(
+                    slug=f"page-{i}", name=f"Document {i}", modality="image" if i < 3 else "text"
+                ),
+            )
+        )
+    first = service.list_datasets(actor, ns, search="Document", modality="image", limit=2)
+    assert first.total == 3
+    assert len(first.items) == 2
+    second = service.list_datasets(
+        actor, ns, search="Document", modality="image", after=first.next_after, limit=2
+    )
+    assert second.total == 3
+    assert second.next_after is None
+    assert {d.id for d in first.items + second.items} == {d.id for d in expected[:3]}
+    assert service.list_datasets(actor, ns, search="%").total == 0
+    assert service.list_datasets(actor, ns, owner_id=uuid4()).items == []
+    denied = principal_factory()
+    with pytest.raises(Forbidden):
+        service.list_datasets(denied, ns)

@@ -3,7 +3,7 @@
 from contextlib import contextmanager
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -103,6 +103,69 @@ class RegistryService:
             created_at=row.created_at,
         )
 
+    @staticmethod
+    def _dataset(row: DatasetRow, draft_id: UUID) -> c.Dataset:
+        return c.Dataset(
+            id=row.id,
+            namespace_id=row.namespace_id,
+            owner_id=row.owner_id,
+            slug=row.slug,
+            name=row.name,
+            modality=row.modality,
+            draft_id=draft_id,
+            created_at=row.created_at,
+        )
+
+    @observed("registry")
+    def list_datasets(
+        self,
+        principal: Principal,
+        namespace_id: UUID,
+        search: str = "",
+        modality: str | None = None,
+        owner_id: UUID | None = None,
+        after: UUID | None = None,
+        limit: int = 50,
+    ) -> c.DatasetPage:
+        if not 1 <= limit <= 100 or len(search) > 200:
+            raise ValueError("Invalid catalog page size or search length")
+        with self._transaction(principal, namespace_id) as repo:
+            filters = [DatasetRow.namespace_id == namespace_id]
+            if search:
+                filters.append(
+                    or_(
+                        DatasetRow.name.icontains(search, autoescape=True),
+                        DatasetRow.slug.icontains(search, autoescape=True),
+                    )
+                )
+            if modality is not None:
+                filters.append(DatasetRow.modality == modality)
+            if owner_id is not None:
+                filters.append(DatasetRow.owner_id == owner_id)
+            # Authorization precedes both aggregate and row disclosure.
+            total = repo.session.scalar(
+                select(func.count()).select_from(DatasetRow).where(*filters)
+            )
+            query = (
+                select(DatasetRow, DraftRow.id)
+                .join(
+                    DraftRow,
+                    (DraftRow.dataset_id == DatasetRow.id)
+                    & (DraftRow.namespace_id == DatasetRow.namespace_id),
+                )
+                .where(*filters)
+                .order_by(DatasetRow.id)
+                .limit(limit + 1)
+            )
+            if after is not None:
+                query = query.where(DatasetRow.id > after)
+            rows = repo.session.execute(query).all()
+            return c.DatasetPage(
+                items=[self._dataset(row, draft_id) for row, draft_id in rows[:limit]],
+                total=total,
+                next_after=rows[limit - 1][0].id if len(rows) > limit else None,
+            )
+
     @observed("registry")
     def create_dataset(
         self, principal: Principal, namespace_id: UUID, command: c.DatasetCreate
@@ -117,16 +180,7 @@ class RegistryService:
             repo.session.add(draft)
             repo.session.flush()
             self._audit(repo, principal, namespace_id, row.id, "dataset.created", {})
-            result = c.Dataset(
-                id=row.id,
-                namespace_id=namespace_id,
-                owner_id=row.owner_id,
-                slug=row.slug,
-                name=row.name,
-                modality=row.modality,
-                draft_id=draft.id,
-                created_at=row.created_at,
-            )
+            result = self._dataset(row, draft.id)
         return result
 
     @observed("registry")
@@ -136,16 +190,7 @@ class RegistryService:
             if row is None:
                 raise NotFound("Dataset not found")
             draft = repo.draft(namespace_id, dataset_id)
-            return c.Dataset(
-                id=row.id,
-                namespace_id=namespace_id,
-                owner_id=row.owner_id,
-                slug=row.slug,
-                name=row.name,
-                modality=row.modality,
-                draft_id=draft.id,
-                created_at=row.created_at,
-            )
+            return self._dataset(row, draft.id)
 
     @observed("registry")
     def create_sample(
