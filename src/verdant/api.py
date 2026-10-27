@@ -65,6 +65,12 @@ def create_app(
             "identity": "unqualified",
         }
 
+    @app.get("/api/v1/namespaces", response_model=c.NamespacePage)
+    def list_namespaces(
+        actor: Actor, after: UUID | None = None, limit: int = Query(default=50, ge=1, le=100)
+    ):
+        return service.list_namespaces(actor, after, limit)
+
     prefix = "/api/v1/namespaces/{namespace_id}"
 
     @app.post(prefix + "/datasets", response_model=c.Dataset, status_code=201)

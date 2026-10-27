@@ -57,6 +57,10 @@ def create_mcp_app(runtime):
             raise ToolError(str(exc)) from None
 
     @mcp.tool()
+    async def namespaces_list(after: UUID | None = None, limit: int = 50):
+        return (await invoke(service.list_namespaces, after, limit)).model_dump(mode="json")
+
+    @mcp.tool()
     async def dataset_get(namespace_id: UUID, dataset_id: UUID):
         """Read a dataset in a currently authorized namespace."""
         return await invoke(service.get_dataset, namespace_id, dataset_id)

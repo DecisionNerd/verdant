@@ -15,6 +15,7 @@ from verdant.persistence import (
     DatasetRow,
     DraftRow,
     MembershipRow,
+    NamespaceGrantRow,
     NamespaceRow,
     RegistryRepository,
     SampleRevisionRow,
@@ -26,6 +27,32 @@ from verdant.telemetry import observed
 class RegistryService:
     def __init__(self, sessions: sessionmaker[Session]):
         self.sessions = sessions
+
+    @observed("registry")
+    def list_namespaces(
+        self, principal: Principal, after: UUID | None = None, limit: int = 50
+    ) -> c.NamespacePage:
+        if not 1 <= limit <= 100:
+            raise ValueError("Page size must be between 1 and 100")
+        with self.sessions.begin() as session:
+            current_principal(session, principal.id)
+            query = (
+                select(NamespaceRow, NamespaceGrantRow.access)
+                .join(NamespaceGrantRow, NamespaceGrantRow.namespace_id == NamespaceRow.id)
+                .where(NamespaceGrantRow.principal_id == principal.id)
+                .order_by(NamespaceRow.id)
+                .limit(limit + 1)
+            )
+            if after is not None:
+                query = query.where(NamespaceRow.id > after)
+            rows = session.execute(query).all()
+            return c.NamespacePage(
+                items=[
+                    c.Namespace(id=row.id, name=row.name, access=access)
+                    for row, access in rows[:limit]
+                ],
+                next_after=rows[limit - 1][0].id if len(rows) > limit else None,
+            )
 
     @contextmanager
     def _transaction(self, principal: Principal, namespace_id: UUID, *, write: bool = False):

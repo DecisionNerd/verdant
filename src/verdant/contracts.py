@@ -40,6 +40,17 @@ class Contract(BaseModel):
         return self
 
 
+class Namespace(Contract):
+    id: UUID
+    name: str
+    access: str
+
+
+class NamespacePage(Contract):
+    items: list[Namespace]
+    next_after: UUID | None = None
+
+
 class DatasetCreate(Contract):
     slug: Slug
     name: str = Field(min_length=1, max_length=200)
