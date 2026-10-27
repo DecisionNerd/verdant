@@ -93,6 +93,7 @@ class DatasetRow(Base):
         UniqueConstraint("namespace_id", "slug", name="uq_dataset_slug"),
         ForeignKeyConstraint(["namespace_id"], ["namespaces.id"]),
         CheckConstraint("length(name) > 0 AND length(modality) > 0", name="ck_dataset_values"),
+        CheckConstraint("revision >= 0", name="ck_dataset_revision"),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     namespace_id: Mapped[UUID]
@@ -100,6 +101,7 @@ class DatasetRow(Base):
     slug: Mapped[str] = mapped_column(String(100))
     name: Mapped[str] = mapped_column(String(200))
     modality: Mapped[str] = mapped_column(String(50))
+    revision: Mapped[int] = mapped_column(BigInteger, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

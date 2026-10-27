@@ -65,15 +65,52 @@ def create_app(
             "identity": "unqualified",
         }
 
+    @app.get("/api/v1/namespaces", response_model=c.NamespacePage)
+    def list_namespaces(
+        actor: Actor, after: UUID | None = None, limit: int = Query(default=50, ge=1, le=100)
+    ):
+        return service.list_namespaces(actor, after, limit)
+
+    @app.get("/api/v1/namespaces/{namespace_id}", response_model=c.Namespace)
+    def get_namespace(namespace_id: UUID, actor: Actor):
+        return service.get_namespace(actor, namespace_id)
+
     prefix = "/api/v1/namespaces/{namespace_id}"
+
+    @app.get(prefix + "/datasets", response_model=c.DatasetPage)
+    def list_datasets(
+        namespace_id: UUID,
+        actor: Actor,
+        search: str = Query(default="", max_length=200),
+        modality: str | None = Query(default=None, max_length=50),
+        owner_id: UUID | None = None,
+        after: UUID | None = None,
+        limit: int = Query(default=50, ge=1, le=100),
+    ):
+        return service.list_datasets(actor, namespace_id, search, modality, owner_id, after, limit)
 
     @app.post(prefix + "/datasets", response_model=c.Dataset, status_code=201)
     def create_dataset(namespace_id: UUID, command: c.DatasetCreate, actor: Actor):
         return service.create_dataset(actor, namespace_id, command)
 
+    @app.put(prefix + "/datasets/{dataset_id}", response_model=c.Dataset)
+    def update_dataset(
+        namespace_id: UUID, dataset_id: UUID, command: c.DatasetUpdate, actor: Actor
+    ):
+        return service.update_dataset(actor, namespace_id, dataset_id, command)
+
     @app.get(prefix + "/datasets/{dataset_id}", response_model=c.Dataset)
     def get_dataset(namespace_id: UUID, dataset_id: UUID, actor: Actor):
         return service.get_dataset(actor, namespace_id, dataset_id)
+
+    @app.get(prefix + "/samples", response_model=c.SamplePage)
+    def list_samples(
+        namespace_id: UUID,
+        actor: Actor,
+        after: UUID | None = None,
+        limit: int = Query(default=50, ge=1, le=100),
+    ):
+        return service.list_samples(actor, namespace_id, after, limit)
 
     @app.post(prefix + "/samples", response_model=c.SampleRevision, status_code=201)
     def create_sample(namespace_id: UUID, command: c.SampleCreate, actor: Actor):
@@ -84,6 +121,15 @@ def create_app(
     )
     def revise_sample(namespace_id: UUID, sample_id: UUID, command: c.SampleRevise, actor: Actor):
         return service.revise_sample(actor, namespace_id, sample_id, command)
+
+    @app.get(
+        prefix + "/samples/{sample_id}/revisions/{revision_id}/summary",
+        response_model=c.SampleSummary,
+    )
+    def inspect_sample_revision(
+        namespace_id: UUID, sample_id: UUID, revision_id: UUID, actor: Actor
+    ):
+        return service.inspect_sample_revision(actor, namespace_id, sample_id, revision_id)
 
     @app.get(
         prefix + "/samples/{sample_id}/revisions/{revision_id}", response_model=c.SampleRevision

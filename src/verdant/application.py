@@ -3,7 +3,7 @@
 from contextlib import contextmanager
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -15,6 +15,7 @@ from verdant.persistence import (
     DatasetRow,
     DraftRow,
     MembershipRow,
+    NamespaceGrantRow,
     NamespaceRow,
     RegistryRepository,
     SampleRevisionRow,
@@ -26,6 +27,46 @@ from verdant.telemetry import observed
 class RegistryService:
     def __init__(self, sessions: sessionmaker[Session]):
         self.sessions = sessions
+
+    @observed("registry")
+    def get_namespace(self, principal: Principal, namespace_id: UUID) -> c.Namespace:
+        with self.sessions.begin() as session:
+            actor = current_principal(session, principal.id)
+            actor.require(namespace_id)
+            row = session.get(NamespaceRow, namespace_id)
+            if row is None:
+                raise NotFound("Namespace not found")
+            return c.Namespace(
+                id=row.id,
+                name=row.name,
+                access="write" if namespace_id in actor.writable_namespaces else "read",
+            )
+
+    @observed("registry")
+    def list_namespaces(
+        self, principal: Principal, after: UUID | None = None, limit: int = 50
+    ) -> c.NamespacePage:
+        if not 1 <= limit <= 100:
+            raise ValueError("Page size must be between 1 and 100")
+        with self.sessions.begin() as session:
+            current_principal(session, principal.id)
+            query = (
+                select(NamespaceRow, NamespaceGrantRow.access)
+                .join(NamespaceGrantRow, NamespaceGrantRow.namespace_id == NamespaceRow.id)
+                .where(NamespaceGrantRow.principal_id == principal.id)
+                .order_by(NamespaceRow.id)
+                .limit(limit + 1)
+            )
+            if after is not None:
+                query = query.where(NamespaceRow.id > after)
+            rows = session.execute(query).all()
+            return c.NamespacePage(
+                items=[
+                    c.Namespace(id=row.id, name=row.name, access=access)
+                    for row, access in rows[:limit]
+                ],
+                next_after=rows[limit - 1][0].id if len(rows) > limit else None,
+            )
 
     @contextmanager
     def _transaction(self, principal: Principal, namespace_id: UUID, *, write: bool = False):
@@ -76,6 +117,70 @@ class RegistryService:
             created_at=row.created_at,
         )
 
+    @staticmethod
+    def _dataset(row: DatasetRow, draft_id: UUID) -> c.Dataset:
+        return c.Dataset(
+            id=row.id,
+            namespace_id=row.namespace_id,
+            owner_id=row.owner_id,
+            revision=row.revision,
+            slug=row.slug,
+            name=row.name,
+            modality=row.modality,
+            draft_id=draft_id,
+            created_at=row.created_at,
+        )
+
+    @observed("registry")
+    def list_datasets(
+        self,
+        principal: Principal,
+        namespace_id: UUID,
+        search: str = "",
+        modality: str | None = None,
+        owner_id: UUID | None = None,
+        after: UUID | None = None,
+        limit: int = 50,
+    ) -> c.DatasetPage:
+        if not 1 <= limit <= 100 or len(search) > 200:
+            raise ValueError("Invalid catalog page size or search length")
+        with self._transaction(principal, namespace_id) as repo:
+            filters = [DatasetRow.namespace_id == namespace_id]
+            if search:
+                filters.append(
+                    or_(
+                        DatasetRow.name.icontains(search, autoescape=True),
+                        DatasetRow.slug.icontains(search, autoescape=True),
+                    )
+                )
+            if modality is not None:
+                filters.append(DatasetRow.modality == modality)
+            if owner_id is not None:
+                filters.append(DatasetRow.owner_id == owner_id)
+            # Authorization precedes both aggregate and row disclosure.
+            total = repo.session.scalar(
+                select(func.count()).select_from(DatasetRow).where(*filters)
+            )
+            query = (
+                select(DatasetRow, DraftRow.id)
+                .join(
+                    DraftRow,
+                    (DraftRow.dataset_id == DatasetRow.id)
+                    & (DraftRow.namespace_id == DatasetRow.namespace_id),
+                )
+                .where(*filters)
+                .order_by(DatasetRow.id)
+                .limit(limit + 1)
+            )
+            if after is not None:
+                query = query.where(DatasetRow.id > after)
+            rows = repo.session.execute(query).all()
+            return c.DatasetPage(
+                items=[self._dataset(row, draft_id) for row, draft_id in rows[:limit]],
+                total=total,
+                next_after=rows[limit - 1][0].id if len(rows) > limit else None,
+            )
+
     @observed("registry")
     def create_dataset(
         self, principal: Principal, namespace_id: UUID, command: c.DatasetCreate
@@ -90,17 +195,37 @@ class RegistryService:
             repo.session.add(draft)
             repo.session.flush()
             self._audit(repo, principal, namespace_id, row.id, "dataset.created", {})
-            result = c.Dataset(
-                id=row.id,
-                namespace_id=namespace_id,
-                owner_id=row.owner_id,
-                slug=row.slug,
-                name=row.name,
-                modality=row.modality,
-                draft_id=draft.id,
-                created_at=row.created_at,
-            )
+            result = self._dataset(row, draft.id)
         return result
+
+    @observed("registry")
+    def update_dataset(
+        self,
+        principal: Principal,
+        namespace_id: UUID,
+        dataset_id: UUID,
+        command: c.DatasetUpdate,
+    ) -> c.Dataset:
+        with self._transaction(principal, namespace_id, write=True) as repo:
+            row = repo.session.scalar(
+                select(DatasetRow)
+                .where(DatasetRow.namespace_id == namespace_id, DatasetRow.id == dataset_id)
+                .with_for_update()
+            )
+            if row is None:
+                raise NotFound("Dataset not found")
+            if row.revision != command.expected_revision:
+                raise Conflict("Dataset metadata changed; reload the latest revision before saving")
+            if row.revision == 9223372036854775807:
+                raise Conflict("Dataset metadata revision limit reached")
+            for field in ("slug", "name", "modality"):
+                setattr(row, field, getattr(command, field))
+            row.revision += 1
+            repo.session.flush()
+            self._audit(
+                repo, principal, namespace_id, row.id, "dataset.updated", {"revision": row.revision}
+            )
+            return self._dataset(row, repo.draft(namespace_id, dataset_id).id)
 
     @observed("registry")
     def get_dataset(self, principal: Principal, namespace_id: UUID, dataset_id: UUID) -> c.Dataset:
@@ -109,15 +234,43 @@ class RegistryService:
             if row is None:
                 raise NotFound("Dataset not found")
             draft = repo.draft(namespace_id, dataset_id)
-            return c.Dataset(
-                id=row.id,
-                namespace_id=namespace_id,
-                owner_id=row.owner_id,
-                slug=row.slug,
-                name=row.name,
-                modality=row.modality,
-                draft_id=draft.id,
-                created_at=row.created_at,
+            return self._dataset(row, draft.id)
+
+    @observed("registry")
+    def list_samples(
+        self, principal: Principal, namespace_id: UUID, after: UUID | None = None, limit: int = 50
+    ) -> c.SamplePage:
+        if not 1 <= limit <= 100:
+            raise ValueError("Page size must be between 1 and 100")
+        with self._transaction(principal, namespace_id) as repo:
+            query = (
+                select(SampleRow, SampleRevisionRow)
+                .join(
+                    SampleRevisionRow,
+                    (SampleRevisionRow.sample_id == SampleRow.id)
+                    & (SampleRevisionRow.namespace_id == SampleRow.namespace_id)
+                    & (SampleRevisionRow.revision == SampleRow.revision),
+                )
+                .where(SampleRow.namespace_id == namespace_id)
+                .order_by(SampleRow.id)
+                .limit(limit + 1)
+            )
+            if after is not None:
+                query = query.where(SampleRow.id > after)
+            rows = repo.session.execute(query).all()
+            return c.SamplePage(
+                items=[
+                    c.SampleSummary(
+                        sample_id=sample.id,
+                        revision_id=revision.id,
+                        revision=revision.revision,
+                        modality=sample.modality,
+                        sha256=revision.sha256,
+                        size_bytes=revision.size_bytes,
+                    )
+                    for sample, revision in rows[:limit]
+                ],
+                next_after=rows[limit - 1][0].id if len(rows) > limit else None,
             )
 
     @observed("registry")
@@ -185,6 +338,36 @@ class RegistryService:
             )
             result = self._revision(row)
         return result
+
+    @observed("registry")
+    def inspect_sample_revision(
+        self, principal: Principal, namespace_id: UUID, sample_id: UUID, revision_id: UUID
+    ) -> c.SampleSummary:
+        with self._transaction(principal, namespace_id) as repo:
+            row = repo.session.execute(
+                select(SampleRow, SampleRevisionRow)
+                .join(
+                    SampleRevisionRow,
+                    (SampleRevisionRow.sample_id == SampleRow.id)
+                    & (SampleRevisionRow.namespace_id == SampleRow.namespace_id),
+                )
+                .where(
+                    SampleRow.namespace_id == namespace_id,
+                    SampleRow.id == sample_id,
+                    SampleRevisionRow.id == revision_id,
+                )
+            ).first()
+            if row is None:
+                raise NotFound("Sample revision not found")
+            sample, revision = row
+            return c.SampleSummary(
+                sample_id=sample.id,
+                revision_id=revision.id,
+                revision=revision.revision,
+                modality=sample.modality,
+                sha256=revision.sha256,
+                size_bytes=revision.size_bytes,
+            )
 
     @observed("registry")
     def get_sample_revision(

@@ -165,5 +165,5 @@ __pycache__/
 /tests/fixtures/storage/proof.json
 
 # Stable private local deployment inputs
-/infrastructure/compose/.local/
+/infrastructure/compose/.local
 /infrastructure/compose/.bootstrap-*/

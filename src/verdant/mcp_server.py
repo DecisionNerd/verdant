@@ -10,7 +10,7 @@ from starlette.concurrency import run_in_threadpool
 
 from verdant.access_tokens import InvalidAccessToken
 from verdant.application import RegistryService
-from verdant.contracts import DatasetCreate
+from verdant.contracts import DatasetCreate, DatasetUpdate
 from verdant.domain import DomainError, Forbidden, Principal
 
 
@@ -55,6 +55,43 @@ def create_mcp_app(runtime):
             return await run_in_threadpool(method, actor(), *args)
         except DomainError as exc:
             raise ToolError(str(exc)) from None
+
+    @mcp.tool()
+    async def sample_revision_inspect(namespace_id: UUID, sample_id: UUID, revision_id: UUID):
+        return (
+            await invoke(service.inspect_sample_revision, namespace_id, sample_id, revision_id)
+        ).model_dump(mode="json")
+
+    @mcp.tool()
+    async def samples_list(namespace_id: UUID, after: UUID | None = None, limit: int = 50):
+        return (await invoke(service.list_samples, namespace_id, after, limit)).model_dump(
+            mode="json"
+        )
+
+    @mcp.tool()
+    async def namespaces_list(after: UUID | None = None, limit: int = 50):
+        return (await invoke(service.list_namespaces, after, limit)).model_dump(mode="json")
+
+    @mcp.tool()
+    async def datasets_list(
+        namespace_id: UUID,
+        search: str = "",
+        modality: str | None = None,
+        owner_id: UUID | None = None,
+        after: UUID | None = None,
+        limit: int = 50,
+    ):
+        return (
+            await invoke(
+                service.list_datasets, namespace_id, search, modality, owner_id, after, limit
+            )
+        ).model_dump(mode="json")
+
+    @mcp.tool()
+    async def dataset_update(namespace_id: UUID, dataset_id: UUID, command: DatasetUpdate):
+        return (await invoke(service.update_dataset, namespace_id, dataset_id, command)).model_dump(
+            mode="json"
+        )
 
     @mcp.tool()
     async def dataset_get(namespace_id: UUID, dataset_id: UUID):

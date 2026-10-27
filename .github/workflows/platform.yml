@@ -53,6 +53,8 @@ jobs:
         run: pnpm install --filter @verdant/workspace... --frozen-lockfile
       - name: Build and typecheck workspace
         run: pnpm --filter @verdant/workspace build
+      - name: Workspace refresh and authorization regressions
+        run: pnpm --filter @verdant/workspace test
 
   compose-config:
     runs-on: ubuntu-latest

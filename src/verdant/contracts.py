@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 CONTRACT_VERSION = 1
 EVENT_VERSION = 1
 MANIFEST_VERSION = 1  # Reserved encoding version; publication is not implemented yet.
-SCHEMA_REVISION = "0005_identity_audit"
+SCHEMA_REVISION = "0006_dataset_metadata"
 
 Slug = Annotated[str, Field(min_length=1, max_length=100, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")]
 Digest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
@@ -40,21 +40,43 @@ class Contract(BaseModel):
         return self
 
 
+class Namespace(Contract):
+    id: UUID
+    name: str
+    access: str
+
+
+class NamespacePage(Contract):
+    items: list[Namespace]
+    next_after: UUID | None = None
+
+
 class DatasetCreate(Contract):
     slug: Slug
     name: str = Field(min_length=1, max_length=200)
     modality: str = Field(min_length=1, max_length=50)
 
 
+class DatasetUpdate(DatasetCreate):
+    expected_revision: Revision
+
+
 class Dataset(Contract):
     id: UUID
     namespace_id: UUID
     owner_id: UUID
+    revision: int = 0
     slug: str
     name: str
     modality: str
     draft_id: UUID
     created_at: datetime
+
+
+class DatasetPage(Contract):
+    items: list[Dataset]
+    total: int
+    next_after: UUID | None = None
 
 
 class SampleContent(Contract):
@@ -92,6 +114,20 @@ class SampleRevision(Contract):
     size_bytes: int
     metadata: dict[str, JsonValue]
     created_at: datetime
+
+
+class SampleSummary(Contract):
+    sample_id: UUID
+    revision_id: UUID
+    revision: int
+    modality: str
+    sha256: str
+    size_bytes: int
+
+
+class SamplePage(Contract):
+    items: list[SampleSummary]
+    next_after: UUID | None = None
 
 
 class MembershipWrite(Contract):
