@@ -11,7 +11,8 @@ args = parser.parse_args()
 image = (
     "chrislusf/seaweedfs@sha256:f7a49e3f3972ebed5be2ed4befa4a0c68eb7bdddba6e692d42729ceb545134b8"
 )
-api_image = "verdant-platform-api:issue12-candidate"
+# Archive with the pinned image already verified for the source service.
+archive_image = image
 original = "verdant-issue12-objects"
 restore = "verdant-issue12-objects-restore"
 suffix = uuid4().hex[:8]
@@ -48,7 +49,7 @@ try:
         f"type=volume,src={source['Name']},dst=/source,readonly",
         "--mount",
         f"type=volume,src={backup_volume},dst=/backup",
-        api_image,
+        archive_image,
         "-czf",
         "/backup/data.tgz",
         "-C",
@@ -66,7 +67,7 @@ try:
         f"type=volume,src={backup_volume},dst=/backup,readonly",
         "--mount",
         f"type=volume,src={restore_volume},dst=/restore",
-        api_image,
+        archive_image,
         "-xzf",
         "/backup/data.tgz",
         "-C",
