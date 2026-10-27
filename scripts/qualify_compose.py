@@ -13,6 +13,8 @@ import httpx
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
+from verdant.contracts import SCHEMA_REVISION
+
 ROOT = Path(__file__).resolve().parents[1]
 LOCAL = ROOT / "infrastructure/compose/.local"
 ISSUER = "http://auth.127.0.0.1.sslip.io:18801/realms/verdant-local"
@@ -47,7 +49,7 @@ def main():
         assert host.json()["issuer"] == ISSUER
         ready = wait_for_registry(client)
         ready.raise_for_status()
-        assert ready.json()["schema_revision"] == "0005_identity_audit"
+        assert ready.json()["schema_revision"] == SCHEMA_REVISION
         token = client.post(
             ISSUER + "/protocol/openid-connect/token",
             data={
@@ -141,6 +143,7 @@ with sessions.begin() as session:
             created.raise_for_status()
             receipt_path.write_text(json.dumps(created.json()) + "\n")
         dataset = json.loads(receipt_path.read_text())
+        dataset.setdefault("revision", 0)  # Receipts created before metadata revision migration.
         read = client.get(base + "/" + dataset["id"], headers=headers)
         read.raise_for_status()
         assert read.json() == dataset
