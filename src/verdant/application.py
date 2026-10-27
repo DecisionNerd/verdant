@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from verdant import contracts as c
 from verdant.domain import Conflict, NotFound, Principal
+from verdant.identity import current_principal
 from verdant.persistence import (
     AuditRow,
     DatasetRow,
@@ -38,9 +39,9 @@ class RegistryService:
 
     @contextmanager
     def _transaction(self, principal: Principal, namespace_id: UUID, *, write: bool = False):
-        principal.require(namespace_id, write=write)
         try:
             with self.sessions.begin() as session:
+                current_principal(session, principal.id).require(namespace_id, write=write)
                 if session.get(NamespaceRow, namespace_id) is None:
                     raise NotFound("Namespace not found")
                 yield RegistryRepository(session)
