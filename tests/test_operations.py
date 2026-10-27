@@ -81,3 +81,51 @@ def test_admission_requires_current_write_access(registry, principal_factory, se
     denied = principal_factory(ns, access="read")
     with pytest.raises(Forbidden):
         service.admit(denied, ns, OperationRequest(request_key="denied", kind="qualification"))
+
+
+def test_competing_delivery_claims_and_stale_acknowledgement_are_fenced(registry, sessions):
+    from datetime import timedelta
+
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    service.admit(actor, ns, OperationRequest(request_key="claim", kind="qualification"))
+    barrier = Barrier(2)
+
+    def claim(_):
+        barrier.wait(timeout=5)
+        return service.claim_delivery(actor, ns, limit=1)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        batches = list(pool.map(claim, range(2)))
+    claims = [item for batch in batches for item in batch]
+    assert len(claims) == 1
+    original = claims[0]
+    with sessions.begin() as session:
+        session.get(OutboxRow, original.event_id).lease_until = session.scalar(
+            select(func.clock_timestamp())
+        ) - timedelta(seconds=1)
+    replacement = service.claim_delivery(actor, ns, limit=1)[0]
+    assert replacement.event_id == original.event_id
+    assert replacement.claim_id != original.claim_id
+    with pytest.raises(Conflict):
+        service.acknowledge_delivery(actor, ns, original.event_id, original.claim_id)
+    service.acknowledge_delivery(actor, ns, replacement.event_id, replacement.claim_id)
+    service.acknowledge_delivery(actor, ns, replacement.event_id, replacement.claim_id)
+    assert service.claim_delivery(actor, ns) == []
+
+
+def test_revocation_stops_new_claims_and_acknowledgement(registry, sessions):
+    from sqlalchemy import delete
+
+    from verdant.persistence import NamespaceGrantRow
+
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    service.admit(actor, ns, OperationRequest(request_key="revoke", kind="qualification"))
+    claim = service.claim_delivery(actor, ns)[0]
+    with sessions.begin() as session:
+        session.execute(delete(NamespaceGrantRow).where(NamespaceGrantRow.principal_id == actor.id))
+    with pytest.raises(Forbidden):
+        service.claim_delivery(actor, ns)
+    with pytest.raises(Forbidden):
+        service.acknowledge_delivery(actor, ns, claim.event_id, claim.claim_id)
