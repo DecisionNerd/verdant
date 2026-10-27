@@ -396,3 +396,25 @@ def test_real_authlib_callback_validates_signed_id_token(login_app, monkeypatch,
         )
         assert response.status_code == (303 if change == "valid" else 400)
         assert client.get("/auth/session").json()["authenticated"] == (change == "valid")
+
+
+def test_optional_auth_telemetry_failure_does_not_bypass_admission(login_app, monkeypatch):
+    from verdant import telemetry
+
+    app, claims = login_app
+    claims["groups"] = []
+
+    class BrokenSignals:
+        def start_span(self, *args, **kwargs):
+            raise RuntimeError("collector unavailable")
+
+        def add(self, *args, **kwargs):
+            raise RuntimeError("collector unavailable")
+
+    monkeypatch.setattr(telemetry, "tracer", BrokenSignals())
+    monkeypatch.setattr(telemetry, "auth_failures", BrokenSignals())
+    with TestClient(app, base_url="https://workspace.test") as client:
+        state = begin_login(client)
+        response = client.get("/auth/callback", params={"state": state, "code": "fixture"})
+        assert response.status_code == 403
+        assert client.get("/auth/session").json() == {"authenticated": False}

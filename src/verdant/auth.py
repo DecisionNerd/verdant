@@ -24,6 +24,7 @@ from verdant.browser_sessions import DatabaseSessionStore
 from verdant.domain import Forbidden, Principal
 from verdant.identity import IdentityService, current_principal
 from verdant.persistence import PrincipalRow
+from verdant.telemetry import auth_failure, observed
 
 
 @dataclass(frozen=True)
@@ -130,6 +131,7 @@ class IdentityRuntime:
             request.session.clear()
             raise HTTPException(401, "Sign in required") from None
 
+    @observed("auth")
     async def principal(self, request: Request) -> Principal:
         authorization = request.headers.get("authorization")
         if authorization is not None:
@@ -160,6 +162,7 @@ class IdentityRuntime:
             raise HTTPException(403, "Request origin or CSRF token denied")
 
     def failure(self, request: Request, status: int, code: str, message: str):
+        auth_failure(code)
         if "text/html" in request.headers.get("accept", ""):
             return RedirectResponse(
                 self.settings.app_url + "/?" + urlencode({"auth_error": code}), status_code=303
@@ -188,6 +191,7 @@ class IdentityRuntime:
         router = APIRouter(prefix="/auth")
 
         @router.get("/login")
+        @observed("auth")
         async def login(request: Request):
             if request.query_params.get("next", "/") != "/":
                 raise HTTPException(400, "Return target denied")
@@ -214,6 +218,7 @@ class IdentityRuntime:
                 )
 
         @router.get("/callback")
+        @observed("auth")
         async def callback(request: Request):
             await load_session(request)
             state, session_id = request.query_params.get("state", ""), get_session_id(request)
@@ -254,6 +259,7 @@ class IdentityRuntime:
                     claims["sub"],
                     kind="human",
                     email=email,
+                    actor_id=None,
                 )
                 generation = await run_in_threadpool(
                     self.identities.session_generation, principal_id
@@ -297,6 +303,7 @@ class IdentityRuntime:
             }
 
         @router.post("/logout")
+        @observed("auth")
         async def logout(request: Request):
             await load_session(request)
             self.csrf(request)

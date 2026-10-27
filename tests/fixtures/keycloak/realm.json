@@ -187,6 +187,24 @@
           "temporary": false
         }
       ]
+    },
+    {
+      "username": "no-grants",
+      "enabled": true,
+      "firstName": "Nora",
+      "lastName": "No Grants",
+      "email": "no-grants@example.test",
+      "emailVerified": true,
+      "groups": [
+        "/workspace"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "verdant-test-only-no-grants",
+          "temporary": false
+        }
+      ]
     }
   ]
 }

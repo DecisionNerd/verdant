@@ -203,9 +203,12 @@ class AuditRow(Base):
     __table_args__ = (
         ForeignKeyConstraint(["namespace_id"], ["namespaces.id"]),
         CheckConstraint("schema_version = 1", name="ck_audit_version"),
+        CheckConstraint(
+            "namespace_id IS NOT NULL OR action LIKE 'identity.%'", name="ck_audit_scope"
+        ),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    namespace_id: Mapped[UUID]
+    namespace_id: Mapped[UUID | None]
     actor_id: Mapped[UUID]
     aggregate_id: Mapped[UUID]
     action: Mapped[str] = mapped_column(String(100))

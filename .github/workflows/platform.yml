@@ -32,8 +32,8 @@ jobs:
           uv sync --locked
       - name: Static checks
         run: |
-          uv run --locked ruff check src migrations tests
-          uv run --locked ruff format --check src migrations tests
+          uv run --locked ruff check src migrations tests scripts
+          uv run --locked ruff format --check src migrations tests scripts
       - name: PostgreSQL lifecycle and contracts
         run: |
           uv run --locked pytest -q
