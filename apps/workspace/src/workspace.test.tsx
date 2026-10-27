@@ -36,3 +36,23 @@ it("rejects an older session response after a newer account check completes", as
   expect(screen.queryByRole("region", {name: "Account A"})).toBeNull();
   expect(screen.getByRole("region", {name: "Account B"})).toBeTruthy();
 });
+
+it("retains a logout error if a rejected logout leaves the session live", async () => {
+  const fetcher = vi.fn().mockResolvedValue(session("A")); vi.stubGlobal("fetch", fetcher);
+  render(<Workspace />); await screen.findByRole("region", {name: "Account A"});
+  fetcher.mockResolvedValueOnce({ok: false, status: 403});
+  fireEvent.click(screen.getByRole("button", {name: "Sign out"}));
+  await screen.findByText(/Sign-out could not be confirmed/);
+  expect(screen.getByRole("region", {name: "Account A"})).toBeTruthy();
+});
+
+it("clears logout error when recheck confirms the session has ended", async () => {
+  const fetcher = vi.fn().mockResolvedValue(session("A")); vi.stubGlobal("fetch", fetcher);
+  render(<Workspace />); await screen.findByRole("region", {name: "Account A"});
+  fetcher.mockResolvedValueOnce({ok: false, status: 403});
+  fetcher.mockResolvedValueOnce({ok: true, json: async () => ({authenticated: false})});
+  fireEvent.click(screen.getByRole("button", {name: "Sign out"}));
+  await screen.findByRole("link", {name: "Sign in with your organization"});
+  expect(screen.queryByText(/Sign-out could not be confirmed/)).toBeNull();
+  expect(screen.queryByRole("region", {name: "Account A"})).toBeNull();
+});
