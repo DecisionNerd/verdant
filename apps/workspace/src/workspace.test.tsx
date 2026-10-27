@@ -20,3 +20,19 @@ it("hides old account while revalidating and replaces its catalog after shared c
   await screen.findByRole("region", {name: "Account B"});
   expect(screen.queryByText("Catalog A")).toBeNull();
 });
+
+it("rejects an older session response after a newer account check completes", async () => {
+  const fetcher = vi.fn().mockResolvedValue(session("A")); vi.stubGlobal("fetch", fetcher);
+  render(<Workspace />); await screen.findByRole("region", {name: "Account A"});
+  let oldCheck!: (response: unknown) => void;
+  let newCheck!: (response: unknown) => void;
+  fetcher.mockReturnValueOnce(new Promise(done => { oldCheck = done; }));
+  fireEvent(window, new Event("focus"));
+  fetcher.mockReturnValueOnce(new Promise(done => { newCheck = done; }));
+  fireEvent(window, new Event("focus"));
+  await act(async () => { newCheck(session("B")); });
+  await screen.findByRole("region", {name: "Account B"});
+  await act(async () => { oldCheck(session("A")); });
+  expect(screen.queryByRole("region", {name: "Account A"})).toBeNull();
+  expect(screen.getByRole("region", {name: "Account B"})).toBeTruthy();
+});
