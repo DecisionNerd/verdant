@@ -11,3 +11,8 @@ data/datasets/*
 *.md
 .cursor
 agent-transcripts
+.venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+infrastructure/compose/.local
