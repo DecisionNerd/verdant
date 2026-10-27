@@ -58,7 +58,7 @@ class RegistryService:
                 aggregate_id=aggregate_id,
                 action=action,
                 schema_version=c.EVENT_VERSION,
-                payload=payload,
+                payload=payload | {"transport": principal.transport},
             )
         )
 

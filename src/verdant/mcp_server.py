@@ -48,7 +48,7 @@ def create_mcp_app(runtime):
         token = get_access_token()
         if token is None:
             raise ToolError("Verified service identity required")
-        return Principal(UUID(token.claims["verdant_principal_id"]))
+        return Principal(UUID(token.claims["verdant_principal_id"]), transport="mcp")
 
     async def invoke(method, *args):
         try:

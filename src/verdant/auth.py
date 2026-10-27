@@ -2,7 +2,7 @@
 
 import os
 import secrets
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from time import time
 from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import UUID
@@ -142,15 +142,16 @@ class IdentityRuntime:
                 raise HTTPException(401, "Valid access token required")
             try:
                 claims = await self.tokens.verify_async(token)
-                return await run_in_threadpool(
+                actor = await run_in_threadpool(
                     self.identities.resolve, claims["iss"], claims["sub"], kind="service"
                 )
+                return replace(actor, transport="http-bearer")
             except InvalidAccessToken:
                 raise HTTPException(401, "Valid access token required") from None
         actor = await self.browser_principal(request)
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             self.csrf(request)
-        return actor
+        return replace(actor, transport="browser")
 
     def csrf(self, request: Request):
         supplied = request.headers.get("x-csrf-token", "")

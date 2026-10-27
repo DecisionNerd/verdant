@@ -27,6 +27,7 @@ class Principal:
     id: UUID
     readable_namespaces: frozenset[UUID] = frozenset()
     writable_namespaces: frozenset[UUID] = frozenset()
+    transport: str = "managed"
 
     def require(self, namespace_id: UUID, *, write: bool = False) -> None:
         allowed = self.writable_namespaces

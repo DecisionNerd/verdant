@@ -1,6 +1,6 @@
 from time import time
 from urllib.parse import parse_qs, urlsplit
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -53,7 +53,7 @@ def begin_login(client):
     return query["state"][0]
 
 
-def test_browser_session_rotation_csrf_logout_and_replay(login_app):
+def test_browser_session_rotation_csrf_logout_and_replay(login_app, registry):
     app, _ = login_app
     with TestClient(app, base_url="https://workspace.test") as client:
         assert client.get("/auth/session").json() == {"authenticated": False}
@@ -79,6 +79,40 @@ def test_browser_session_rotation_csrf_logout_and_replay(login_app):
         path = f"/api/v1/namespaces/{uuid4()}/datasets"
         body = {"slug": "denied", "name": "Denied", "modality": "image"}
         assert client.post(path, json=body).status_code == 403
+        _, _, namespace = registry
+        actor_id = UUID(session["principal_id"])
+        app.state.identity.identities.grant(actor_id, namespace, "write")
+        created = client.post(
+            f"/api/v1/namespaces/{namespace}/datasets",
+            json={
+                "slug": "browser-created",
+                "name": "Browser",
+                "modality": "image",
+            },
+            headers={
+                "origin": "https://workspace.test",
+                "x-csrf-token": session["csrf_token"],
+                "X-Transport": "mcp",
+            },
+        )
+        assert created.status_code == 201
+        assert created.json()["owner_id"] == str(actor_id)
+        from sqlalchemy import select
+
+        from verdant.persistence import AuditRow
+
+        with app.state.identity.sessions() as database:
+            row = database.scalar(
+                select(AuditRow).where(AuditRow.aggregate_id == UUID(created.json()["id"]))
+            )
+            assert row.actor_id == actor_id and row.payload["transport"] == "browser"
+            login_event = database.scalar(
+                select(AuditRow).where(
+                    AuditRow.aggregate_id == actor_id,
+                    AuditRow.action == "identity.provisioned",
+                )
+            )
+            assert login_event.payload["transport"] == "oidc"
         assert client.post("/auth/logout").status_code == 403
         response = client.post(
             "/auth/logout",
@@ -153,7 +187,11 @@ def test_api_mcp_share_service_identity_and_namespace_denial(login_app, registry
         "scope": "verdant",
     }
     bearer = jwt.encode(claims, key, algorithm="RS256", headers={"kid": "fixture-key"})
-    headers = {"authorization": "Bearer " + bearer, "accept": "application/json, text/event-stream"}
+    headers = {
+        "authorization": "Bearer " + bearer,
+        "accept": "application/json, text/event-stream",
+        "X-Transport": "browser",
+    }
     with TestClient(app, base_url="https://workspace.test") as client:
         response = client.post(
             f"/api/v1/namespaces/{ns}/datasets",
@@ -199,6 +237,40 @@ def test_api_mcp_share_service_identity_and_namespace_denial(login_app, registry
         )
         assert response.status_code == 200
         assert response.json()["result"]["structuredContent"]["id"] == d["id"]
+        response = client.post(
+            "/mcp/",
+            json={
+                "jsonrpc": "2.0",
+                "id": 6,
+                "method": "tools/call",
+                "params": {
+                    "name": "dataset_create",
+                    "arguments": {
+                        "namespace_id": str(ns),
+                        "command": {
+                            "slug": "mcp-service",
+                            "name": "MCP",
+                            "modality": "image",
+                        },
+                    },
+                },
+            },
+            headers=headers,
+        )
+        assert not response.json()["result"].get("isError")
+        from sqlalchemy import select
+
+        from verdant.persistence import AuditRow
+
+        with runtime.sessions() as session:
+            rows = session.scalars(
+                select(AuditRow).where(
+                    AuditRow.namespace_id == ns,
+                    AuditRow.actor_id == service_id,
+                    AuditRow.action == "dataset.created",
+                )
+            ).all()
+            assert {row.payload["transport"] for row in rows} == {"http-bearer", "mcp"}
         denied = str(uuid4())
         assert (
             client.get(

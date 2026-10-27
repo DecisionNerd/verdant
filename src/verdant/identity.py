@@ -39,7 +39,16 @@ class IdentityService:
         self.sessions = sessions
 
     @staticmethod
-    def _audit(session, actor_id, target_id, action, *, namespace_id=None, payload=None):
+    def _audit(
+        session,
+        actor_id,
+        target_id,
+        action,
+        *,
+        namespace_id=None,
+        payload=None,
+        transport="operator",
+    ):
         session.add(
             AuditRow(
                 namespace_id=namespace_id,
@@ -48,7 +57,10 @@ class IdentityService:
                 action="identity." + action,
                 schema_version=1,
                 payload=(payload or {})
-                | {"source": "trusted-process" if actor_id == SYSTEM_ACTOR_ID else "principal"},
+                | {
+                    "source": "trusted-process" if actor_id == SYSTEM_ACTOR_ID else "principal",
+                    "transport": transport,
+                },
             )
         )
 
@@ -87,7 +99,13 @@ class IdentityService:
                 result = principal.id
                 if binding.email != email:
                     binding.email = email
-                    self._audit(session, actor_id or result, result, "profile_updated")
+                    self._audit(
+                        session,
+                        actor_id or result,
+                        result,
+                        "profile_updated",
+                        transport="oidc" if actor_id is None else "operator",
+                    )
             else:
                 principal = PrincipalRow(kind=kind)
                 session.add(principal)
@@ -102,7 +120,12 @@ class IdentityService:
                 )
                 result = principal.id
                 self._audit(
-                    session, actor_id or result, result, "provisioned", payload={"kind": kind}
+                    session,
+                    actor_id or result,
+                    result,
+                    "provisioned",
+                    payload={"kind": kind},
+                    transport="oidc" if actor_id is None else "operator",
                 )
         return result
 

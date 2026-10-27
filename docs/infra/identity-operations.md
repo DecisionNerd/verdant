@@ -35,7 +35,7 @@ uv run --locked python -m verdant.operator --actor OPERATOR_UUID grant PRINCIPAL
 
 Provisioning prints the stable principal UUID. Repeating it for the same issuer/subject preserves that UUID and ownership. Changing an issuer creates a different identity; do not change issuer configuration as a routing workaround. A human admission group permits application entry but supplies no namespace grant by itself. Disabled principals cannot be silently reactivated through login/provisioning.
 
-Each command commits its state and immutable audit event together. No email or token is copied into the audit payload. Namespace grants remain scoped; global identity events have no artificial namespace. Existing dataset audit retains its namespace requirement. These operations never delete or rebind an identity or transfer dataset ownership.
+Each command commits its state and immutable audit event together. Registry events retain the verified browser, HTTP bearer, MCP or managed-call transport; identity events distinguish OIDC admission from operator commands. Caller-supplied identity/transport headers do not set this provenance. No email or token is copied into the audit payload. Namespace grants remain scoped; global identity events have no artificial namespace. Existing dataset audit retains its namespace requirement. These operations never delete or rebind an identity or transfer dataset ownership.
 
 ## Revoke and recover
 
