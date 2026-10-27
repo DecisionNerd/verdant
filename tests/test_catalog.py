@@ -68,3 +68,70 @@ def test_catalog_filters_counts_and_pages_are_namespace_scoped(registry, princip
     denied = principal_factory()
     with pytest.raises(Forbidden):
         service.list_datasets(denied, ns)
+
+
+def test_metadata_updates_preserve_identity_and_reject_stale_writes(registry, sessions):
+    from sqlalchemy import select
+
+    from verdant.contracts import DatasetCreate, DatasetUpdate
+    from verdant.domain import Conflict
+    from verdant.persistence import AuditRow
+
+    service, actor, ns = registry
+    created = service.create_dataset(
+        actor, ns, DatasetCreate(slug="edit", name="Before", modality="image")
+    )
+    command = DatasetUpdate(slug="renamed", name="After", modality="text", expected_revision=0)
+    changed = service.update_dataset(actor, ns, created.id, command)
+    assert changed.revision == 1
+    assert changed.name == "After"
+    assert (changed.id, changed.draft_id, changed.owner_id) == (
+        created.id,
+        created.draft_id,
+        created.owner_id,
+    )
+    with pytest.raises(Conflict):
+        service.update_dataset(actor, ns, created.id, command)
+    assert service.get_dataset(actor, ns, created.id) == changed
+    with sessions() as session:
+        events = session.scalars(
+            select(AuditRow).where(
+                AuditRow.aggregate_id == created.id, AuditRow.action == "dataset.updated"
+            )
+        ).all()
+        assert len(events) == 1
+        assert events[0].payload["revision"] == 1
+
+
+def test_concurrent_metadata_edits_have_one_winner(registry):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from verdant.contracts import DatasetCreate, DatasetUpdate
+    from verdant.domain import Conflict
+
+    service, actor, ns = registry
+    dataset = service.create_dataset(
+        actor, ns, DatasetCreate(slug="race", name="Original", modality="image")
+    )
+    barrier = Barrier(2)
+
+    def save(name):
+        barrier.wait(timeout=5)
+        try:
+            return service.update_dataset(
+                actor,
+                ns,
+                dataset.id,
+                DatasetUpdate(slug="race", name=name, modality="image", expected_revision=0),
+            ).name
+        except Conflict:
+            return "conflict"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(save, ["First", "Second"]))
+    assert results.count("conflict") == 1
+    winner = next(name for name in results if name != "conflict")
+    stored = service.get_dataset(actor, ns, dataset.id)
+    assert stored.name == winner
+    assert stored.revision == 1

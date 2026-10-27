@@ -89,6 +89,12 @@ def create_app(
     def create_dataset(namespace_id: UUID, command: c.DatasetCreate, actor: Actor):
         return service.create_dataset(actor, namespace_id, command)
 
+    @app.put(prefix + "/datasets/{dataset_id}", response_model=c.Dataset)
+    def update_dataset(
+        namespace_id: UUID, dataset_id: UUID, command: c.DatasetUpdate, actor: Actor
+    ):
+        return service.update_dataset(actor, namespace_id, dataset_id, command)
+
     @app.get(prefix + "/datasets/{dataset_id}", response_model=c.Dataset)
     def get_dataset(namespace_id: UUID, dataset_id: UUID, actor: Actor):
         return service.get_dataset(actor, namespace_id, dataset_id)

@@ -10,7 +10,7 @@ from starlette.concurrency import run_in_threadpool
 
 from verdant.access_tokens import InvalidAccessToken
 from verdant.application import RegistryService
-from verdant.contracts import DatasetCreate
+from verdant.contracts import DatasetCreate, DatasetUpdate
 from verdant.domain import DomainError, Forbidden, Principal
 
 
@@ -74,6 +74,12 @@ def create_mcp_app(runtime):
                 service.list_datasets, namespace_id, search, modality, owner_id, after, limit
             )
         ).model_dump(mode="json")
+
+    @mcp.tool()
+    async def dataset_update(namespace_id: UUID, dataset_id: UUID, command: DatasetUpdate):
+        return (await invoke(service.update_dataset, namespace_id, dataset_id, command)).model_dump(
+            mode="json"
+        )
 
     @mcp.tool()
     async def dataset_get(namespace_id: UUID, dataset_id: UUID):

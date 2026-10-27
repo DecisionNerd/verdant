@@ -109,6 +109,7 @@ class RegistryService:
             id=row.id,
             namespace_id=row.namespace_id,
             owner_id=row.owner_id,
+            revision=row.revision,
             slug=row.slug,
             name=row.name,
             modality=row.modality,
@@ -182,6 +183,35 @@ class RegistryService:
             self._audit(repo, principal, namespace_id, row.id, "dataset.created", {})
             result = self._dataset(row, draft.id)
         return result
+
+    @observed("registry")
+    def update_dataset(
+        self,
+        principal: Principal,
+        namespace_id: UUID,
+        dataset_id: UUID,
+        command: c.DatasetUpdate,
+    ) -> c.Dataset:
+        with self._transaction(principal, namespace_id, write=True) as repo:
+            row = repo.session.scalar(
+                select(DatasetRow)
+                .where(DatasetRow.namespace_id == namespace_id, DatasetRow.id == dataset_id)
+                .with_for_update()
+            )
+            if row is None:
+                raise NotFound("Dataset not found")
+            if row.revision != command.expected_revision:
+                raise Conflict("Dataset metadata changed; reload the latest revision before saving")
+            if row.revision == 9223372036854775807:
+                raise Conflict("Dataset metadata revision limit reached")
+            for field in ("slug", "name", "modality"):
+                setattr(row, field, getattr(command, field))
+            row.revision += 1
+            repo.session.flush()
+            self._audit(
+                repo, principal, namespace_id, row.id, "dataset.updated", {"revision": row.revision}
+            )
+            return self._dataset(row, repo.draft(namespace_id, dataset_id).id)
 
     @observed("registry")
     def get_dataset(self, principal: Principal, namespace_id: UUID, dataset_id: UUID) -> c.Dataset:
