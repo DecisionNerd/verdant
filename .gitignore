@@ -160,3 +160,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+
+# Short-lived local object-storage browser qualification URLs
+/tests/fixtures/storage/proof.json
+
+# Stable private local deployment inputs
+/infrastructure/compose/.local/
+/infrastructure/compose/.bootstrap-*/

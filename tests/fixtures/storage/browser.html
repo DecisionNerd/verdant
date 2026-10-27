@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Verdant browser object-storage proof</title>
+<style>body { font: 18px system-ui; max-width: 42em; margin: 3em auto; padding: 1em; } button { font: inherit; padding: .75em; } output { display: block; margin-top: 1.5em; }</style>
+<h1>Browser object-storage proof</h1>
+<p>Upload and retrieve a synthetic fixture using expiring signed URLs. No storage credential enters this page.</p>
+<button id="run">Run signed upload and download</button>
+<output id="result" role="status">Ready</output>
+<script type="module">
+const result = document.getElementById('result');
+document.getElementById('run').addEventListener('click', async () => {
+  result.textContent = 'Running…';
+  try {
+    const configResponse = await fetch('./proof.json', { cache: 'no-store' });
+    if (!configResponse.ok) throw new Error('Fixture configuration unavailable');
+    const config = await configResponse.json();
+    const put = await fetch(config.put_url, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: config.body, credentials: 'omit' });
+    if (!put.ok) throw new Error('Upload rejected');
+    const get = await fetch(config.get_url, { credentials: 'omit', cache: 'no-store' });
+    if (!get.ok) throw new Error('Download rejected');
+    const digest = await crypto.subtle.digest('SHA-256', await get.arrayBuffer());
+    const hex = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
+    if (hex !== config.sha256) throw new Error('Content digest mismatch');
+    result.textContent = 'Passed: browser upload, download and SHA-256 matched.';
+  } catch (error) {
+    result.textContent = 'Failed: ' + error.message;
+  }
+});
+</script>
+</html>

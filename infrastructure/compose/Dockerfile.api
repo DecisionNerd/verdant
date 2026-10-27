@@ -1,0 +1,12 @@
+FROM ghcr.io/astral-sh/uv:0.8.16-python3.12-bookworm-slim@sha256:190d69899a7a73b22460b2779f85d2d65fddf9bcb05037d4463beaf52310a919
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+COPY pyproject.toml uv.lock LICENSE ./
+COPY src ./src
+RUN uv sync --locked --no-dev
+COPY alembic.ini ./
+COPY migrations ./migrations
+ENV PATH="/app/.venv/bin:$PATH"
+USER 10001:10001
+EXPOSE 8000
+CMD ["uvicorn", "verdant.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

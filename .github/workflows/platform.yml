@@ -32,8 +32,8 @@ jobs:
           uv sync --locked
       - name: Static checks
         run: |
-          uv run --locked ruff check src migrations tests scripts
-          uv run --locked ruff format --check src migrations tests scripts
+          uv run --locked ruff check src migrations tests scripts infrastructure/compose
+          uv run --locked ruff format --check src migrations tests scripts infrastructure/compose
       - name: PostgreSQL lifecycle and contracts
         run: |
           uv run --locked pytest -q
@@ -53,3 +53,13 @@ jobs:
         run: pnpm install --filter @verdant/workspace... --frozen-lockfile
       - name: Build and typecheck workspace
         run: pnpm --filter @verdant/workspace build
+
+  compose-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate local inputs and validate root Compose
+        run: |
+          python3 infrastructure/compose/bootstrap.py
+          python3 infrastructure/compose/bootstrap.py
+          docker compose config --quiet
