@@ -1,13 +1,13 @@
 import { DraftEditor } from "./draft";
 import { useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { request, type Dataset } from "./api";
+import { ApiError, request, type Dataset } from "./api";
 
 export function DatasetView({ namespace, id, csrf, writable }: { namespace: string; id: string; csrf: string; writable: boolean }) {
   const query = useQuery({ queryKey: ["dataset", namespace, id], queryFn: () => request<Dataset>(`/api/v1/namespaces/${namespace}/datasets/${id}`, csrf) });
   if (query.isPending) return <p role="status">Loading dataset…</p>;
-  if (query.isError) return <p role="alert">{query.error.message} <button onClick={() => void query.refetch()}>Retry</button></p>;
-  return <MetadataEditor key={id} dataset={query.data} csrf={csrf} writable={writable} />;
+  if (query.isError && (!query.data || (query.error instanceof ApiError && [401,403].includes(query.error.status)))) return <p role="alert">{query.error.message} <button onClick={() => void query.refetch()}>Retry</button></p>;
+  return <>{query.isError && <p role="alert">Refresh failed. Saved details may be stale; your input is preserved. <button onClick={() => void query.refetch()}>Retry</button></p>}<MetadataEditor key={id} dataset={query.data!} csrf={csrf} writable={writable} /></>;
 }
 function MetadataEditor({ dataset, csrf, writable }: { dataset: Dataset; csrf: string; writable: boolean }) {
   const cache = useQueryClient();
@@ -36,6 +36,7 @@ function MetadataEditor({ dataset, csrf, writable }: { dataset: Dataset; csrf: s
     } catch (failure) { setError((failure as Error).message); } finally { setBusy(false); }
   }
   return <article><h2>{dataset.name}</h2><p>Owner: <span className="identifier">{dataset.owner_id}</span><br />Metadata revision: {revision}</p>
+    <p>Latest saved metadata: {dataset.name}; slug {dataset.slug}; modality {dataset.modality}.</p>
     <form onSubmit={event => void save(event)}><fieldset disabled={!writable || busy}><legend>Catalog metadata</legend>
       <label>Name <input value={name} required maxLength={200} onChange={event => setName(event.target.value)} /></label>
       <label>Slug <input value={slug} required maxLength={100} pattern="[a-z0-9]+(-[a-z0-9]+)*" onChange={event => setSlug(event.target.value)} /></label>

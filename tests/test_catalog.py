@@ -172,3 +172,47 @@ def test_sample_discovery_omits_private_keys_and_uses_latest_revision(registry, 
         service.inspect_sample_revision(principal_factory(), ns, first.sample_id, first.id)
     with pytest.raises(Forbidden):
         service.list_samples(principal_factory(), ns)
+
+
+def test_catalog_large_pages_have_no_gaps_or_duplicates(registry, sessions):
+    from verdant.persistence import DatasetRow, DraftRow
+
+    service, actor, ns = registry
+    ids = [uuid4() for _ in range(1001)]
+    with sessions.begin() as session:
+        session.add_all(
+            [
+                DatasetRow(
+                    id=key,
+                    namespace_id=ns,
+                    owner_id=actor.id,
+                    slug=f"large-{i}",
+                    name=f"Large fixture {i}",
+                    modality="image",
+                )
+                for i, key in enumerate(ids)
+            ]
+        )
+        session.flush()
+        session.add_all([DraftRow(namespace_id=ns, dataset_id=key) for key in ids])
+    after, found, pages = None, [], 0
+    while True:
+        page = service.list_datasets(actor, ns, search="Large fixture", after=after, limit=100)
+        assert page.total == 1001
+        assert 1 <= len(page.items) <= 100
+        found.extend(item.id for item in page.items)
+        pages += 1
+        after = page.next_after
+        if after is None:
+            break
+    assert pages == 11
+    assert found == sorted(ids)
+
+
+def test_namespace_deep_link_resolves_without_loading_catalog_pages(registry, principal_factory):
+    service, actor, ns = registry
+    current = service.get_namespace(actor, ns)
+    assert current.id == ns
+    assert current.access == "write"
+    with pytest.raises(Forbidden):
+        service.get_namespace(principal_factory(), ns)

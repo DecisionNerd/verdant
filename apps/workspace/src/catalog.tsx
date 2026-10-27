@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider, useQuery, useInfiniteQuery, useQueryC
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 
 type Namespace = { id: string; name: string; access: "read" | "write" };
-import { request, type Dataset, type Page } from "./api";
+import { ApiError, request, type Dataset, type Page } from "./api";
 function initialRoute() {
   const params = new URLSearchParams(location.search);
   return { namespace: params.get("namespace") ?? "", dataset: params.get("dataset") ?? "" };
@@ -33,7 +33,9 @@ function CatalogView({ csrf, principal }: { csrf: string; principal: string }) {
     const query = new URLSearchParams({ namespace }); if (dataset) query.set("dataset", dataset);
     history.pushState(null, "", `/?${query}`); setRoute({ namespace, dataset }); setCursors([null]); setError("");
   }
-  const selected = namespaceItems.find(n => n.id === route.namespace);
+  const namespace = useQuery({ queryKey: ["namespace", route.namespace], enabled: !!route.namespace,
+    queryFn: () => request<Namespace>(`/api/v1/namespaces/${route.namespace}`, csrf) });
+  const selected = namespace.isError && namespace.error instanceof ApiError && [401,403].includes(namespace.error.status) ? undefined : namespace.data;
   const params = new URLSearchParams({ limit: "25", search });
   if (modality) params.set("modality", modality);
   if (mine) params.set("owner_id", principal);
@@ -56,11 +58,12 @@ function CatalogView({ csrf, principal }: { csrf: string; principal: string }) {
   }
   return <section className="catalog" aria-labelledby="catalog-title">
     <h1 id="catalog-title">Dataset registry</h1>
-    {namespaces.isPending ? <p role="status">Loading workspaces…</p> : namespaces.isError ? <p role="alert">{namespaces.error.message} <button onClick={() => void namespaces.refetch()}>Retry</button></p> : <>
-      <label>Workspace <select value={route.namespace} onChange={event => navigate(event.target.value)}><option value="">Choose a workspace</option>{namespaceItems.map(n => <option key={n.id} value={n.id}>{n.name} ({n.access})</option>)}</select></label>
+    {namespaces.isPending ? <p role="status">Loading workspaces…</p> : namespaces.isError && (!namespaces.data || (namespaces.error instanceof ApiError && [401,403].includes(namespaces.error.status))) ? <p role="alert">{namespaces.error.message} <button onClick={() => void namespaces.refetch()}>Retry</button></p> : <>
+      {namespaces.isError && <p role="alert">More workspaces could not be loaded. Loaded results remain available. <button onClick={() => void namespaces.fetchNextPage()}>Retry workspace page</button></p>}
+      <label>Workspace <select value={route.namespace} onChange={event => navigate(event.target.value)}><option value="">Choose a workspace</option>{selected && !namespaceItems.some(n => n.id === selected.id) && <option value={selected.id}>{selected.name} ({selected.access})</option>}{namespaceItems.map(n => <option key={n.id} value={n.id}>{n.name} ({n.access})</option>)}</select></label>
       {namespaces.hasNextPage && <button disabled={namespaces.isFetchingNextPage} onClick={() => void namespaces.fetchNextPage()}>Load more workspaces</button>}
       {!namespaceItems.length && <p>No workspace access has been granted. Contact your administrator.</p>}
-      {route.namespace && !selected && <p role="alert">This workspace is unavailable or access was removed.</p>}
+      {route.namespace && namespace.isPending && <p role="status">Loading selected workspace…</p>}{route.namespace && namespace.isError && <p role="alert">{namespace.error.message} <button onClick={() => void namespace.refetch()}>Retry selected workspace</button></p>}
       {selected && !route.dataset && <>
         <div className="catalog-tools"><label>Search datasets <input maxLength={200} value={search} onChange={event => { setSearch(event.target.value); setCursors([null]); }} /></label>
           <label>Modality <select value={modality} onChange={event => { setModality(event.target.value); setCursors([null]); }}><option value="">All modalities</option>{["image", "text", "document", "mixed", "audio", "video"].map(value => <option key={value}>{value}</option>)}</select></label>

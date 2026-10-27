@@ -71,6 +71,10 @@ def create_app(
     ):
         return service.list_namespaces(actor, after, limit)
 
+    @app.get("/api/v1/namespaces/{namespace_id}", response_model=c.Namespace)
+    def get_namespace(namespace_id: UUID, actor: Actor):
+        return service.get_namespace(actor, namespace_id)
+
     prefix = "/api/v1/namespaces/{namespace_id}"
 
     @app.get(prefix + "/datasets", response_model=c.DatasetPage)

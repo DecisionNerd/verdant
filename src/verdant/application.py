@@ -29,6 +29,20 @@ class RegistryService:
         self.sessions = sessions
 
     @observed("registry")
+    def get_namespace(self, principal: Principal, namespace_id: UUID) -> c.Namespace:
+        with self.sessions.begin() as session:
+            actor = current_principal(session, principal.id)
+            actor.require(namespace_id)
+            row = session.get(NamespaceRow, namespace_id)
+            if row is None:
+                raise NotFound("Namespace not found")
+            return c.Namespace(
+                id=row.id,
+                name=row.name,
+                access="write" if namespace_id in actor.writable_namespaces else "read",
+            )
+
+    @observed("registry")
     def list_namespaces(
         self, principal: Principal, after: UUID | None = None, limit: int = 50
     ) -> c.NamespacePage:
