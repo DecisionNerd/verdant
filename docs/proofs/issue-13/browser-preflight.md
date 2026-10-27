@@ -29,3 +29,9 @@ Controlled React/Query integration tests (`apps/workspace/src/dataset.test.tsx`,
 Sixty synthetic datasets were added through shared services, producing 62 visible datasets in the qualification namespace. Real browser selected the workspace with Down/Return, moved through pages 1, 2 and 3, retained total 62, and disabled Next on final page. `catalog-pagination.png` shows final-page context. Separate PostgreSQL test covers 1,001 datasets across 11 pages with exact sorted identities and no gaps/duplicates.
 
 Route transitions now focus the catalog heading, and loaded dataset detail focuses its heading. The component regression asserts dataset focus while preserving unsaved input on failed refresh. Production build and both component tests passed; the latest focus changes still require a runtime keyboard retest.
+
+## Draft pages, removal and cross-tab logout
+
+Against runtime `d79d280`, 30 synthetic memberships were prepared through shared commands. Browser loaded revision 31, paged from 25 members to the final 5 with Next disabled, then removed a synthetic member. The UI confirmed `Membership removed.`, showed revision 32, and reset pagination to first page. Dataset detail received keyboard focus on its heading after loading.
+
+Two actual browser tabs shared the authenticated session. Signing out in tab 2 caused tab 1 to remove its dataset and authenticated catalog automatically, before the organizational logout confirmation was completed. `cross-tab-logout.png` records tab 1 showing the organizational sign-in entry. Tab 2 then completed Keycloak logout and showed signed-out state. Different-account cache replacement is additionally covered by the controlled workspace component regression.
