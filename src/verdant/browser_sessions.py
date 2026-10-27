@@ -3,6 +3,7 @@
 import hashlib
 import re
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert
@@ -10,7 +11,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 from starsessions import SessionStore
 
-from verdant.persistence import BrowserSessionRow, LoginAttemptRow
+from verdant.domain import SYSTEM_ACTOR_ID
+from verdant.persistence import AuditRow, BrowserSessionRow, LoginAttemptRow
 
 
 def digest(value: str) -> str:
@@ -102,13 +104,32 @@ class DatabaseSessionStore(SessionStore):
         # Commit before the remote code exchange. Failed exchanges require a fresh login.
         return consumed is not None
 
-    def cleanup_expired(self) -> None:
+    def cleanup_expired(self, *, actor_id: UUID = SYSTEM_ACTOR_ID) -> None:
         from sqlalchemy import delete
 
         with self.sessions.begin() as session:
             now = datetime.now(UTC)
-            session.execute(delete(BrowserSessionRow).where(BrowserSessionRow.expires_at <= now))
-            session.execute(delete(LoginAttemptRow).where(LoginAttemptRow.expires_at <= now))
+            sessions_deleted = session.execute(
+                delete(BrowserSessionRow).where(BrowserSessionRow.expires_at <= now)
+            ).rowcount
+            attempts_deleted = session.execute(
+                delete(LoginAttemptRow).where(LoginAttemptRow.expires_at <= now)
+            ).rowcount
+            session.add(
+                AuditRow(
+                    namespace_id=None,
+                    actor_id=actor_id,
+                    aggregate_id=SYSTEM_ACTOR_ID,
+                    action="identity.sessions_cleaned",
+                    schema_version=1,
+                    payload={
+                        "sessions_deleted": sessions_deleted,
+                        "attempts_deleted": attempts_deleted,
+                        "transport": "operator",
+                        "source": "trusted-process" if actor_id == SYSTEM_ACTOR_ID else "principal",
+                    },
+                )
+            )
 
     def finalize_attempt(self, session_id: str) -> bool:
         """Fence completion against logout, expiry or a superseding login during exchange."""

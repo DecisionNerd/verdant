@@ -51,3 +51,56 @@ def test_login_attempt_is_browser_bound_single_use_and_expiring(sessions):
     store.cleanup_expired()
     with sessions() as session:
         assert session.get(LoginAttemptRow, digest(expired)) is None
+
+
+def test_cleanup_deletes_and_audit_commit_or_rollback_together(sessions):
+    import pytest
+    from sqlalchemy import event, func, select
+
+    from verdant.domain import SYSTEM_ACTOR_ID
+    from verdant.persistence import AuditRow
+
+    store = DatabaseSessionStore(sessions)
+    state, browser = token_hex(16), token_hex(16)
+    store.start_attempt(state, browser)
+    with sessions.begin() as session:
+        session.get(LoginAttemptRow, digest(state)).expires_at = datetime.now(UTC) - timedelta(
+            seconds=1
+        )
+    with sessions() as session:
+        before = session.scalar(
+            select(func.count())
+            .select_from(AuditRow)
+            .where(AuditRow.action == "identity.sessions_cleaned")
+        )
+
+    def fail(session):
+        raise RuntimeError("injected cleanup commit failure")
+
+    event.listen(sessions.class_, "before_commit", fail)
+    try:
+        with pytest.raises(RuntimeError):
+            store.cleanup_expired()
+    finally:
+        event.remove(sessions.class_, "before_commit", fail)
+    with sessions() as session:
+        assert session.get(LoginAttemptRow, digest(state)) is not None
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditRow)
+                .where(AuditRow.action == "identity.sessions_cleaned")
+            )
+            == before
+        )
+    store.cleanup_expired()
+    with sessions() as session:
+        assert session.get(LoginAttemptRow, digest(state)) is None
+        rows = session.scalars(
+            select(AuditRow).where(AuditRow.action == "identity.sessions_cleaned")
+        ).all()
+        assert len(rows) == before + 1
+        latest = max(rows, key=lambda row: row.occurred_at)
+        assert latest.actor_id == SYSTEM_ACTOR_ID
+        assert latest.payload["attempts_deleted"] >= 1
+        assert digest(state) not in str(latest.payload)

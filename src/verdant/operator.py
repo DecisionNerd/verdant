@@ -8,8 +8,8 @@ from uuid import UUID
 from sqlalchemy import select
 
 from verdant.browser_sessions import DatabaseSessionStore
-from verdant.domain import DomainError
-from verdant.identity import SYSTEM_ACTOR_ID, IdentityService
+from verdant.domain import SYSTEM_ACTOR_ID, DomainError
+from verdant.identity import IdentityService
 from verdant.persistence import AuditRow, make_sessions
 
 
@@ -57,7 +57,7 @@ def main(argv=None):
         elif args.command in {"disable", "enable"}:
             service.set_enabled(args.principal_id, args.command == "enable", actor_id=args.actor)
         elif args.command == "cleanup-sessions":
-            DatabaseSessionStore(sessions).cleanup_expired()
+            DatabaseSessionStore(sessions).cleanup_expired(actor_id=args.actor)
         elif args.command == "audit":
             with sessions() as session:
                 rows = session.scalars(

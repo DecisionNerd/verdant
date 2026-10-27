@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
+from verdant.domain import SYSTEM_ACTOR_ID
 from verdant.identity import IdentityService
 from verdant.operator import main
 from verdant.persistence import AuditRow, NamespaceGrantRow, PrincipalRow
@@ -80,6 +81,11 @@ def test_operator_commands_recover_without_rebinding_identity(registry, sessions
     events = json.loads(capsys.readouterr().out)
     assert {event["actor_id"] for event in events} == {str(operator.id)}
     assert len(events) == 5
+    main(actor + ["cleanup-sessions"])
+    main(actor + ["audit", str(SYSTEM_ACTOR_ID)])
+    cleanup_events = json.loads(capsys.readouterr().out)
+    cleanup = [event for event in cleanup_events if event["action"] == "identity.sessions_cleaned"]
+    assert any(event["actor_id"] == str(operator.id) for event in cleanup)
     with sessions() as session:
         from uuid import UUID
 

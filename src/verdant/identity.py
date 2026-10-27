@@ -6,7 +6,7 @@ from sqlalchemy import delete, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
-from verdant.domain import Forbidden, NotFound, Principal
+from verdant.domain import SYSTEM_ACTOR_ID, Forbidden, NotFound, Principal
 from verdant.persistence import (
     AuditRow,
     ExternalIdentityRow,
@@ -15,9 +15,6 @@ from verdant.persistence import (
     PrincipalRow,
 )
 from verdant.telemetry import observed
-
-# An explicit audit identity for trusted bootstrap/recovery process actions, never a login account.
-SYSTEM_ACTOR_ID = UUID("2cde0c9f-67dc-4ef0-9460-a72339dd301d")
 
 
 def current_principal(session: Session, principal_id: UUID) -> Principal:

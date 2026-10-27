@@ -3,6 +3,9 @@
 from dataclasses import dataclass
 from uuid import UUID
 
+# An explicit audit identity for trusted bootstrap/recovery process actions, never a login account.
+SYSTEM_ACTOR_ID = UUID("2cde0c9f-67dc-4ef0-9460-a72339dd301d")
+
 
 class DomainError(Exception):
     """A safe, intentional application failure."""
