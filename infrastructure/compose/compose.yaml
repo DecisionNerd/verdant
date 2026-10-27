@@ -1,0 +1,125 @@
+name: verdant-platform
+services:
+  database:
+    image: postgres:17.6@sha256:00bc86618629af00d2937fdc5a5d63db3ff8450acf52f0636ec813c7f4902929
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run bootstrap.py and pass --env-file}
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./.local/database.sql:/docker-entrypoint-initdb.d/01-platform.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U postgres']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+  auth:
+    image: quay.io/keycloak/keycloak@sha256:a78d6b79572168cb25886b80a8b5b8d4ed4390743e3eecb810538683e209dd6b
+    command: [start-dev, --import-realm]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://database:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_PASSWORD:?}
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?}
+      KC_HOSTNAME: http://auth.127.0.0.1.sslip.io:18801
+      KC_HTTP_PORT: '18801'
+      KC_HEALTH_ENABLED: 'true'
+    healthcheck:
+      test: [CMD, bash, -ec, 'exec 3<>/dev/tcp/127.0.0.1/9000; printf "GET /health/ready HTTP/1.0\r\n\r\n" >&3; grep -q "200 OK" <&3']
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 30s
+    ports: ['127.0.0.1:18801:18801']
+    volumes:
+      - ./.local/realm.json:/opt/keycloak/data/import/realm.json:ro
+      - ./quarkus.properties:/opt/keycloak/conf/quarkus.properties:ro
+    networks:
+      default:
+        aliases: [auth.127.0.0.1.sslip.io]
+    depends_on:
+      database: {condition: service_healthy}
+    restart: unless-stopped
+  migrate:
+    image: verdant-platform-api:local
+    build:
+      context: ../..
+      dockerfile: infrastructure/compose/Dockerfile.api
+    command: [alembic, upgrade, head]
+    environment:
+      VERDANT_DATABASE_URL: postgresql+psycopg://registry:${REGISTRY_PASSWORD:?}@database:5432/registry
+    depends_on:
+      database: {condition: service_healthy}
+  api:
+    image: verdant-platform-api:local
+    build:
+      context: ../..
+      dockerfile: infrastructure/compose/Dockerfile.api
+    environment:
+      VERDANT_DATABASE_URL: postgresql+psycopg://registry:${REGISTRY_PASSWORD:?}@database:5432/registry
+      VERDANT_OIDC_ISSUER: ${VERDANT_OIDC_ISSUER:?}
+      VERDANT_OIDC_CLIENT_ID: verdant-browser
+      VERDANT_OIDC_CLIENT_SECRET: ${BROWSER_SECRET:?}
+      VERDANT_APP_URL: ${VERDANT_APP_URL:?}
+      VERDANT_OIDC_GROUP: /workspace
+      VERDANT_API_AUDIENCE: verdant-api
+      VERDANT_SERVICE_CLIENTS: verdant-worker
+      VERDANT_INSECURE_LOCAL_HTTP: '1'
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      auth: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+  web:
+    image: verdant-platform-web:local
+    build:
+      context: ../..
+      dockerfile: infrastructure/compose/Dockerfile.web
+    ports: ['127.0.0.1:18800:8080']
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:8080/health/web']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+  objects:
+    image: chrislusf/seaweedfs@sha256:f7a49e3f3972ebed5be2ed4befa4a0c68eb7bdddba6e692d42729ceb545134b8
+    command:
+      - mini
+      - -dir=/data
+      - -ip=objects
+      - -ip.bind=0.0.0.0
+      - -s3.port=8333
+      - -s3.config=/run/secrets/objects.json
+      - -s3.autoCreateBucket=false
+      - -bucket=verdant-artifacts
+      - -s3.allowedOrigins=http://127.0.0.1:18800
+      - -webdav=false
+      - -admin.ui=false
+      - -s3.port.iceberg=0
+      - -s3.port.lance=0
+      - -master.telemetry=false
+      - -master.volumeSizeLimitMB=64
+      - -master.volumePreallocate=false
+      - -volume.max=16
+    volumes:
+      - objects:/data
+      - ./.local/objects.json:/run/secrets/objects.json:ro
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:9333/cluster/status']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    ports: ['127.0.0.1:18833:8333']
+    restart: unless-stopped
+volumes:
+  database:
+  objects:

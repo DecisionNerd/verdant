@@ -41,4 +41,22 @@ pnpm --filter @verdant/docs dev
 pnpm --filter @verdant/docs build
 ```
 
-These commands serve or build documentation only. See [Python foundation setup and proof](docs/engineering/PLATFORM-FOUNDATION.md) for the bounded registry backend. Existing Compose definitions are not the target deployment contract.
+These commands serve or build documentation only. See [Python foundation setup and proof](docs/engineering/PLATFORM-FOUNDATION.md) for the bounded registry backend. Root Compose now starts the registry/identity slice described below; full execution and publication remain under implementation.
+
+
+## Local registry and identity
+
+Requirements: Docker Compose v2 with `include` support, Python 3, and uv for smoke checks.
+
+```sh
+python3 infrastructure/compose/bootstrap.py
+docker compose config --quiet
+docker compose up -d --build
+uv run --locked python scripts/qualify_compose.py
+```
+
+Open http://127.0.0.1:18800. The realm starts without human accounts; follow the [local runbook](infrastructure/compose/README.md) for user provisioning, canonical issuer, credentials, endpoints, and qualification limits. The smoke creates only synthetic local registry/storage fixtures and a scoped service grant.
+
+Stop with `docker compose down`; named volumes persist. Do not delete `.local/` or volumes during routine recovery. [Qualification evidence](docs/proofs/issue-12/compose-preflight.md) records the tested scope.
+
+The old digestion composition remains in `docker-compose.legacy.yml`, with its original relative paths. It is not started by the root command. Existing legacy volumes and bind-mounted data are untouched. If operating a prior installation, use its original explicit project name with `docker compose -p ORIGINAL_PROJECT -f docker-compose.legacy.yml ...`; do not point the new stack at legacy data or run a reset as a migration.

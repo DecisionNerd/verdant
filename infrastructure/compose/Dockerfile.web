@@ -1,0 +1,15 @@
+FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS build
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/workspace ./apps/workspace
+RUN pnpm --filter @verdant/workspace install --frozen-lockfile
+RUN pnpm --filter @verdant/workspace build
+
+FROM nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
+COPY infrastructure/compose/web.conf /etc/nginx/nginx.conf
+COPY --from=build /app/apps/workspace/dist /usr/share/nginx/html
+USER 101:101
+EXPOSE 8080
+ENTRYPOINT ["nginx"]
+CMD ["-g", "daemon off;"]
