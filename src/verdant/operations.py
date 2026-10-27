@@ -3,16 +3,24 @@
 import hashlib
 import json
 from datetime import datetime, timedelta
+from typing import Literal
 from uuid import UUID, uuid4
 
 from pydantic import Field, JsonValue, model_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 
-from verdant.contracts import Contract
+from verdant.contracts import Contract, Digest, Revision
 from verdant.domain import Conflict, NotFound, Principal
 from verdant.identity import current_principal
-from verdant.persistence import AuditRow, NamespaceRow, OperationEventRow, OperationRow, OutboxRow
+from verdant.persistence import (
+    AuditRow,
+    EffectReceiptRow,
+    NamespaceRow,
+    OperationEventRow,
+    OperationRow,
+    OutboxRow,
+)
 from verdant.telemetry import observed
 
 
@@ -56,6 +64,54 @@ class DeliveryClaim(Contract):
     schema_version: int
     payload: dict[str, JsonValue]
     lease_until: datetime
+
+
+class EffectRequest(Contract):
+    kind: str = Field(min_length=1, max_length=100)
+    item: str = Field(min_length=1, max_length=500)
+    input_revision: str = Field(min_length=1, max_length=200)
+    request: dict[str, JsonValue] = Field(default_factory=dict)
+
+    def identity(self):
+        # Attempt epoch is deliberately absent from logical effect identity.
+        return self.model_dump(exclude={"request"})
+
+    @model_validator(mode="after")
+    def bounded(self):
+        if len(json.dumps(self.model_dump(), ensure_ascii=False, allow_nan=False).encode()) > 65536:
+            raise ValueError("Effect input exceeds 64 KiB")
+        return self
+
+
+class EffectReceipt(Contract):
+    id: UUID
+    operation_id: UUID
+    effect_key: str
+    request_digest: str
+    status: str
+    revision: int
+    dispatch_id: UUID | None
+    dispatch_epoch: int | None
+    result_digest: str | None
+    provider_reference: str | None
+
+
+class EffectResult(Contract):
+    result_digest: Digest
+    provider_reference: str = Field(min_length=1, max_length=1000)
+
+
+class EffectReconciliation(Contract):
+    expected_revision: Revision
+    outcome: Literal["found", "absent"]
+    result: EffectResult | None = None
+    evidence: str = Field(min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def matching_result(self):
+        if (self.outcome == "found") != (self.result is not None):
+            raise ValueError("Found reconciliation requires a result; absent must omit it")
+        return self
 
 
 class OperationService:
@@ -125,10 +181,13 @@ class OperationService:
             return self._view(session.get(OperationRow, operation_id))
 
     @staticmethod
-    def _record_transition(session, actor: Principal, row: OperationRow):
+    def _record_transition(
+        session, actor: Principal, row: OperationRow, event_type=None, extra=None
+    ):
         event_id = uuid4()
-        event_type = "operation." + row.status
+        event_type = event_type or "operation." + row.status
         payload = {"operation_id": str(row.id), "epoch": row.epoch, "revision": row.revision}
+        payload |= extra or {}
         session.add(
             OperationEventRow(
                 id=event_id,
@@ -196,6 +255,19 @@ class OperationService:
                 new_attempt and row.epoch == 9223372036854775807
             ):
                 raise Conflict("Operation revision limit reached")
+            if (
+                target == "cancelled"
+                and session.scalar(
+                    select(EffectReceiptRow.id)
+                    .where(
+                        EffectReceiptRow.operation_id == operation_id,
+                        EffectReceiptRow.status == "unknown",
+                    )
+                    .limit(1)
+                )
+                is not None
+            ):
+                raise Conflict("Unknown effects must be reconciled before cancellation completes")
             row.status = target
             row.revision += 1
             if new_attempt:
@@ -334,3 +406,175 @@ class OperationService:
                     },
                 )
             )
+
+    @staticmethod
+    def _effect_view(row):
+        return EffectReceipt(**{name: getattr(row, name) for name in EffectReceipt.model_fields})
+
+    @staticmethod
+    def _locked_operation(session, actor, namespace_id, operation_id, epoch=None):
+        current_principal(session, actor.id).require(namespace_id, write=True)
+        operation = session.scalar(
+            select(OperationRow)
+            .where(OperationRow.namespace_id == namespace_id, OperationRow.id == operation_id)
+            .with_for_update()
+        )
+        if operation is None:
+            raise NotFound("Operation not found")
+        if epoch is not None and operation.epoch != epoch:
+            raise Conflict("Operation attempt is stale")
+        return operation
+
+    @staticmethod
+    def _locked_effect(session, namespace_id, operation_id, receipt_id):
+        row = session.scalar(
+            select(EffectReceiptRow)
+            .where(
+                EffectReceiptRow.namespace_id == namespace_id,
+                EffectReceiptRow.operation_id == operation_id,
+                EffectReceiptRow.id == receipt_id,
+            )
+            .with_for_update()
+        )
+        if row is None:
+            raise NotFound("Effect receipt not found")
+        return row
+
+    def _effect_event(self, session, actor, operation, receipt, action):
+        operation.revision += 1
+        self._record_transition(
+            session,
+            actor,
+            operation,
+            "operation.effect_" + action,
+            {"receipt_id": str(receipt.id), "effect_key": receipt.effect_key},
+        )
+
+    @observed("operations")
+    def prepare_effect(
+        self,
+        actor: Principal,
+        namespace_id: UUID,
+        operation_id: UUID,
+        epoch: int,
+        command: EffectRequest,
+    ) -> EffectReceipt:
+        def digest(value):
+            return hashlib.sha256(
+                json.dumps(
+                    value,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ).encode()
+            ).hexdigest()
+
+        key, request_digest = digest(command.identity()), digest(command.request)
+        with self.sessions.begin() as session:
+            operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
+            if operation.status != "running":
+                raise Conflict("Effects require a running operation")
+            row = session.scalar(
+                select(EffectReceiptRow).where(
+                    EffectReceiptRow.operation_id == operation_id,
+                    EffectReceiptRow.effect_key == key,
+                )
+            )
+            if row is not None:
+                if row.request_digest != request_digest:
+                    raise Conflict("Logical effect was already bound to different inputs")
+                return self._effect_view(row)
+            row = EffectReceiptRow(
+                namespace_id=namespace_id,
+                operation_id=operation_id,
+                effect_key=key,
+                identity=command.identity(),
+                request_digest=request_digest,
+                request=command.request,
+            )
+            session.add(row)
+            session.flush()
+            self._effect_event(session, actor, operation, row, "prepared")
+            return self._effect_view(row)
+
+    @observed("operations")
+    def begin_effect(
+        self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int, receipt_id: UUID
+    ) -> EffectReceipt:
+        with self.sessions.begin() as session:
+            operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
+            if operation.status != "running":
+                raise Conflict("Effects require a running operation")
+            row = self._locked_effect(session, namespace_id, operation_id, receipt_id)
+            if row.status != "prepared":
+                raise Conflict("Effect already dispatched; reuse success or reconcile uncertainty")
+            # Persist uncertainty before external I/O. A crash must never allow blind replay.
+            row.status, row.dispatch_id, row.dispatch_epoch = "unknown", uuid4(), epoch
+            row.revision += 1
+            self._effect_event(session, actor, operation, row, "dispatched")
+            return self._effect_view(row)
+
+    @observed("operations")
+    def complete_effect(
+        self,
+        actor: Principal,
+        namespace_id: UUID,
+        operation_id: UUID,
+        epoch: int,
+        receipt_id: UUID,
+        dispatch_id: UUID,
+        result: EffectResult,
+    ) -> EffectReceipt:
+        with self.sessions.begin() as session:
+            operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
+            row = self._locked_effect(session, namespace_id, operation_id, receipt_id)
+            if row.dispatch_id != dispatch_id or row.dispatch_epoch != epoch:
+                raise Conflict("Effect dispatch is stale")
+            if row.status == "succeeded":
+                if (row.result_digest, row.provider_reference) != (
+                    result.result_digest,
+                    result.provider_reference,
+                ):
+                    raise Conflict("Effect result conflicts with its committed receipt")
+                return self._effect_view(row)
+            if (
+                operation.status not in {"running", "cancellation_requested"}
+                or row.status != "unknown"
+            ):
+                raise Conflict("Effect result requires reconciliation")
+            row.status = "succeeded"
+            row.result_digest, row.provider_reference = (
+                result.result_digest,
+                result.provider_reference,
+            )
+            row.revision += 1
+            self._effect_event(session, actor, operation, row, "completed")
+            return self._effect_view(row)
+
+    @observed("operations")
+    def reconcile_effect(
+        self,
+        actor: Principal,
+        namespace_id: UUID,
+        operation_id: UUID,
+        receipt_id: UUID,
+        command: EffectReconciliation,
+    ) -> EffectReceipt:
+        with self.sessions.begin() as session:
+            # A current authorized reconciler may record provider facts from an old epoch.
+            operation = self._locked_operation(session, actor, namespace_id, operation_id)
+            row = self._locked_effect(session, namespace_id, operation_id, receipt_id)
+            if row.status != "unknown" or row.revision != command.expected_revision:
+                raise Conflict("Effect reconciliation is stale")
+            if command.outcome == "found":
+                row.status = "succeeded"
+                row.result_digest = command.result.result_digest
+                row.provider_reference = command.result.provider_reference
+            else:
+                row.status = "prepared"
+                row.dispatch_id = row.dispatch_epoch = None
+            row.reconciliation_evidence = command.evidence
+            row.revision += 1
+            self._effect_event(session, actor, operation, row, "reconciled")
+            return self._effect_view(row)

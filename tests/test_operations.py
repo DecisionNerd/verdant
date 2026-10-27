@@ -177,3 +177,107 @@ def test_cancellation_and_start_race_serializes_on_operation(registry, sessions)
         service.start(actor, ns, op.id, 1)
     with pytest.raises(Conflict):
         service.retry(actor, ns, op.id, 1)
+
+
+def test_effect_success_survives_new_attempt_without_new_dispatch(registry, sessions):
+    from verdant.operations import EffectRequest, EffectResult
+
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    op = service.admit(
+        actor, ns, OperationRequest(request_key="effect-success", kind="qualification")
+    )
+    service.start(actor, ns, op.id, 1)
+    command = EffectRequest(
+        kind="provider-write", item="item-1", input_revision="rev-1", request={"value": 1}
+    )
+    receipt = service.prepare_effect(actor, ns, op.id, 1, command)
+    dispatch = service.begin_effect(actor, ns, op.id, 1, receipt.id)
+    result = EffectResult(result_digest="a" * 64, provider_reference="provider-result-1")
+    completed = service.complete_effect(
+        actor, ns, op.id, 1, receipt.id, dispatch.dispatch_id, result
+    )
+    assert (
+        service.complete_effect(actor, ns, op.id, 1, receipt.id, dispatch.dispatch_id, result)
+        == completed
+    )
+    service.fail(actor, ns, op.id, 1)
+    service.retry(actor, ns, op.id, 1)
+    service.start(actor, ns, op.id, 2)
+    reused = service.prepare_effect(actor, ns, op.id, 2, command)
+    assert reused == completed
+    with pytest.raises(Conflict):
+        service.begin_effect(actor, ns, op.id, 2, receipt.id)
+    with pytest.raises(Conflict):
+        service.prepare_effect(
+            actor, ns, op.id, 2, command.model_copy(update={"request": {"value": 2}})
+        )
+
+
+def test_provider_success_then_crash_requires_reconciliation_before_replay(registry, sessions):
+    from verdant.operations import EffectReconciliation, EffectRequest, EffectResult
+
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    op = service.admit(actor, ns, OperationRequest(request_key="ambiguous", kind="qualification"))
+    service.start(actor, ns, op.id, 1)
+    command = EffectRequest(kind="provider-write", item="item", input_revision="rev", request={})
+    receipt = service.prepare_effect(actor, ns, op.id, 1, command)
+    dispatch = service.begin_effect(actor, ns, op.id, 1, receipt.id)
+    # Model a provider write that succeeds, followed by process death before receipt completion.
+    provider_writes = ["provider-record"]
+    service.fail(actor, ns, op.id, 1)
+    service.retry(actor, ns, op.id, 1)
+    service.start(actor, ns, op.id, 2)
+    unknown = service.prepare_effect(actor, ns, op.id, 2, command)
+    assert unknown.id == receipt.id and unknown.status == "unknown"
+    with pytest.raises(Conflict):
+        service.begin_effect(actor, ns, op.id, 2, receipt.id)
+    result = EffectResult(result_digest="b" * 64, provider_reference=provider_writes[0])
+    with pytest.raises(Conflict, match="stale"):
+        service.complete_effect(actor, ns, op.id, 1, receipt.id, dispatch.dispatch_id, result)
+    reconciled = service.reconcile_effect(
+        actor,
+        ns,
+        op.id,
+        receipt.id,
+        EffectReconciliation(
+            expected_revision=unknown.revision,
+            outcome="found",
+            result=result,
+            evidence="Provider lookup matched stable invocation key",
+        ),
+    )
+    assert reconciled.status == "succeeded"
+    assert len(provider_writes) == 1
+    assert service.prepare_effect(actor, ns, op.id, 2, command).id == reconciled.id
+
+
+def test_unknown_effect_blocks_cancellation_until_authorized_reconciliation(registry, sessions):
+    from verdant.operations import EffectReconciliation, EffectRequest
+
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    op = service.admit(
+        actor, ns, OperationRequest(request_key="cancel-effect", kind="qualification")
+    )
+    service.start(actor, ns, op.id, 1)
+    receipt = service.prepare_effect(
+        actor, ns, op.id, 1, EffectRequest(kind="write", item="item", input_revision="1")
+    )
+    unknown = service.begin_effect(actor, ns, op.id, 1, receipt.id)
+    service.request_cancel(actor, ns, op.id, 1)
+    with pytest.raises(Conflict, match="reconciled"):
+        service.confirm_cancel(actor, ns, op.id, 1)
+    service.reconcile_effect(
+        actor,
+        ns,
+        op.id,
+        receipt.id,
+        EffectReconciliation(
+            expected_revision=unknown.revision,
+            outcome="absent",
+            evidence="Provider lookup proved no accepted write",
+        ),
+    )
+    assert service.confirm_cancel(actor, ns, op.id, 1).status == "cancelled"

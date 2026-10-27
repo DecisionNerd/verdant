@@ -277,6 +277,34 @@ class OutboxRow(Base):
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class EffectReceiptRow(Base):
+    __tablename__ = "effect_receipts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        UniqueConstraint("operation_id", "effect_key", name="uq_logical_effect"),
+        CheckConstraint("status IN ('prepared','unknown','succeeded')", name="ck_effect_status"),
+        CheckConstraint("revision >= 0", name="ck_effect_revision"),
+        CheckConstraint("request_digest ~ '^[0-9a-f]{64}$'", name="ck_effect_digest"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    operation_id: Mapped[UUID]
+    effect_key: Mapped[str] = mapped_column(String(64))
+    identity: Mapped[dict] = mapped_column(JSONB)
+    request_digest: Mapped[str] = mapped_column(String(64))
+    request: Mapped[dict] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(20), server_default="prepared")
+    revision: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    dispatch_id: Mapped[UUID | None]
+    dispatch_epoch: Mapped[int | None] = mapped_column(BigInteger)
+    result_digest: Mapped[str | None] = mapped_column(String(64))
+    provider_reference: Mapped[str | None] = mapped_column(String(1000))
+    reconciliation_evidence: Mapped[str | None] = mapped_column(String(2000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 def make_sessions(database_url: str) -> sessionmaker[Session]:
     from sqlalchemy.engine import make_url
 
