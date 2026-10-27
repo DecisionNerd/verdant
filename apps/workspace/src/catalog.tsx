@@ -11,7 +11,7 @@ function initialRoute() {
 }
 export function Catalog({ csrf, principal }: { csrf: string; principal: string }) {
   // Scope cache lifetime to one authenticated principal, including across logout/login.
-  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 15000 } } }));
+  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 15000, refetchOnWindowFocus: false, refetchOnReconnect: false } } }));
   return <QueryClientProvider client={client}><CatalogView csrf={csrf} principal={principal} /></QueryClientProvider>;
 }
 function CatalogView({ csrf, principal }: { csrf: string; principal: string }) {
