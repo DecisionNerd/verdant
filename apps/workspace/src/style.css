@@ -14,3 +14,18 @@ button:disabled { opacity: .65; cursor: wait; }
 a:focus-visible, button:focus-visible { outline: 3px solid #163e36; outline-offset: 5px; }
 [role="alert"] { border-left: 3px solid #855026; padding-left: 16px; color: #653c1a; }
 @media (max-width: 520px) { header { align-items: flex-start; flex-direction: column; gap: 8px; } h1 { margin-bottom: 40px; } }
+.catalog { padding-top: 40px; }
+.catalog h1 { font-size: 2.4rem; margin-bottom: 28px; }
+.session-bar, .catalog-tools, .catalog nav { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin: 20px 0; }
+label { display: inline-flex; flex-direction: column; gap: 8px; margin: 8px 16px 8px 0; }
+input, select { font: inherit; min-height: 44px; padding: 8px 12px; border: 1px solid #718e83; border-radius: 4px; background: white; color: #163e36; max-width: 100%; }
+input[type=checkbox] { min-height: auto; }
+input:focus-visible, select:focus-visible { outline: 3px solid #006b5a; outline-offset: 3px; }
+.table-scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; text-align: left; }
+caption { text-align: left; padding: 16px 0; color: #5d706a; }
+th, td { padding: 16px 12px; border-bottom: 1px solid #d9e5df; }
+th { background: #e4eee8; }
+a { color: #006b5a; }
+.identifier { overflow-wrap: anywhere; }
+form { padding: 20px; border: 1px solid #718e83; margin: 20px 0; }

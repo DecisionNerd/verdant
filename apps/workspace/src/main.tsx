@@ -1,6 +1,7 @@
 import { StrictMode, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
+import { Catalog } from "./catalog";
 
 type Session =
   | { authenticated: false }
@@ -67,14 +68,14 @@ function Workspace() {
   return (
     <main>
       <header><span className="brand">Verdant</span><span>Dataset workspace</span></header>
-      <section aria-labelledby="title">
+      {session?.authenticated ? <>
+        <div className="session-bar"><span>Signed in as {session.display_name}</span><button onClick={() => void logout()} disabled={busy}>Sign out</button></div>
+        {error && <p role="alert">{error}</p>}
+        <Catalog key={session.principal_id} principal={session.principal_id} csrf={session.csrf_token} />
+      </> : <section aria-labelledby="title">
         <h1 id="title">Your data.<br />A shared foundation.</h1>
         <div className="access" aria-live="polite">
-          {error ? <><p role="alert">{error}</p><button onClick={() => void refresh()}>Retry session check</button></> : session === null ? <p role="status">Checking your session…</p> : session.authenticated ? <>
-            <h2>Welcome, {session.display_name || "workspace member"}.</h2>
-            <p>You are signed in. Your workspace permissions determine which datasets you can access.</p>
-            <button onClick={() => void logout()} disabled={busy}>{busy ? "Signing out…" : "Sign out"}</button>
-          </> : <>
+          {error ? <><p role="alert">{error}</p><button onClick={() => void refresh()}>Retry session check</button></> : session === null ? <p role="status">Checking your session…</p> : <>
             <h2>{expired ? "Your session has expired" : query.has("signed_out") ? "You are signed out" : "Enter your workspace"}</h2>
             {loginError && <p role="alert">{loginError}</p>}
             {query.has("identity_unavailable") && <p role="alert">You are signed out here. Organizational sign-out could not be reached.</p>}
@@ -83,7 +84,7 @@ function Workspace() {
             {query.get("auth_error") === "denied" && <p><a href="/auth/login?switch_account=1">Use another account</a></p>}
           </>}
         </div>
-      </section>
+      </section>}
     </main>
   );
 }
