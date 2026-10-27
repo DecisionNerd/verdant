@@ -80,19 +80,14 @@ while True:
 if args.browser_config:
     if urlsplit(args.origin).hostname not in {"127.0.0.1", "localhost"}:
         raise RuntimeError("Browser proof requires its explicit loopback origin")
-    admin.put_bucket_cors(
-        Bucket=bucket,
-        CORSConfiguration={
-            "CORSRules": [
-                {
-                    "AllowedOrigins": [args.origin],
-                    "AllowedMethods": ["GET", "PUT", "HEAD"],
-                    "AllowedHeaders": ["content-type", "x-amz-*"],
-                    "ExposeHeaders": ["ETag"],
-                }
-            ]
-        },
-    )
+    receipt = json.loads(Path(args.receipt).read_text())
+    rules = admin.get_bucket_cors(Bucket=bucket)["CORSRules"]
+    for rule in rules:
+        if args.origin not in rule["AllowedOrigins"]:
+            rule["AllowedOrigins"].append(args.origin)
+    admin.put_bucket_cors(Bucket=bucket, CORSConfiguration={"CORSRules": rules})
+    receipt["cors"] = admin.get_bucket_cors(Bucket=bucket)["CORSRules"]
+    Path(args.receipt).write_text(json.dumps(receipt) + "\n")
     key = "qualification/" + uuid4().hex + "/browser"
     body = "Browser storage qualification\n"
     params = {"Bucket": bucket, "Key": key}

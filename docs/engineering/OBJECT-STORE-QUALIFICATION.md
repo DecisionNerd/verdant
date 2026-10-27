@@ -1,6 +1,6 @@
 # Local object-store qualification
 
-Issue #12 remains in progress. This receipt covers the object service and Python image prototype; it does not establish that the target Compose bootstrap starts the platform. Root Compose still points at the legacy digestion stack at this checkpoint.
+This receipt covers the isolated object-service fixture and Python image preflight. The target Compose lifecycle is qualified separately in [Compose proof](../proofs/issue-12/compose-preflight.md).
 
 ## Candidate and boundary
 
@@ -75,4 +75,4 @@ URLs expire after 120 seconds. Run the page's upload/download button before expi
 
 ## Remaining #12 work
 
-Implement generated private configuration and bucket/realm/database bootstrap; core Compose/migration/health sequencing; web image and real workflow-profile commands; complete browser/container identity wiring; down/up and dependency recovery; legacy composition isolation; CI and independent readiness review. Domain ingestion, immutable publication, retained-reference garbage collection, and integration-specific MLflow/Mimir/Loki/Tempo clients remain their own acceptance slices. No unsupported capability is inferred from these object-service checks.
+The registry-only Compose slice is implemented and qualified separately. Execution services and optional integrations remain tied to later implemented workflows. Domain ingestion, immutable publication, retained-reference garbage collection, and integration-specific MLflow/Mimir/Loki/Tempo clients remain their own acceptance slices. No unsupported capability is inferred from these object-service checks.

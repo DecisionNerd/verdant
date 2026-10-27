@@ -85,6 +85,10 @@ def bootstrap():
             f"CREATE USER keycloak PASSWORD '{values['KEYCLOAK_PASSWORD']}';\n"
             "CREATE DATABASE keycloak OWNER keycloak;\n"
         )
+        # Container users read bind-mounted files through Docker, while the private
+        # parent directory prevents other host users from traversing to them.
+        for name in ("realm.json", "objects.json", "database.sql"):
+            (directory / name).chmod(0o644)
         os.rename(directory, DESTINATION)
     finally:
         if directory.exists():
