@@ -281,3 +281,116 @@ def test_unknown_effect_blocks_cancellation_until_authorized_reconciliation(regi
         ),
     )
     assert service.confirm_cancel(actor, ns, op.id, 1).status == "cancelled"
+
+
+def prepared_verification(registry, sessions, result_digest=None):
+    from verdant.contracts import SampleCreate
+    from verdant.operations import EffectRequest, EffectResult
+
+    registry_service, actor, ns = registry
+    revision = registry_service.create_sample(
+        actor,
+        ns,
+        SampleCreate(
+            source_key="verify",
+            modality="text",
+            sha256="a" * 64,
+            object_key="synthetic/verify",
+            size_bytes=1,
+        ),
+    )
+    service = OperationService(sessions)
+    op = service.admit(
+        actor,
+        ns,
+        OperationRequest(
+            request_key="verification",
+            kind="verify_sample_artifact",
+            inputs={"sample_id": str(revision.sample_id), "revision_id": str(revision.id)},
+        ),
+    )
+    service.start(actor, ns, op.id, 1)
+    with pytest.raises(Conflict):
+        service.finalize_verification(actor, ns, op.id, 1)
+    receipt = service.prepare_effect(
+        actor,
+        ns,
+        op.id,
+        1,
+        EffectRequest(kind="artifact.read", item=str(revision.id), input_revision=revision.sha256),
+    )
+    dispatch = service.begin_effect(actor, ns, op.id, 1, receipt.id)
+    service.complete_effect(
+        actor,
+        ns,
+        op.id,
+        1,
+        receipt.id,
+        dispatch.dispatch_id,
+        EffectResult(
+            result_digest=result_digest or revision.sha256, provider_reference=str(revision.id)
+        ),
+    )
+    return service, actor, ns, op, revision
+
+
+def test_success_requires_accepted_result_and_commits_it_atomically(registry, sessions):
+    from verdant.persistence import VerificationResultRow
+
+    service, actor, ns, op, revision = prepared_verification(registry, sessions)
+    finished = service.finalize_verification(actor, ns, op.id, 1)
+    assert finished.status == "succeeded"
+    assert service.finalize_verification(actor, ns, op.id, 1) == finished
+    with sessions() as session:
+        accepted = session.get(VerificationResultRow, op.id)
+        assert accepted.sample_revision_id == revision.id
+        assert accepted.sha256 == revision.sha256
+        event = session.scalar(
+            select(OperationEventRow).where(
+                OperationEventRow.operation_id == op.id,
+                OperationEventRow.event_type == "operation.succeeded",
+            )
+        )
+        assert session.get(OutboxRow, event.id)
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditRow)
+                .where(AuditRow.aggregate_id == op.id, AuditRow.action == "operation.succeeded")
+            )
+            == 1
+        )
+    with pytest.raises(Conflict):
+        service.fail(actor, ns, op.id, 1)
+
+
+def test_cancellation_and_success_finalization_have_one_serialized_outcome(registry, sessions):
+    from verdant.persistence import VerificationResultRow
+
+    service, actor, ns, op, _ = prepared_verification(registry, sessions)
+    barrier = Barrier(2)
+
+    def action(cancel):
+        barrier.wait(timeout=5)
+        try:
+            return (service.request_cancel if cancel else service.finalize_verification)(
+                actor, ns, op.id, 1
+            ).status
+        except Conflict:
+            return "conflict"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(action, [True, False]))
+    state = service.get(actor, ns, op.id).status
+    assert outcomes.count("conflict") == 1
+    with sessions() as session:
+        accepted = session.get(VerificationResultRow, op.id)
+        assert (accepted is not None) == (state == "succeeded")
+    assert state in {"succeeded", "cancellation_requested"}
+
+
+def test_wrong_artifact_digest_cannot_finalize_success(registry, sessions):
+    service, actor, ns, op, _ = prepared_verification(registry, sessions, result_digest="b" * 64)
+    with pytest.raises(Conflict, match="matching artifact result"):
+        service.finalize_verification(actor, ns, op.id, 1)
+    assert service.get(actor, ns, op.id).status == "running"

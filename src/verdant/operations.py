@@ -20,6 +20,8 @@ from verdant.persistence import (
     OperationEventRow,
     OperationRow,
     OutboxRow,
+    SampleRevisionRow,
+    VerificationResultRow,
 )
 from verdant.telemetry import observed
 
@@ -578,3 +580,68 @@ class OperationService:
             row.revision += 1
             self._effect_event(session, actor, operation, row, "reconciled")
             return self._effect_view(row)
+
+    @observed("operations")
+    def finalize_verification(
+        self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int
+    ) -> Operation:
+        with self.sessions.begin() as session:
+            operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
+            if operation.status == "succeeded":
+                return self._view(operation)
+            if operation.status != "running" or operation.kind != "verify_sample_artifact":
+                raise Conflict("Operation does not permit verification finalization")
+            try:
+                sample_id = UUID(operation.inputs["sample_id"])
+                revision_id = UUID(operation.inputs["revision_id"])
+            except (KeyError, TypeError, ValueError):
+                raise Conflict("Verification request has invalid sample identity") from None
+            revision = session.scalar(
+                select(SampleRevisionRow).where(
+                    SampleRevisionRow.namespace_id == namespace_id,
+                    SampleRevisionRow.sample_id == sample_id,
+                    SampleRevisionRow.id == revision_id,
+                )
+            )
+            if revision is None:
+                raise NotFound("Verification sample revision not found")
+            # Artifact verification accepts exactly one matching read receipt.
+            receipts = session.scalars(
+                select(EffectReceiptRow)
+                .where(EffectReceiptRow.operation_id == operation_id)
+                .limit(2)
+            ).all()
+            expected_identity = {
+                "kind": "artifact.read",
+                "item": str(revision_id),
+                "input_revision": revision.sha256,
+            }
+            if len(receipts) != 1 or receipts[0].identity != expected_identity:
+                raise Conflict("Verification requires its exact artifact-read receipt")
+            receipt = receipts[0]
+            if (
+                receipt.status != "succeeded"
+                or receipt.result_digest != revision.sha256
+                or receipt.provider_reference != str(revision_id)
+            ):
+                raise Conflict("Verification has no accepted matching artifact result")
+            session.add(
+                VerificationResultRow(
+                    operation_id=operation_id,
+                    namespace_id=namespace_id,
+                    sample_id=sample_id,
+                    sample_revision_id=revision_id,
+                    sha256=revision.sha256,
+                    size_bytes=revision.size_bytes,
+                    epoch=epoch,
+                )
+            )
+            operation.status = "succeeded"
+            operation.revision += 1
+            self._record_transition(
+                session,
+                actor,
+                operation,
+                extra={"sample_revision_id": str(revision_id), "sha256": revision.sha256},
+            )
+            return self._view(operation)

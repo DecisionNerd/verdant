@@ -305,6 +305,27 @@ class EffectReceiptRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class VerificationResultRow(Base):
+    __tablename__ = "operation_verification_results"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "sample_id", "sample_revision_id"],
+            ["sample_revisions.namespace_id", "sample_revisions.sample_id", "sample_revisions.id"],
+        ),
+    )
+    operation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    namespace_id: Mapped[UUID]
+    sample_id: Mapped[UUID]
+    sample_revision_id: Mapped[UUID]
+    sha256: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    epoch: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 def make_sessions(database_url: str) -> sessionmaker[Session]:
     from sqlalchemy.engine import make_url
 
