@@ -11,3 +11,9 @@ Executed 2026-10-27 against the current issue #13 Compose candidate, schema `000
 - During evidence capture the short local qualification session expired. The UI removed the authenticated workspace and showed `Your session has expired`; screenshot `session-expiry.png` records this state. It is not a screenshot of the preceding conflict.
 
 Remaining: complete catalog/draft pagination against representative larger fixtures, denied/read-only browser identity, keyboard/focus and narrow viewport proof, sample removal, stale/partial/failure states, exact-version inspection scope, and independent review/CI/merge. No completion claim follows from this preflight.
+
+## Read-only, exact inspection and denied-access retest
+
+Against candidate `61bf393`, the operator changed the same qualification principal's grant to read. Fresh browser sign-in and dataset deep-link refresh showed read workspace context, disabled metadata fields, and no metadata save, membership save/edit/remove controls. Exact revision inspection returned revision 1, its exact UUID, SHA-256, byte size and modality without private keys. Opening draft revision 1 showed split `train`; current revision 2 had shown `validation`. `read-only.png` records the read-only page.
+
+The operator then revoked the grant. Browser refresh of the exact dataset deep link showed no granted workspaces and the permission-denied message. Dataset metadata and membership rows were absent. `denied.png` records that state. The operator explicitly restored write afterward for subsequent qualification. This tests current authorization changes for the same stable identity; a separate no-grant service identity is covered by API tests.
