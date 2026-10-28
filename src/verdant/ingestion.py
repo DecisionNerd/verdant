@@ -1,6 +1,7 @@
 """Namespace-owned ingestion declarations composed with durable operation admission."""
 
 import hashlib
+import json
 from datetime import timedelta
 from uuid import UUID, uuid4
 
@@ -52,6 +53,7 @@ class UploadDeclaration(Contract):
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
     target_sample_id: UUID | None = None
     expected_revision: Revision | None = None
+    retry_of_item_id: UUID | None = None
 
     @model_validator(mode="after")
     def revision_target(self):
@@ -87,6 +89,7 @@ class UploadRequest(Contract):
 class IngestionItem(Contract):
     id: UUID
     artifact_id: UUID
+    retry_of_item_id: UUID | None
     position: int
     source_key: str
     modality: str
@@ -184,6 +187,7 @@ class IngestionService:
                 IngestionItem(
                     id=item.id,
                     artifact_id=item.artifact_id,
+                    retry_of_item_id=item.retry_of_item_id,
                     position=item.position,
                     source_key=item.source_key,
                     modality=item.modality,
@@ -198,6 +202,68 @@ class IngestionService:
             ],
         )
 
+    def _retry_origins(self, session, actor, namespace_id, command):
+        declarations = {
+            item.retry_of_item_id: item for item in command.items if item.retry_of_item_id
+        }
+        if not declarations:
+            return {}
+        origins = session.scalars(
+            select(IngestionItemRow).where(
+                IngestionItemRow.namespace_id == namespace_id,
+                IngestionItemRow.id.in_(declarations),
+            )
+        ).all()
+        if len(origins) != len(declarations):
+            raise NotFound("Re-upload origin not found")
+        # Parent operations precede their items in lock order. Sort multi-parent recovery batches.
+        parents = {
+            operation_id: self.operations._locked_operation(
+                session, actor, namespace_id, operation_id
+            )
+            for operation_id in sorted({item.operation_id for item in origins}, key=str)
+        }
+        for parent_id, parent in parents.items():
+            count = sum(item.operation_id == parent_id for item in origins)
+            if parent.revision > 9223372036854775807 - count:
+                raise Conflict("Operation revision limit reached")
+        result = {}
+        for origin in origins:
+            parent = parents[origin.operation_id]
+            session.refresh(origin, with_for_update=True)
+            if parent.kind != "ingest_upload" or parent.status not in {"failed", "cancelled"}:
+                raise Conflict("Re-upload requires a failed or cancelled original operation")
+            if origin.state in {"accepted", "superseded"}:
+                raise Conflict("Accepted or already re-uploaded items cannot be re-uploaded")
+            if parent.revision == 9223372036854775807:
+                raise Conflict("Operation revision limit reached")
+            declaration = declarations[origin.id]
+            artifact = session.get(ArtifactRow, origin.artifact_id)
+            original = (
+                origin.source_key,
+                origin.modality,
+                artifact.sha256,
+                artifact.size_bytes,
+                origin.target_sample_id,
+                origin.expected_revision,
+            )
+            requested = (
+                declaration.source_key,
+                declaration.modality,
+                declaration.sha256,
+                declaration.size_bytes,
+                declaration.target_sample_id,
+                declaration.expected_revision,
+            )
+            if original != requested or json.dumps(
+                origin.metadata_json, sort_keys=True
+            ) != json.dumps(declaration.metadata, sort_keys=True):
+                raise Conflict(
+                    "Re-upload must preserve the declaration; register changed inputs separately"
+                )
+            result[origin.id] = (origin, parent)
+        return result
+
     @observed("ingestion")
     def admit(self, actor: Principal, namespace_id: UUID, command: UploadRequest):
         with self.sessions.begin() as session:
@@ -210,6 +276,7 @@ class IngestionService:
             )
             if prior is not None:
                 return self._view(session, row)
+            retries = self._retry_origins(session, actor, namespace_id, command)
             expires_at = session.scalar(select(func.clock_timestamp())) + UPLOAD_TTL
             for position, declaration in enumerate(command.items):
                 if declaration.target_sample_id is not None:
@@ -241,6 +308,21 @@ class IngestionService:
                 ):
                     raise Conflict("Source identity already exists; select sample replacement")
                 artifact_id, item_id = uuid4(), uuid4()
+                if declaration.retry_of_item_id is not None:
+                    original, parent = retries[declaration.retry_of_item_id]
+                    original.state = "superseded"
+                    parent.revision += 1
+                    self.operations._record_transition(
+                        session,
+                        actor,
+                        parent,
+                        "operation.ingestion_item_superseded",
+                        {
+                            "item_id": str(original.id),
+                            "replacement_operation_id": str(row.id),
+                            "replacement_item_id": str(item_id),
+                        },
+                    )
                 session.add(
                     ArtifactRow(
                         id=artifact_id,
@@ -264,6 +346,7 @@ class IngestionService:
                         id=item_id,
                         namespace_id=namespace_id,
                         operation_id=row.id,
+                        retry_of_item_id=declaration.retry_of_item_id,
                         position=position,
                         artifact_id=artifact_id,
                         source_key=declaration.source_key,

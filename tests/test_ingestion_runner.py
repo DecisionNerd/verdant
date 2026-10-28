@@ -6,6 +6,7 @@ from uuid import uuid4
 import httpx
 import pytest
 from sqlalchemy import event, func, select
+from sqlalchemy.exc import DBAPIError
 
 from verdant.application import RegistryService
 from verdant.contracts import SampleRevise
@@ -18,6 +19,7 @@ from verdant.persistence import (
     AuditRow,
     EffectReceiptRow,
     IngestionItemRow,
+    OperationRow,
     SampleArtifactRow,
     SampleRevisionRow,
     SampleRow,
@@ -31,7 +33,7 @@ def ready_ingestion(registry, sessions, storage):
     adapter, _ = storage
     owned = []
 
-    def create(entries=None, *, target=None, metadata=None):
+    def create(entries=None, *, target=None, metadata=None, retry_of=None, uploaded_bodies=None):
         entries = entries or [("source", b"verified content")]
         service = IngestionService(sessions, bucket=adapter.settings.bucket, storage=adapter)
         batch = service.admit(
@@ -48,19 +50,21 @@ def ready_ingestion(registry, sessions, storage):
                         metadata=metadata or {},
                         target_sample_id=target[0] if target else None,
                         expected_revision=target[1] if target else None,
+                        retry_of_item_id=retry_of,
                     )
                     for name, body in entries
                 ],
             ),
         )
-        for item, (_, body) in zip(batch.items, entries, strict=True):
+        for item, (name, body) in zip(batch.items, entries, strict=True):
             service.initiate_upload(actor, ns, batch.operation.id, item.id, 1)
             with sessions() as session:
                 stored = session.get(IngestionItemRow, item.id)
                 owned.append((stored.staging_key, stored.upload_id))
             signed = service.sign_upload_part(actor, ns, batch.operation.id, item.id, 1, 1)
             with httpx.Client(timeout=10, trust_env=False) as http:
-                http.put(signed.url, content=body).raise_for_status()
+                uploaded = (uploaded_bodies or {}).get(name, body)
+                http.put(signed.url, content=uploaded).raise_for_status()
             batch = service.complete_upload(actor, ns, batch.operation.id, item.id, 1)
         return service, batch
 
@@ -441,3 +445,213 @@ def test_revocation_after_promotion_blocks_atomic_acceptance(
     IdentityService(sessions).grant(actor.id, ns, "write")
     monkeypatch.setattr(adapter, "promote", original)
     assert runner.run(actor, ns, batch.operation.id, 1).operation.status == "succeeded"
+
+
+def test_reupload_recovers_only_failed_item_through_normal_signed_uploads(
+    ready_ingestion, sessions
+):
+    create, actor, ns, adapter = ready_ingestion
+    service, batch = create(
+        [("first", b"first"), ("second", b"second")], uploaded_bodies={"second": b"BROKEN"}
+    )
+    runner = IngestionRunner(sessions, adapter)
+    with pytest.raises(IngestionFailed, match="artifact_corrupt"):
+        runner.run(actor, ns, batch.operation.id, 1)
+    failed = service.get(actor, ns, batch.operation.id)
+    accepted, origin = failed.items
+    assert accepted.state == "accepted" and origin.error == "artifact_corrupt"
+    recovery_service, recovery = create([("second", b"second")], retry_of=origin.id)
+    child = recovery.items[0]
+    assert child.retry_of_item_id == origin.id and child.artifact_id != origin.artifact_id
+    superseded = service.get(actor, ns, batch.operation.id)
+    assert superseded.items[0] == accepted
+    assert superseded.items[1].state == "superseded"
+    assert superseded.items[1].error == "artifact_corrupt"
+    with sessions() as session:
+        old = session.get(IngestionItemRow, origin.id)
+        new = session.get(IngestionItemRow, child.id)
+        assert old.staging_key != new.staging_key and old.upload_id != new.upload_id
+        op = session.get(OperationRow, recovery.operation.id)
+        replay = UploadRequest(request_key=op.request_key, items=op.inputs["items"])
+    assert recovery_service.admit(actor, ns, replay) == recovery
+    with pytest.raises(Conflict, match="new operation"):
+        runner.operations.retry(actor, ns, batch.operation.id, 1)
+    done = runner.run(actor, ns, recovery.operation.id, 1)
+    assert done.operation.status == "succeeded"
+    assert service.get(actor, ns, batch.operation.id).items[0] == accepted
+    with sessions() as session:
+        assert count(session, SampleRow, ns) == count(session, SampleRevisionRow, ns) == 2
+        assert session.get(IngestionItemRow, origin.id).accepted_revision_id is None
+
+
+def test_reupload_changed_inputs_and_active_or_accepted_origins_are_denied(
+    ready_ingestion, sessions
+):
+    create, actor, ns, adapter = ready_ingestion
+    service, active = create()
+    with sessions() as session:
+        payload = session.get(OperationRow, active.operation.id).inputs["items"][0]
+    declaration = UploadDeclaration(**(payload | {"retry_of_item_id": str(active.items[0].id)}))
+    with pytest.raises(Conflict, match="failed or cancelled"):
+        service.admit(actor, ns, UploadRequest(request_key="active-retry", items=[declaration]))
+    service.operations.fail(actor, ns, active.operation.id, 1)
+    changed = declaration.model_copy(update={"metadata": {"changed": True}})
+    with pytest.raises(Conflict, match="preserve the declaration"):
+        service.admit(actor, ns, UploadRequest(request_key="changed-retry", items=[changed]))
+    runner = IngestionRunner(sessions, adapter)
+    runner.operations.retry(actor, ns, active.operation.id, 1)
+    runner.run(actor, ns, active.operation.id, 2)
+    with pytest.raises(Conflict):
+        service.admit(actor, ns, UploadRequest(request_key="accepted-retry", items=[declaration]))
+
+
+def test_concurrent_reupload_admission_has_one_replacement(ready_ingestion, sessions):
+    create, actor, ns, adapter = ready_ingestion
+    service, original = create()
+    service.operations.fail(actor, ns, original.operation.id, 1)
+    with sessions() as session:
+        payload = session.get(OperationRow, original.operation.id).inputs["items"][0]
+    declaration = UploadDeclaration(**(payload | {"retry_of_item_id": str(original.items[0].id)}))
+    barrier = Barrier(2)
+
+    def admit(index):
+        barrier.wait(timeout=5)
+        try:
+            return service.admit(
+                actor, ns, UploadRequest(request_key=f"retry-{index}", items=[declaration])
+            )
+        except Conflict:
+            return None
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(admit, range(2)))
+    assert sum(outcome is not None for outcome in outcomes) == 1
+    with sessions() as session:
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(IngestionItemRow)
+                .where(IngestionItemRow.retry_of_item_id == original.items[0].id)
+            )
+            == 1
+        )
+
+
+def test_reupload_audit_failure_restores_origin_and_lineage_is_immutable(ready_ingestion, sessions):
+    create, actor, ns, adapter = ready_ingestion
+    service, original = create()
+    service.operations.fail(actor, ns, original.operation.id, 1)
+    with sessions() as session:
+        payload = session.get(OperationRow, original.operation.id).inputs["items"][0]
+    declaration = UploadDeclaration(**(payload | {"retry_of_item_id": str(original.items[0].id)}))
+    command = UploadRequest(request_key="recover", items=[declaration])
+
+    def fail(mapper, connection, row):
+        if row.namespace_id == ns and row.action == "operation.ingestion_item_superseded":
+            raise RuntimeError("reupload audit failure")
+
+    event.listen(AuditRow, "before_insert", fail)
+    try:
+        with pytest.raises(RuntimeError, match="reupload audit failure"):
+            service.admit(actor, ns, command)
+    finally:
+        event.remove(AuditRow, "before_insert", fail)
+    assert service.get(actor, ns, original.operation.id).items[0].state == "ready"
+    replacement = service.admit(actor, ns, command)
+    with pytest.raises(DBAPIError, match="immutable"):
+        with sessions.begin() as session:
+            session.get(IngestionItemRow, replacement.items[0].id).retry_of_item_id = None
+    with pytest.raises(DBAPIError, match="immutable"):
+        with sessions.begin() as session:
+            session.get(IngestionItemRow, original.items[0].id).state = "ready"
+
+
+def test_direct_supersession_requires_replacement_at_commit(ready_ingestion, sessions):
+    create, actor, ns, adapter = ready_ingestion
+    service, original = create()
+    service.operations.fail(actor, ns, original.operation.id, 1)
+    with pytest.raises(DBAPIError, match="replacement in the same transaction"):
+        with sessions.begin() as session:
+            session.get(IngestionItemRow, original.items[0].id).state = "superseded"
+    assert service.get(actor, ns, original.operation.id).items[0].state == "ready"
+
+
+@pytest.mark.parametrize(
+    "invalid", ["same_operation", "wrong_kind", "reused_artifact", "reused_staging"]
+)
+def test_database_reupload_requires_fresh_operation_and_storage(ready_ingestion, sessions, invalid):
+    from verdant.operations import OperationRequest
+
+    create, actor, ns, adapter = ready_ingestion
+    service, original = create()
+    service.operations.fail(actor, ns, original.operation.id, 1)
+    if invalid == "same_operation":
+        child_operation = original.operation.id
+    else:
+        child = service.operations.admit(
+            actor,
+            ns,
+            OperationRequest(
+                request_key=str(uuid4()),
+                kind="qualification" if invalid == "wrong_kind" else "ingest_upload",
+            ),
+        )
+        service.operations.start(actor, ns, child.id, 1)
+        child_operation = child.id
+    with pytest.raises(DBAPIError, match="fresh operation"):
+        with sessions.begin() as session:
+            origin = session.get(IngestionItemRow, original.items[0].id)
+            origin.state = "superseded"
+            session.flush()
+            artifact = session.get(ArtifactRow, origin.artifact_id)
+            new_artifact = artifact
+            if invalid != "reused_artifact":
+                new_artifact = ArtifactRow(
+                    namespace_id=ns, sha256=artifact.sha256, size_bytes=artifact.size_bytes
+                )
+                session.add(new_artifact)
+                session.flush()
+            session.add(
+                IngestionItemRow(
+                    namespace_id=ns,
+                    operation_id=child_operation,
+                    position=1,
+                    retry_of_item_id=origin.id,
+                    artifact_id=new_artifact.id,
+                    source_key=origin.source_key,
+                    modality=origin.modality,
+                    metadata_json=origin.metadata_json,
+                    target_sample_id=origin.target_sample_id,
+                    expected_revision=origin.expected_revision,
+                    staging_key=origin.staging_key
+                    if invalid == "reused_staging"
+                    else f"{ns}/forged/{uuid4()}",
+                    expires_at=origin.expires_at,
+                )
+            )
+    assert service.get(actor, ns, original.operation.id).items[0].state == "ready"
+
+
+def test_reupload_origin_namespace_and_current_grants_are_required(ready_ingestion, sessions):
+    from verdant.domain import NotFound
+    from verdant.persistence import NamespaceRow
+
+    create, actor, ns, adapter = ready_ingestion
+    service, original = create()
+    service.operations.fail(actor, ns, original.operation.id, 1)
+    with sessions() as session:
+        payload = session.get(OperationRow, original.operation.id).inputs["items"][0]
+    declaration = UploadDeclaration(**(payload | {"retry_of_item_id": str(original.items[0].id)}))
+    other_namespace = uuid4()
+    with sessions.begin() as session:
+        session.add(NamespaceRow(id=other_namespace, name="other"))
+    IdentityService(sessions).grant(actor.id, other_namespace, "write")
+    command = UploadRequest(request_key="cross-namespace", items=[declaration])
+    with pytest.raises(NotFound, match="origin not found"):
+        service.admit(actor, other_namespace, command)
+    IdentityService(sessions).revoke_grant(actor.id, ns)
+    with pytest.raises(Forbidden):
+        service.admit(actor, ns, command)
+    with sessions() as session:
+        assert session.get(IngestionItemRow, original.items[0].id).state == "ready"
+        assert count(session, OperationRow, other_namespace) == 0

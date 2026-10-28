@@ -18,6 +18,7 @@ from verdant.persistence import (
     ConsumerCheckpointRow,
     ConsumerInboxRow,
     EffectReceiptRow,
+    IngestionItemRow,
     NamespaceRow,
     OperationEventRow,
     OperationRow,
@@ -351,6 +352,20 @@ class OperationService:
                 return self._view(row)
             if row.status not in allowed:
                 raise Conflict("Operation state does not permit this transition")
+            if (
+                new_attempt
+                and row.kind == "ingest_upload"
+                and session.scalar(
+                    select(IngestionItemRow.id)
+                    .where(
+                        IngestionItemRow.operation_id == operation_id,
+                        IngestionItemRow.state == "superseded",
+                    )
+                    .limit(1)
+                )
+                is not None
+            ):
+                raise Conflict("Re-uploaded items belong to their new operation")
             if row.revision == 9223372036854775807 or (
                 new_attempt and row.epoch == 9223372036854775807
             ):
@@ -925,6 +940,7 @@ class OperationService:
                     "upload_ready",
                     "upload_failed",
                     "ingestion_item_accepted",
+                    "ingestion_item_superseded",
                 )
             }
             error = None
