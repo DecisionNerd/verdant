@@ -45,3 +45,11 @@ Choose a workspace, then **Operations** to inspect durable operation status. Lin
 Write-authorized users can retry failed attempts, request cancellation for queued/running work, and request trusted reconciliation for nonterminal or failed work. Reconciliation requests contain only the displayed epoch; workers verify provider identity and results. A requested action is not completion. Cancellation remains pending until the logical operation confirms it; a provider run may finish later without changing the cancelled logical outcome.
 
 From an exact sample revision inspection, **Verify artifact** queues verification of that registered revision and links to its operation. Retrying a failed admission request uses the same request identity while the inspection remains mounted. Prior effects and accepted digests are shown without private object keys or provider payloads. Read-only users can inspect operations but cannot invoke recovery controls.
+
+## Frozen candidates
+
+Open a dataset and choose **Capture latest draft** to pin its displayed draft revision. Capture returns a candidate and generation identity; the working draft remains editable. If an admission response is lost, the retry control identifies the original source revision and reuses its request identity.
+
+**Resume preparation** copies at most 100 exact members per request. Each batch persists members and progress together; reopening the candidate URL resumes the same generation. Sealed generation membership cannot change. Candidate selection stays explicit while the latest draft refreshes, and frozen member pages retain original exact sample revisions and splits.
+
+**Selected candidate** selection mode allows a sealed earlier revision. **Current draft** mode instead requires the captured revision to match the latest working draft; a conflict retains selection and preparation. **Check selection** checks that contract only. It neither runs quality policies nor publishes a dataset version. Current unannotated samples explicitly pin absent annotation/review/transformation evidence. Those values never resolve to a later current value.
