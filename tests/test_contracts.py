@@ -64,3 +64,31 @@ def test_mcp_operation_bounds_match_http_contract():
         with pytest.raises(ValidationError):
             limit.validate_python(invalid)
     assert epoch.validate_python(1) == limit.validate_python(1) == 1
+
+
+def test_interpretation_requires_real_content_and_matching_review_binding():
+    from verdant.contracts import InlineEvidence, InterpretationPins, ReviewPin, TransformationPin
+
+    annotation = InlineEvidence(format="test.annotation.v1", payload={"text": "original"})
+    assert annotation.sha256 and len(annotation.sha256) == 64
+    with pytest.raises(ValidationError, match="digest does not match"):
+        InlineEvidence(format="test.annotation.v1", payload={"text": "original"}, sha256="f" * 64)
+    with pytest.raises(ValidationError, match="exact task schema"):
+        InterpretationPins(annotation_revision=annotation)
+    with pytest.raises(ValidationError, match="bind the pinned annotation"):
+        InterpretationPins(
+            review_evidence=ReviewPin(
+                annotation_digest="f" * 64, decision="accepted", rationale="input record"
+            )
+        )
+    with pytest.raises(ValidationError, match="code, configuration and environment"):
+        TransformationPin(payload={"code_digest": "f" * 64})
+
+
+def test_inline_evidence_rejects_unresolvable_identifiers_and_byte_oversize():
+    from verdant.contracts import InlineEvidence, InterpretationPins
+
+    with pytest.raises(ValidationError):
+        InterpretationPins(annotation_revision={"provider_revision_id": "unresolvable"})
+    with pytest.raises(ValidationError, match="exceeds 64 KiB"):
+        InlineEvidence(format="test.annotation.v1", payload={"text": "é" * 40000})

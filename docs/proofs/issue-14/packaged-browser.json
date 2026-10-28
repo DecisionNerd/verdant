@@ -1,0 +1,83 @@
+{
+  "namespace_id": "00000000-0000-0000-0000-000000000013",
+  "schema": "0018_ingestion_sources",
+  "operations": [
+    {
+      "id": "4f0bafda-2de7-4152-ac74-c644bfebdee7",
+      "kind": "ingest_upload",
+      "status": "succeeded",
+      "items": [
+        {
+          "source_key": "browser-reading-order.txt",
+          "sample_id": "36616a23-ac49-4379-aabc-02a4d5db95d5",
+          "revision_id": "e0c5755e-05cf-4fde-8ea7-0bbbfcec0c43",
+          "artifact_id": "da4d7640-f081-48d9-bd8a-69f2090fc90a",
+          "sha256": "55491c5ce2065f896abfc776e4370e3dc3184c3659fef115bea43286f4fdeadd",
+          "size_bytes": 134,
+          "final_verified": true,
+          "owned_staging_absent": true
+        },
+        {
+          "source_key": "browser-classification.png",
+          "sample_id": "c3de058c-ef01-4291-8d99-09a3a9428e0c",
+          "revision_id": "5d80849f-ca65-45bb-84ab-192983651f05",
+          "artifact_id": "cb8d4650-cd9d-4f2a-9269-0ca43e5d3ccc",
+          "sha256": "48dfb7d181a24266808c071f25bed11b23a2decf4b9f3f0b0e4da0fa27d674c5",
+          "size_bytes": 1538,
+          "final_verified": true,
+          "owned_staging_absent": true
+        }
+      ],
+      "cleanup_operation_id": "63c2c7c6-7c90-4b8c-b187-65aef9a78258"
+    },
+    {
+      "id": "3b16a6d5-64c4-48f3-adef-0cf282fdd671",
+      "kind": "ingest_source",
+      "status": "succeeded",
+      "items": [
+        {
+          "source_key": "browser-configured-source-issue14",
+          "sample_id": "52370520-5291-4c34-9c65-b8e9fc707e01",
+          "revision_id": "60602979-e399-4a43-a72c-9dc51c336438",
+          "artifact_id": "e20d57c3-6eed-4ca5-bf59-f8c87df997cf",
+          "sha256": "78a873b02a2f0c53b016f3ccc0ef3deacdcab259b8e0ef2e89d7ab4d7ba2ff58",
+          "size_bytes": 97,
+          "final_verified": true,
+          "owned_staging_absent": true
+        }
+      ],
+      "cleanup_operation_id": "5981242f-9d17-46b7-ba78-34bd05ba297a"
+    }
+  ],
+  "provider_runs": [
+    {
+      "operation_id": "4f0bafda-2de7-4152-ac74-c644bfebdee7",
+      "provider_run_id": "42b03588-de39-4b3e-9709-a23aad161343",
+      "deployment_id": "26741984-4484-4b2c-88e3-7e3c1d6c17dc",
+      "state": "Completed",
+      "matching_runs": 1
+    },
+    {
+      "operation_id": "63c2c7c6-7c90-4b8c-b187-65aef9a78258",
+      "provider_run_id": "d549ebb6-2997-4fb7-8d3d-1ec40e91b9f0",
+      "deployment_id": "26741984-4484-4b2c-88e3-7e3c1d6c17dc",
+      "state": "Completed",
+      "matching_runs": 1
+    },
+    {
+      "operation_id": "3b16a6d5-64c4-48f3-adef-0cf282fdd671",
+      "provider_run_id": "fbb2c2cd-42e7-447c-8c49-4d3d800cb3ca",
+      "deployment_id": "26741984-4484-4b2c-88e3-7e3c1d6c17dc",
+      "state": "Completed",
+      "matching_runs": 1
+    },
+    {
+      "operation_id": "5981242f-9d17-46b7-ba78-34bd05ba297a",
+      "provider_run_id": "b6da78d2-cb75-4f0c-a62d-7dd4d59c9ffb",
+      "deployment_id": "26741984-4484-4b2c-88e3-7e3c1d6c17dc",
+      "state": "Completed",
+      "matching_runs": 1
+    }
+  ],
+  "source_original_retained": true
+}

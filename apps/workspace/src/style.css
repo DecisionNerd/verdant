@@ -29,3 +29,6 @@ th { background: #e4eee8; }
 a { color: #006b5a; }
 .identifier { overflow-wrap: anywhere; }
 form { padding: 20px; border: 1px solid #718e83; margin: 20px 0; }
+
+.content-preview { max-height: 28rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.content-preview-image { display: block; max-width: 100%; max-height: 40rem; object-fit: contain; margin-block: 1rem; }

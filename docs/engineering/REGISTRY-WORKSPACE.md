@@ -2,6 +2,8 @@
 
 The implemented React/Vite workspace supports authorized catalog discovery, metadata editing, and revisioned draft membership. It is served by the existing backend-owned Keycloak session. It does not publish immutable dataset versions or ingest arbitrary files; those workflows belong to later slices.
 
+Backend upload transport is described in [Verified ingestion](INGESTION.md); its UI and native ingestion execution remain in progress.
+
 ## Start and sign in
 
 Follow [local Compose setup](../../infrastructure/compose/README.md). Open http://127.0.0.1:18800 and sign in with an organizational account admitted to the workspace. An operator binds the exact issuer/subject and grants namespace read or write access through the existing [identity operations](../infra/identity-operations.md). Email is display information, never an identity key.
@@ -45,3 +47,16 @@ Choose a workspace, then **Operations** to inspect durable operation status. Lin
 Write-authorized users can retry failed attempts, request cancellation for queued/running work, and request trusted reconciliation for nonterminal or failed work. Reconciliation requests contain only the displayed epoch; workers verify provider identity and results. A requested action is not completion. Cancellation remains pending until the logical operation confirms it; a provider run may finish later without changing the cancelled logical outcome.
 
 From an exact sample revision inspection, **Verify artifact** queues verification of that registered revision and links to its operation. Retrying a failed admission request uses the same request identity while the inspection remains mounted. Prior effects and accepted digests are shown without private object keys or provider payloads. Read-only users can inspect operations but cannot invoke recovery controls.
+
+## Frozen candidates
+
+Open a dataset and choose **Capture latest draft** to pin its displayed draft revision. Capture returns a candidate and generation identity; the working draft remains editable. If an admission response is lost, the retry control identifies the original source revision and reuses its request identity.
+
+**Resume preparation** copies at most 100 exact members per request. Each batch persists members and progress together; reopening the candidate URL resumes the same generation. Sealed generation membership cannot change. Candidate selection stays explicit while the latest draft refreshes, and frozen member pages retain original exact sample revisions and splits.
+
+**Selected candidate** selection mode allows a sealed earlier revision. **Current draft** mode instead requires the captured revision to match the latest working draft; a conflict retains selection and preparation. **Check selection** checks that contract only. It neither runs quality policies nor publishes a dataset version. Unannotated members explicitly pin absent evidence. Members can also carry bounded inline annotation/task-schema content, input review records bound to the annotation digest, and transformation code/configuration/environment. None of these values resolves a later current value.
+
+
+Interpretation evidence can be imported as JSON when saving membership. Blank input preserves existing evidence; `{}` explicitly clears it. Pin changes advance draft revision, even when sample identity and split stay unchanged. Each content envelope contains `format`, `payload`, and an optional `sha256`; the server derives the digest from canonical UTF-8 JSON containing format/payload, and rejects a supplied digest that disagrees. The complete interpretation contract is limited to 64 KiB. Annotation content requires its exact inline task schema. A review input contains `annotation_digest`, `decision` (`accepted`, `rejected`, or `abstained`), and a rationale; it records input data and does not assert a reviewer role or satisfy a quality gate. Transformation format `verdant.transformation.v1` requires actual code text plus configuration/environment objects, rather than an unresolved identifier.
+
+For a changed sample revision with existing evidence, explicitly replace the evidence or clear it; evidence cannot silently move to different sample content. Source-member and frozen-member details display the complete pinned contract. Imported content is stored as data and is never executed or fetched as a URL. Native annotation authoring and quality-policy approval remain owned by their separate workflows.

@@ -10,10 +10,16 @@ from prefect import flow
 from prefect.context import get_run_context
 
 from verdant.access_tokens import AccessTokenSettings, AccessTokenVerifier
+from verdant.contracts import SAMPLE_INGESTION_KINDS
 from verdant.domain import Conflict
 from verdant.identity import IdentityService
+from verdant.ingestion import IngestionService
+from verdant.ingestion_maintenance import IngestionMaintenance
+from verdant.ingestion_runner import IngestionRunner
 from verdant.operations import OperationService
 from verdant.persistence import make_sessions
+from verdant.prefect_submission import parameters_match
+from verdant.storage import S3Storage, StorageUnavailable
 from verdant.verification import VerificationRunner
 
 
@@ -49,22 +55,41 @@ def service_principal(sessions):
         ) from None
 
 
+def admitted_worker(sessions, namespace, operation, epoch, allowed_kinds):
+    actor = service_principal(sessions)
+    operations = OperationService(sessions)
+    state = operations.get(actor, namespace, operation)
+    if state.kind not in allowed_kinds:
+        raise Conflict("Operation kind does not match this fixed worker deployment")
+    dispatch = operations.workflow_dispatch(actor, namespace, operation, epoch)
+    provider_run = get_run_context().flow_run
+    if (
+        dispatch.deployment_id is None
+        or provider_run.deployment_id != dispatch.deployment_id
+        or provider_run.idempotency_key != dispatch.invocation_key
+        or not parameters_match(
+            provider_run.parameters,
+            {
+                "namespace_id": str(namespace),
+                "operation_id": str(operation),
+                "epoch": epoch,
+            },
+        )
+    ):
+        raise Conflict("Worker flow does not match persisted workflow admission")
+    operations.complete_workflow_submission(actor, namespace, operation, epoch, provider_run.id)
+    return actor, operations
+
+
 @flow(name="verdant-artifact-verification", persist_result=False, log_prints=False, retries=0)
 def verify_artifact(namespace_id: str, operation_id: str, epoch: int):
     sessions = make_sessions(os.environ["VERDANT_DATABASE_URL"])
     s3 = None
     try:
-        actor = service_principal(sessions)
         namespace, operation = UUID(namespace_id), UUID(operation_id)
-        operations = OperationService(sessions)
-        dispatch = operations.workflow_dispatch(actor, namespace, operation, epoch)
-        provider_run = get_run_context().flow_run
-        if (
-            provider_run.deployment_id != dispatch.deployment_id
-            or provider_run.idempotency_key != dispatch.invocation_key
-        ):
-            raise Conflict("Worker flow does not match persisted workflow admission")
-        operations.complete_workflow_submission(actor, namespace, operation, epoch, provider_run.id)
+        actor, operations = admitted_worker(
+            sessions, namespace, operation, epoch, {"verify_sample_artifact"}
+        )
         s3 = boto3.client(
             "s3",
             endpoint_url=os.environ["VERDANT_S3_ENDPOINT"],
@@ -86,4 +111,52 @@ def verify_artifact(namespace_id: str, operation_id: str, epoch: int):
     finally:
         if s3 is not None:
             s3.close()
+        sessions.kw["bind"].dispose()
+
+
+@flow(name="verdant-ingestion", persist_result=False, log_prints=False, retries=0)
+def ingest_operations(namespace_id: str, operation_id: str, epoch: int):
+    sessions = make_sessions(os.environ["VERDANT_DATABASE_URL"])
+    storage = None
+    try:
+        namespace, operation = UUID(namespace_id), UUID(operation_id)
+        actor, operations = admitted_worker(
+            sessions, namespace, operation, epoch, SAMPLE_INGESTION_KINDS | {"ingest_cleanup"}
+        )
+        state = operations.get(actor, namespace, operation)
+        if state.kind in SAMPLE_INGESTION_KINDS and state.status == "cancellation_requested":
+            IngestionService(sessions, bucket="unconfigured").ensure_cleanup(
+                actor, namespace, operation, epoch
+            )
+            return {"operation_id": str(state.id), "epoch": state.epoch, "status": state.status}
+        if state.status in {"succeeded", "cancelled"}:
+            return {"operation_id": str(state.id), "epoch": state.epoch, "status": state.status}
+        storage = S3Storage.from_env()
+        if storage is None:
+            raise StorageUnavailable("Worker ingestion storage is not configured")
+        if state.kind == "ingest_cleanup":
+            result = IngestionMaintenance(sessions, storage).run(actor, namespace, operation, epoch)
+            if result.status == "failed":
+                raise Conflict(
+                    "Cleanup needs provider reconciliation; inspect parent and retry maintenance"
+                )
+        else:
+            runner = IngestionRunner(sessions, storage)
+            for _ in range(4):
+                state = operations.get(actor, namespace, operation)
+                if state.epoch != epoch:
+                    raise Conflict("Operation attempt is stale")
+                if state.status == "cancellation_requested":
+                    runner.ingestion.ensure_cleanup(actor, namespace, operation, epoch)
+                    result = state
+                    break
+                result = runner.run(actor, namespace, operation, epoch, limit=25).operation
+                if result.status == "succeeded":
+                    break
+            else:
+                raise Conflict("Ingestion exceeded its admitted bounded pass")
+        return {"operation_id": str(result.id), "epoch": result.epoch, "status": result.status}
+    finally:
+        if storage is not None:
+            storage.close()
         sessions.kw["bind"].dispose()
