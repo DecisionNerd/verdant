@@ -141,6 +141,7 @@ function UploadDetail({ namespace, id, csrf, writable, limits, initialFiles, sel
       if (alive.current) await refresh();
     } catch (failure) {
       if (alive.current) {
+        setMessage("");
         setError(controller.signal.aborted ? "Transfer stopped here. Uploaded parts remain discoverable; resume or request cancellation." : (failure as Error).message);
         if (denied(failure)) setAccessDenied(true);
         void refresh();

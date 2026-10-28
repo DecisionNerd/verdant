@@ -101,4 +101,4 @@ The actual packaged runtime is now upgraded to18 after a coordinated private che
 
 ## Remaining qualification
 
-Adverse browser resume/re-upload/cancel and denied-user paths, pinned replacement browser proof, process interruptions, integrated checkpoint restore and memory/retention/fault qualification remain open. Arbitrary HTTP source ingestion is disabled; no URL-fetch endpoint exists. Backend modality storage remains byte-oriented. Inline rendering supports the bounded text/PNG/JPEG paths above; other modalities retain verified original downloads.
+Actual browser cancellation before and after partial transfer, linked re-upload after reload, wrong-file rejection, pinned replacement/stale conflict and eight-part resume are now qualified. Denied-user browser paths, process/provider faults, integrated checkpoint restore and memory/retention bounds remain open. Arbitrary HTTP source ingestion is disabled; no URL-fetch endpoint exists. Backend modality storage remains byte-oriented. Inline rendering supports the bounded text/PNG/JPEG paths above; other modalities retain verified original downloads.

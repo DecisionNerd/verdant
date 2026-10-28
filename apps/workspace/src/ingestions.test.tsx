@@ -113,3 +113,17 @@ it("replaces transient transfer text with the authoritative accepted outcome", a
   await screen.findByText("All items were independently verified and accepted.");
   expect(screen.queryByText(/Awaiting independent worker verification/)).toBeNull();
 });
+
+it("clears stale uploading progress after the local stop action", async () => {
+  setup({ selected: true });
+  vi.mocked(transferUploads).mockImplementation((_ns, _csrf, _id, _files, _limits, signal, progress) => new Promise((_resolve, reject) => {
+    progress("file.txt: uploading part 3 of 8");
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  }));
+  fireEvent.click(await screen.findByRole("button", { name: "Upload or resume files" }));
+  await screen.findByText("file.txt: uploading part 3 of 8");
+  fireEvent.click(screen.getByRole("button", { name: "Stop local transfer" }));
+  await screen.findByText(/Transfer stopped here/);
+  expect(screen.queryByText("file.txt: uploading part 3 of 8")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Stop local transfer" })).toBeNull();
+});
