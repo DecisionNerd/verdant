@@ -9,9 +9,13 @@ type Member = { sample_id: string; sample_revision_id: string; split: string; in
 type GenerationPage = { candidate: Candidate; items: Member[]; next_after: string | null };
 const denied = (error: Error | null) => error instanceof ApiError && [401,403].includes(error.status);
 
-export function Candidates({ namespace, dataset, csrf, writable }: { namespace: string; dataset: string; csrf: string; writable: boolean }) {
+export function Candidates({ namespace, dataset, csrf, writable, archived = false }: { namespace: string; dataset: string; csrf: string; writable: boolean; archived?: boolean }) {
   const cache = useQueryClient();
   const [selected, setSelected] = useState(() => new URLSearchParams(location.search).get("candidate") ?? "");
+  const active = useRef(true);
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
+  const context = `${namespace}/${dataset}/${selected}`;
+  const currentContext = useRef(context); currentContext.current = context;
   const [pages, setPages] = useState<(string | null)[]>([null]);
   const [memberPages, setMemberPages] = useState<(string | null)[]>([null]);
   const [mode, setMode] = useState("selected_candidate");
@@ -35,17 +39,20 @@ export function Candidates({ namespace, dataset, csrf, writable }: { namespace: 
     history.pushState(null, "", `/?${params}`); setSelected(id); setMemberPages([null]); setError(""); setMessage("");
   }
   async function run(action: "capture" | "prepare" | "check-selection") {
-    if (busy || !source.data || source.isError || (action !== "capture" && (!generation.data || generation.isError))) return;
+    if (!writable || busy || (archived && action === "capture") || !source.data || source.isError || (action !== "capture" && (!generation.data || generation.isError))) return;
+    const startedContext = context;
     setBusy(true); setError(""); setMessage("");
     try {
       let result: Candidate;
       if (action === "capture") {
         captureCommand.current ??= { request_key: crypto.randomUUID(), expected_revision: source.data.revision };
         result = await request<Candidate>(`${base}/candidates`, csrf, captureCommand.current);
+        if (!active.current || startedContext !== currentContext.current) return;
         captureCommand.current = null; select(result.id);
         setMessage(`Captured draft revision ${result.source_revision}. Preparation can resume in bounded batches.`);
       } else {
         result = await request<Candidate>(`${base}/candidates/${selected}/${action}`, csrf, action === "prepare" ? { expected_count: generation.data!.candidate.prepared_count, limit: 100 } : { mode });
+        if (!active.current || startedContext !== currentContext.current) return;
         setMessage(action === "prepare" ? `${result.prepared_count} members prepared. ${result.state === "sealed" ? "Generation sealed." : "Resume to prepare the next batch."}` : "Selection confirmed for this revision. Quality validation and publication are separate steps.");
       }
       await Promise.all([
@@ -53,20 +60,22 @@ export function Candidates({ namespace, dataset, csrf, writable }: { namespace: 
         cache.invalidateQueries({ queryKey: ["candidate", namespace, dataset] }),
       ]);
     } catch (failure) {
+      if (!active.current || startedContext !== currentContext.current) return;
       setError((failure as Error).message);
       if (denied(failure as Error)) setAccessDenied(true);
       if (action === "capture" && failure instanceof ApiError && failure.status === 409) captureCommand.current = null;
       void source.refetch();
-    } finally { setBusy(false); }
+    } finally { if (active.current) setBusy(false); }
   }
   if (accessDenied || denied(source.error) || denied(candidates.error) || denied(generation.error)) return <p role="alert">Candidate access changed. Reload your workspace before continuing.</p>;
   const detail = generation.data?.candidate;
   const stale = source.isError || (!!selected && generation.isError);
   return <section aria-label="Frozen candidates"><h2>Frozen candidates</h2>
     <p>Capture a draft revision while the working draft remains editable.</p>
+    {archived && <p role="status">Archived dataset: new captures are paused. Existing candidate preparation can resume.</p>}
     <p>Latest draft revision: {source.data?.revision ?? "Loading…"}</p>
     {stale && <p role="alert">Refresh failed. Displayed revisions may be stale; candidate selection is preserved.</p>}
-    {writable && <button disabled={busy || !source.data || source.isError} onClick={() => void run("capture")}>{captureCommand.current && !busy ? `Retry capture of draft revision ${captureCommand.current.expected_revision}` : "Capture latest draft"}</button>}
+    {writable && <button disabled={archived || busy || !source.data || source.isError} onClick={() => void run("capture")}>{captureCommand.current && !busy ? `Retry capture of draft revision ${captureCommand.current.expected_revision}` : "Capture latest draft"}</button>}
     {candidates.isError && <p role="alert">{candidates.error.message} <button onClick={() => void candidates.refetch()}>Retry candidate list</button></p>}
     {candidates.isPending ? <p role="status">Loading candidates…</p> : <ul>{candidates.data?.items.map(item => <li key={item.id}><button disabled={busy} onClick={() => select(item.id)}>Select candidate {item.id} · draft {item.source_revision} · {item.state}</button></li>)}</ul>}
     <nav aria-label="Candidate pages"><button disabled={pages.length === 1 || busy} onClick={() => setPages(pages.slice(0,-1))}>Previous candidates</button><button disabled={!candidates.data?.next_after || busy} onClick={() => setPages([...pages,candidates.data!.next_after])}>Next candidates</button></nav>
@@ -81,8 +90,8 @@ export function Candidates({ namespace, dataset, csrf, writable }: { namespace: 
       <p>Interpretation evidence is frozen with each member. Input review records are distinct from quality-policy approval.</p>
       <nav aria-label="Frozen member pages"><button disabled={memberPages.length === 1 || busy} onClick={() => setMemberPages(memberPages.slice(0,-1))}>Previous frozen members</button><button disabled={!generation.data.next_after || busy} onClick={() => setMemberPages([...memberPages,generation.data!.next_after])}>Next frozen members</button></nav>
     </article> : <p role="alert">{generation.error?.message} <button onClick={() => void generation.refetch()}>Retry selected candidate</button></p>)}
-    <Quality namespace={namespace} dataset={dataset} candidate={selected} csrf={csrf} writable={writable} />
-    <Publication namespace={namespace} dataset={dataset} candidate={selected} csrf={csrf} writable={writable} />
+    <Quality namespace={namespace} dataset={dataset} candidate={selected} csrf={csrf} writable={writable} archived={archived} />
+    <Publication namespace={namespace} dataset={dataset} candidate={selected} csrf={csrf} writable={writable} archived={archived} />
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
   </section>;
 }

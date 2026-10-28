@@ -41,12 +41,12 @@ function metadataPreview(value: unknown) {
 }
 
 type QualityProps = {
-  namespace: string; dataset: string; candidate?: string; csrf: string; writable: boolean;
+  namespace: string; dataset: string; candidate?: string; csrf: string; writable: boolean; archived?: boolean;
 };
 export function Quality(props: QualityProps) {
   return <QualityPanel key={`${props.namespace}/${props.dataset}`} {...props} />;
 }
-function QualityPanel({ namespace, dataset, candidate = "", csrf, writable }: QualityProps) {
+function QualityPanel({ namespace, dataset, candidate = "", csrf, writable, archived = false }: QualityProps) {
   const cache = useQueryClient();
   const policyNameHelp = useId();
   const base = `/api/v1/namespaces/${namespace}/datasets/${dataset}`;
@@ -103,7 +103,7 @@ function QualityPanel({ namespace, dataset, candidate = "", csrf, writable }: Qu
   }
   async function savePolicy(event: FormEvent) {
     event.preventDefault();
-    if (!writable || busy || policies.isError) return;
+    if (!writable || archived || busy || policies.isError) return;
     setBusy(true); setError(""); setMessage("");
     try {
       policyCommand.current ??= {
@@ -124,7 +124,7 @@ function QualityPanel({ namespace, dataset, candidate = "", csrf, writable }: Qu
     } finally { setBusy(false); }
   }
   async function validate(resume: boolean) {
-    if (!writable || busy || !candidate || (resume ? !report.data || report.isError : !policy.data || policy.isError)) return;
+    if (!writable || (!resume && archived) || busy || !candidate || (resume ? !report.data || report.isError : !policy.data || policy.isError)) return;
     const startedContext = context;
     setBusy(true); setError(""); setMessage("");
     try {
@@ -153,6 +153,7 @@ function QualityPanel({ namespace, dataset, candidate = "", csrf, writable }: Qu
   const preview = offendingValue === undefined ? null : metadataPreview(offendingValue);
   return <section aria-label="Quality policies and validation">
     <h2>Quality policies and validation</h2>
+    {archived && <p role="status">Archived dataset: new policies and validation are paused. Existing validation can resume.</p>}
     <p>Validate a sealed candidate against an exact policy revision. Reports keep the captured evidence when the working draft changes.</p>
     {policies.isPending ? <p role="status">Loading quality policies…</p> : policies.isError ? <p role="alert">{policies.error.message} Your policy input is preserved. <button onClick={() => void policies.refetch()}>Retry policies</button></p> : null}
     <label>Validation policy <select value={selectedPolicy} disabled={busy || policies.isError} onChange={event => { setSelectedPolicy(event.target.value); reportCommand.current = null; }}>
@@ -163,7 +164,7 @@ function QualityPanel({ namespace, dataset, candidate = "", csrf, writable }: Qu
     <nav aria-label="Quality policy pages"><button disabled={busy || policyPages.length === 1} onClick={() => setPolicyPages(policyPages.slice(0, -1))}>Previous policies</button><button disabled={busy || !policies.data?.next_after} onClick={() => setPolicyPages([...policyPages, policies.data!.next_after])}>Next policies</button></nav>
     {selectedPolicy && policy.isError && <p role="alert">{policy.error.message} <button onClick={() => void policy.refetch()}>Retry selected policy</button></p>}
     {policy.data && !policy.isError && <details><summary>Selected policy: {policy.data.name} · revision {policy.data.revision}</summary><ul>{policy.data.definition.rules.map(rule => <li key={rule.id}>{describeRule(rule)}</li>)}</ul></details>}
-    {writable && <form onSubmit={event => void savePolicy(event)}>
+    {writable && !archived && <form onSubmit={event => void savePolicy(event)}>
       <h3>Author a policy revision</h3>
       <p>{expectedRevision ? `Save a new revision after revision ${expectedRevision}. Existing revisions remain unchanged.` : "Create the first revision of a new named policy."}</p>
       <button type="button" disabled={busy || !policy.data || policy.isError} onClick={editSelected}>Revise selected policy</button>
@@ -185,7 +186,7 @@ function QualityPanel({ namespace, dataset, candidate = "", csrf, writable }: Qu
     </form>}
     {!candidate ? <p>Select a sealed candidate to start validation.</p> : <>
       <h3>Selected candidate validation</h3><p>Candidate: <span className="identifier">{candidate}</span></p>
-      {writable && <button disabled={busy || !policy.data || policy.isError || policies.isError || reports.isError} onClick={() => void validate(false)}>{reportCommand.current && !busy ? "Retry starting validation" : "Start new validation"}</button>}
+      {writable && <button disabled={archived || busy || !policy.data || policy.isError || policies.isError || reports.isError} onClick={() => void validate(false)}>{reportCommand.current && !busy ? "Retry starting validation" : "Start new validation"}</button>}
       {reports.isPending ? <p role="status">Loading validation reports…</p> : reports.isError ? <p role="alert">{reports.error.message} Selected evidence is preserved. <button onClick={() => void reports.refetch()}>Retry reports</button></p> : !reports.data?.items.length ? <p>No validation reports for this candidate.</p> : <ul>{reports.data.items.map(item => <li key={item.id}><button disabled={busy} onClick={() => { setSelectedReport(item.id); setOffender(null); }}>Inspect report {item.id} · policy revision {item.policy_revision} · {item.state}</button></li>)}</ul>}
       <nav aria-label="Validation report pages"><button disabled={busy || reportPages.length === 1} onClick={() => setReportPages(reportPages.slice(0, -1))}>Previous reports</button><button disabled={busy || !reports.data?.next_after} onClick={() => setReportPages([...reportPages, reports.data!.next_after])}>Next reports</button></nav>
       {selectedReport && report.isPending && <p role="status">Loading selected validation report…</p>}

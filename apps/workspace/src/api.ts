@@ -1,4 +1,4 @@
-export type Dataset = { id: string; namespace_id: string; owner_id: string; revision: number; slug: string; name: string; modality: string; draft_id: string; created_at: string };
+export type Dataset = { id: string; namespace_id: string; owner_id: string; revision: number; slug: string; name: string; modality: string; draft_id: string; created_at: string; availability: "active" | "archived" };
 export type Page<T> = { items: T[]; next_after: string | null; total?: number };
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }

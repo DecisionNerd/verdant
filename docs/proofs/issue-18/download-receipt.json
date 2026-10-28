@@ -1,0 +1,41 @@
+{
+  "method": "Actual browser anchor downloads; independent local SHA-256 readback",
+  "downloads": [
+    {
+      "read": "v1-manifest",
+      "size_bytes": 14293,
+      "sha256": "4bf50cd25447d24bada69aa00682e2dc270488af7b31bbf67093a2130b887e91",
+      "matched_recorded_digest": true
+    },
+    {
+      "read": "v1-text",
+      "size_bytes": 8036,
+      "sha256": "eb2b48cac603bb364914a40bbd736824946e028443ecd9f7f6b28f347958a433",
+      "matched_recorded_digest": true
+    },
+    {
+      "read": "v1-binary",
+      "size_bytes": 68,
+      "sha256": "a38a4ff7320a3d8764ac959b264f15e335360d7c1e23a0627dee7f366c95c58f",
+      "matched_recorded_digest": true
+    },
+    {
+      "read": "v1-manifest-version-archived",
+      "size_bytes": 14293,
+      "sha256": "4bf50cd25447d24bada69aa00682e2dc270488af7b31bbf67093a2130b887e91",
+      "matched_recorded_digest": true
+    },
+    {
+      "read": "v2-manifest",
+      "size_bytes": 14294,
+      "sha256": "9d5ac14c9af58b2688c321d647f42990a090db15bde2fc480684dfc6d796232d",
+      "matched_recorded_digest": true
+    },
+    {
+      "read": "v1-manifest-dataset-archived",
+      "size_bytes": 14293,
+      "sha256": "4bf50cd25447d24bada69aa00682e2dc270488af7b31bbf67093a2130b887e91",
+      "matched_recorded_digest": true
+    }
+  ]
+}

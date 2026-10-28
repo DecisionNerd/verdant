@@ -34,9 +34,9 @@ function mockServer(initial: Partial<View> = {}) {
   });
   return server;
 }
-function mount(writable = true) {
+function mount(writable = true, archived = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const component = (candidate: string) => <QueryClientProvider client={client}><Publication namespace="ns" dataset="ds" candidate={candidate} csrf="csrf" writable={writable} /></QueryClientProvider>;
+  const component = (candidate: string) => <QueryClientProvider client={client}><Publication namespace="ns" dataset="ds" candidate={candidate} csrf="csrf" writable={writable} archived={archived} /></QueryClientProvider>;
   const view = render(component("candidate-1"));
   return { refresh: () => act(async () => { await client.invalidateQueries(); }),
     switchCandidate: (candidate: string) => view.rerender(component(candidate)) };
@@ -244,4 +244,31 @@ describe("immutable dataset publication", () => {
     expect((screen.getByLabelText("Version label") as HTMLInputElement).value).toBe("V1.2-rc_3");
     expect((screen.getByRole("button", { name: "Start publication preparation" }) as HTMLButtonElement).disabled).toBe(true);
   });
+});
+
+it("pauses new publication and finalization on an archived dataset while retaining source checks and release", async () => {
+  const server = mockServer();
+  server.mutate = async path => {
+    server.value = { ...server.value, state: path.endsWith("/release") ? "released" : "prepared", prepared_count: 26 };
+    return server.value;
+  };
+  mount(true, true); await inspect();
+  expect(screen.queryByLabelText("Version label")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Resume source checks" }));
+  await screen.findByText("Source checks: 26 / 26 members · prepared");
+  expect(screen.getByText("Artifacts are verified, but the dataset is archived. Unarchive the dataset before publishing.")).toBeTruthy();
+  expect((screen.getByRole("button", { name: "Publish immutable version" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Release abandoned preparation" }));
+  await screen.findByText(/Preparation released/);
+  expect(commands().map(call => call[0])).toEqual([`${publicationPath}/prepare`, `${publicationPath}/release`]);
+});
+
+it("allows expired publication protection to be renewed on an archived dataset", async () => {
+  const server = mockServer({ expired: true });
+  server.mutate = async () => { server.value = { ...server.value, expired: false, prepared_count: 0 }; return server.value; };
+  mount(true, true); await inspect();
+  fireEvent.click(screen.getByRole("button", { name: "Renew protection and recheck all sources" }));
+  await screen.findByRole("button", { name: "Resume source checks" });
+  expect(commands()).toHaveLength(1);
+  expect(commands()[0][0]).toBe(`${publicationPath}/renew`);
 });

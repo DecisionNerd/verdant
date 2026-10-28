@@ -12,10 +12,11 @@ from sqlalchemy.dialects.postgresql import insert
 
 from verdant.contracts import Contract, InterpretationPins, Revision
 from verdant.domain import Conflict, NotFound, Principal
-from verdant.identity import current_principal
+from verdant.identity import current_principal, require_current_access
 from verdant.persistence import (
     AuditRow,
     CandidateRow,
+    DatasetRow,
     DraftRow,
     GenerationMemberRow,
     RegistryRepository,
@@ -98,6 +99,13 @@ class VersioningService:
         ).hexdigest()
         with self.sessions.begin() as session:
             current_principal(session, actor.id).require(namespace_id, write=True)
+            dataset = session.scalar(
+                select(DatasetRow)
+                .where(DatasetRow.namespace_id == namespace_id, DatasetRow.id == dataset_id)
+                .with_for_update()
+            )
+            if dataset is None:
+                raise NotFound("Dataset not found")
             draft = session.scalar(
                 select(DraftRow)
                 .where(DraftRow.namespace_id == namespace_id, DraftRow.dataset_id == dataset_id)
@@ -105,6 +113,7 @@ class VersioningService:
             )
             if draft is None:
                 raise NotFound("Dataset not found")
+            require_current_access(session, actor.id, namespace_id, write=True)
             prior = session.scalar(
                 select(CandidateRow).where(
                     CandidateRow.namespace_id == namespace_id,
@@ -116,6 +125,8 @@ class VersioningService:
                 if prior.request_digest != digest:
                     raise Conflict("Capture request identity has different inputs")
                 return self._view(prior, draft)
+            if dataset.availability != "active":
+                raise Conflict("Archived datasets pause new candidate capture")
             if draft.revision != command.expected_revision:
                 raise Conflict(
                     f"Draft changed from revision {command.expected_revision} to {draft.revision}"

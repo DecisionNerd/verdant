@@ -35,8 +35,10 @@ evidence; current authorization failures hide cached evidence and controls.
 ## State, retries and failure recovery
 
 The states are `building → prepared → published`, or
-`building/prepared → releasing → released`. Published groups and versions are
-immutable. One group has one logical `publish_dataset_version` operation and at
+`building/prepared → releasing → released`. Published groups and version content
+are immutable. The #18 [consumption/lifecycle slice](VERSION-CONSUMPTION.md) permits
+revision-checked version availability changes without changing content or retention.
+One group has one logical `publish_dataset_version` operation and at
 most one version. Version labels are unique within a dataset.
 
 Admission uses the existing operation request identity. Reuse the same request
@@ -158,13 +160,26 @@ from verdant.publication_runner import PublicationRunner
 
 service = PublicationService(sessions, bucket=storage.settings.bucket)
 runner = PublicationRunner(sessions, storage)
-group = service.start(actor, namespace_id, dataset_id, candidate_id, PublicationStart(
-    request_key="release-1-attempt", label="release-1", report_id=report_id,
-    mode="selected_candidate",
-))
+group = service.start(
+    actor,
+    namespace_id,
+    dataset_id,
+    candidate_id,
+    PublicationStart(
+        request_key="release-1-attempt",
+        label="release-1",
+        report_id=report_id,
+        mode="selected_candidate",
+    ),
+)
 while group.state == "building":
-    group = runner.prepare(actor, namespace_id, dataset_id, group.id,
-                           PublicationBatch(expected_count=group.prepared_count, limit=25))
+    group = runner.prepare(
+        actor,
+        namespace_id,
+        dataset_id,
+        group.id,
+        PublicationBatch(expected_count=group.prepared_count, limit=25),
+    )
 # Inspect evidence and handle any conflict before explicitly committing.
 group = service.finalize(actor, namespace_id, dataset_id, group.id)
 ```
@@ -175,20 +190,23 @@ use the established identity verification path, and services reload current gran
 
 ## Migration and delivery boundary
 
-This stack reconciles `0014_interpretation → 0015_ingestion → 0016_quality →
-0017_publication`. `SCHEMA_REVISION` is `0017_publication`; startup never upgrades
-schema. Run the existing explicit Alembic deployment process. The migration adds
+The publication stack reconciles `0014_interpretation → 0015_ingestion →
+0016_quality → 0017_publication`. The current #18 development stack extends it with
+`0018_availability`, now `SCHEMA_REVISION`; startup never upgrades schema. Run the
+existing explicit Alembic deployment process. The publication migration adds
 publication groups, references and immutable versions, guarded artifact collection
-state and a dataset availability column used by finalization. That column does
-not complete #18 archive/admission/consumption behavior.
+state and a dataset availability column used by finalization. The #18
+[consumption guide](VERSION-CONSUMPTION.md) describes the implemented exact reads,
+catalog controls and archived-dataset admission behavior; its separate qualification
+is not established by the earlier #17 receipt.
 
 For application rollback, preserve the additive schema and data. Explicit schema
 downgrade drops publication/version/reference records and the new state columns;
 it needs a backup and deliberate operator approval. It neither undoes external
 object writes nor supplies a safe reset or garbage-collection plan.
 
-This implementation does not establish #14 ingestion acceptance, native Prefect
-publication dispatch, #18 exact-version consumption/archive completion, production
-capacity or default-branch delivery. Existing #14/#15 owners retain canonical
+Publication qualification does not establish #14 ingestion acceptance, native
+Prefect publication dispatch, #18 acceptance, production capacity or default-branch
+delivery. Existing #14/#15 owners retain canonical
 acceptance and landing. See [qualification](../proofs/issue-17/publication.md) for
 the exact tested stack and remaining gates.

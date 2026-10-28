@@ -4,11 +4,12 @@ import os
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
+from verdant import consumption as read
 from verdant import contracts as c
 from verdant import publication as p
 from verdant import quality_service as q
@@ -26,7 +27,13 @@ from verdant.operations import (
 )
 from verdant.persistence import make_sessions
 from verdant.publication_runner import PublicationRunner
-from verdant.storage import S3Storage, StorageError, configured_storage
+from verdant.storage import (
+    ObjectCorrupt,
+    ObjectMissing,
+    S3Storage,
+    StorageError,
+    configured_storage,
+)
 from verdant.versioning import (
     Candidate,
     CandidateCapture,
@@ -56,6 +63,7 @@ def create_app(
     service = RegistryService(sessions)
     operations = OperationService(sessions)
     quality = q.QualityService(sessions)
+    consumption = read.ConsumptionService(sessions, artifact_storage)
     publications = p.PublicationService(
         sessions,
         bucket=artifact_storage.settings.bucket
@@ -75,8 +83,16 @@ def create_app(
 
     @app.exception_handler(StorageError)
     async def storage_error(request: Request, exc: StorageError):
+        if isinstance(exc, ObjectMissing):
+            detail = "Retained bytes are missing. Restore a verified copy before retrying."
+        elif isinstance(exc, ObjectCorrupt):
+            detail = "Retained bytes failed digest verification. Restore a verified copy."
+        else:
+            detail = "Required artifact storage is unavailable"
         return JSONResponse(
-            status_code=503, content={"detail": "Required artifact storage is unavailable"}
+            status_code=409 if isinstance(exc, (ObjectMissing, ObjectCorrupt)) else 503,
+            content={"detail": detail},
+            headers={"Cache-Control": "no-store"},
         )
 
     @app.get("/health/live")
@@ -115,6 +131,97 @@ def create_app(
 
     prefix = "/api/v1/namespaces/{namespace_id}"
     publication_prefix = prefix + "/datasets/{dataset_id}"
+
+    @app.get(publication_prefix + "/versions", response_model=read.VersionPage)
+    def list_versions(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        actor: Actor,
+        after: UUID | None = None,
+        limit: int = Query(default=25, ge=1, le=100),
+        include_archived: bool = False,
+    ):
+        return consumption.list_versions(
+            actor, namespace_id, dataset_id, after, limit, include_archived
+        )
+
+    version_prefix = publication_prefix + "/versions/{version_id}"
+
+    @app.get(version_prefix, response_model=read.Version)
+    def get_version(namespace_id: UUID, dataset_id: UUID, version_id: UUID, actor: Actor):
+        return consumption.get_version(actor, namespace_id, dataset_id, version_id)
+
+    @app.get(version_prefix + "/members", response_model=read.VersionMembers)
+    def version_members(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        version_id: UUID,
+        actor: Actor,
+        after: UUID | None = None,
+        limit: int = Query(default=25, ge=1, le=100),
+    ):
+        return consumption.members(actor, namespace_id, dataset_id, version_id, after, limit)
+
+    @app.get(version_prefix + "/manifest", response_model=read.ManifestDescriptor)
+    def version_manifest(namespace_id: UUID, dataset_id: UUID, version_id: UUID, actor: Actor):
+        return consumption.manifest(actor, namespace_id, dataset_id, version_id)
+
+    download_headers = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
+
+    @app.get(version_prefix + "/manifest/download")
+    def download_manifest(namespace_id: UUID, dataset_id: UUID, version_id: UUID, actor: Actor):
+        return RedirectResponse(
+            consumption.download(actor, namespace_id, dataset_id, version_id),
+            status_code=307,
+            headers=download_headers,
+        )
+
+    @app.get(version_prefix + "/samples/{sample_id}/preview", response_model=read.Preview)
+    def preview_version_sample(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        version_id: UUID,
+        sample_id: UUID,
+        response: Response,
+        actor: Actor,
+    ):
+        response.headers["Cache-Control"] = "no-store"
+        return consumption.preview(actor, namespace_id, dataset_id, version_id, sample_id)
+
+    @app.get(version_prefix + "/samples/{sample_id}/download")
+    def download_version_sample(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        version_id: UUID,
+        sample_id: UUID,
+        actor: Actor,
+    ):
+        return RedirectResponse(
+            consumption.download(actor, namespace_id, dataset_id, version_id, sample_id),
+            status_code=307,
+            headers=download_headers,
+        )
+
+    @app.post(publication_prefix + "/availability", response_model=c.Dataset)
+    def change_dataset_availability(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        command: read.DatasetAvailability,
+        actor: Actor,
+    ):
+        return consumption.dataset_availability(actor, namespace_id, dataset_id, command)
+
+    @app.post(version_prefix + "/availability", response_model=read.Version)
+    def change_version_availability(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        version_id: UUID,
+        command: read.VersionAvailability,
+        actor: Actor,
+    ):
+        return consumption.version_availability(
+            actor, namespace_id, dataset_id, version_id, command
+        )
 
     @app.post(
         publication_prefix + "/candidates/{candidate_id}/publications",
@@ -362,8 +469,11 @@ def create_app(
         owner_id: UUID | None = None,
         after: UUID | None = None,
         limit: int = Query(default=50, ge=1, le=100),
+        include_archived: bool = False,
     ):
-        return service.list_datasets(actor, namespace_id, search, modality, owner_id, after, limit)
+        return service.list_datasets(
+            actor, namespace_id, search, modality, owner_id, after, limit, include_archived
+        )
 
     @app.post(prefix + "/datasets", response_model=c.Dataset, status_code=201)
     def create_dataset(namespace_id: UUID, command: c.DatasetCreate, actor: Actor):

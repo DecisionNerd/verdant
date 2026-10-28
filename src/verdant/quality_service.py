@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from verdant.application import RegistryService
 from verdant.contracts import Contract, Revision
 from verdant.domain import Conflict, NotFound, Principal
-from verdant.identity import current_principal
+from verdant.identity import current_principal, require_current_access
 from verdant.persistence import (
     CandidateRow,
     DatasetRow,
@@ -138,6 +138,8 @@ class QualityService:
                 )
                 if dataset is None:
                     raise NotFound("Dataset not found")
+                if write:
+                    require_current_access(session, actor.id, namespace_id, write=True)
                 yield session
         except IntegrityError as exc:
             constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
@@ -191,6 +193,8 @@ class QualityService:
                 if prior.request_digest != digest:
                     raise Conflict("Policy request identity has different inputs")
                 return self._policy(prior)
+            if session.get(DatasetRow, dataset_id).availability != "active":
+                raise Conflict("Archived datasets pause new quality policies")
             latest = (
                 session.scalar(
                     select(func.max(QualityPolicyRow.revision)).where(
@@ -278,6 +282,8 @@ class QualityService:
                 if prior.request_digest != digest:
                     raise Conflict("Validation request identity has different inputs")
                 return self._report(prior)
+            if session.get(DatasetRow, dataset_id).availability != "active":
+                raise Conflict("Archived datasets pause new validation admission")
             candidate = self._candidate(session, namespace_id, dataset_id, candidate_id)
             if candidate.state != "sealed":
                 raise Conflict("Finish candidate preparation before validation")

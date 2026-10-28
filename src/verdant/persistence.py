@@ -741,6 +741,13 @@ class DatasetVersionRow(Base):
         CheckConstraint("length(btrim(label)) > 0", name="ck_dataset_version_label"),
         CheckConstraint("manifest_digest ~ '^[0-9a-f]{64}$'", name="ck_dataset_version_digest"),
         CheckConstraint("manifest_size BETWEEN 0 AND 268435456", name="ck_dataset_version_size"),
+        CheckConstraint(
+            "availability IN ('active','deprecated','archived')"
+            " AND prior_availability IN ('active','deprecated')"
+            " AND (availability = 'archived' OR availability = prior_availability)"
+            " AND availability_revision >= 0",
+            name="ck_dataset_version_availability",
+        ),
         Index("ix_dataset_version_page", "namespace_id", "dataset_id", "id"),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -754,6 +761,9 @@ class DatasetVersionRow(Base):
     manifest_artifact_id: Mapped[UUID]
     manifest_digest: Mapped[str] = mapped_column(String(64))
     manifest_size: Mapped[int] = mapped_column(BigInteger)
+    availability: Mapped[str] = mapped_column(String(20), server_default="active")
+    prior_availability: Mapped[str] = mapped_column(String(20), server_default="active")
+    availability_revision: Mapped[int] = mapped_column(BigInteger, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

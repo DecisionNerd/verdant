@@ -12,11 +12,11 @@ const policy = { id: "policy-1", name: "ready", revision: 1, created_at: "2026-1
 function completeReport(pass: boolean | null = true) {
   return { id: "report-1", candidate_id: "candidate-1", generation_id: "generation-1", source_revision: 5, policy_id: policy.id, policy_revision: 1, evaluator_version: "verdant.core/1", state: "complete", expected_count: 101, processed_count: 101, required_rules_pass: pass, created_at: "2026-10-28T00:00:00Z", results: [{ rule_id: "count", required: true, split: "train", status: pass === true ? "passed" : pass === false ? "failed" : "unknown", examined: 101, failures: pass === true ? 0 : 1, offending_samples: pass === true ? [] : [{ sample_id: "sample-1", sample_revision_id: "revision-1" }], offending_samples_truncated: false }] };
 }
-function mount(writable = true, candidate = "candidate-1") {
+function mount(writable = true, candidate = "candidate-1", archived = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const view = render(<QueryClientProvider client={client}><Quality namespace="ns" dataset="ds" candidate={candidate} csrf="csrf" writable={writable} /></QueryClientProvider>);
+  const view = render(<QueryClientProvider client={client}><Quality namespace="ns" dataset="ds" candidate={candidate} csrf="csrf" writable={writable} archived={archived} /></QueryClientProvider>);
   return { refresh: () => act(async () => { await client.invalidateQueries(); }),
-    switchCandidate: (selected: string) => view.rerender(<QueryClientProvider client={client}><Quality namespace="ns" dataset="ds" candidate={selected} csrf="csrf" writable={writable} /></QueryClientProvider>),
+    switchCandidate: (selected: string) => view.rerender(<QueryClientProvider client={client}><Quality namespace="ns" dataset="ds" candidate={selected} csrf="csrf" writable={writable} archived={archived} /></QueryClientProvider>),
   };
 }
 function mockReads(report = completeReport(), readFailure: () => ApiError | null = () => null) {
@@ -267,4 +267,19 @@ it("advances the current policy revision after saving rules and starts a new pol
   expect(commands.map(({ name, expected_revision }) => ({ name, expected_revision }))).toEqual([
     { name: "fresh", expected_revision: 0 }, { name: "fresh", expected_revision: 1 }, { name: "other_policy", expected_revision: 0 },
   ]);
+});
+
+it("pauses new quality admission on archived datasets while preserving validation resume", async () => {
+  mockReads({ ...completeReport(), state: "running", processed_count: 100, required_rules_pass: null });
+  const original = vi.mocked(request).getMockImplementation()!;
+  vi.mocked(request).mockImplementation((path, csrf, body, method) => path.endsWith("/evaluate") ? Promise.resolve(completeReport()) : original(path, csrf, body, method));
+  mount(true, "candidate-1", true);
+  fireEvent.click(await screen.findByRole("button", { name: /Inspect report report-1/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "Resume validation" }));
+  await screen.findByText("Required gates passed for this candidate and policy revision.");
+  expect(screen.queryByRole("heading", { name: "Author a policy revision" })).toBeNull();
+  expect((screen.getByRole("button", { name: "Start new validation" }) as HTMLButtonElement).disabled).toBe(true);
+  const writes = vi.mocked(request).mock.calls.filter(call => call[2] !== undefined);
+  expect(writes).toHaveLength(1);
+  expect(writes[0][0]).toBe(`${base}/quality/reports/report-1/evaluate`);
 });

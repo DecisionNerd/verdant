@@ -23,6 +23,7 @@ function CatalogView({ csrf, principal }: { csrf: string; principal: string }) {
   const [search, setSearch] = useState("");
   const [modality, setModality] = useState("");
   const [mine, setMine] = useState(false);
+  const [includeArchived, setIncludeArchived] = useState(false);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -43,14 +44,16 @@ function CatalogView({ csrf, principal }: { csrf: string; principal: string }) {
   const params = new URLSearchParams({ limit: "25", search });
   if (modality) params.set("modality", modality);
   if (mine) params.set("owner_id", principal);
+  if (includeArchived) params.set("include_archived", "true");
   const cursor = cursors[cursors.length - 1]; if (cursor) params.set("after", cursor);
-  const datasets = useQuery({ queryKey: ["datasets", route.namespace, search, modality, mine, cursor], enabled: !!selected && !route.dataset && !route.operations,
+  const datasets = useQuery({ queryKey: ["datasets", route.namespace, search, modality, mine, includeArchived, cursor], enabled: !!selected && !route.dataset && !route.operations,
     queryFn: () => request<Page<Dataset>>(`/api/v1/namespaces/${route.namespace}/datasets?${params}`, csrf) });
   const columns = useMemo<ColumnDef<Dataset>[]>(() => [
     { accessorKey: "name", header: "Dataset", cell: ({ row }) => <a href={`/?namespace=${row.original.namespace_id}&dataset=${row.original.id}`} onClick={event => { event.preventDefault(); navigate(row.original.namespace_id, row.original.id); }}>{row.original.name}</a> },
     { accessorKey: "modality", header: "Modality" },
     { accessorKey: "owner_id", header: "Owner", cell: ({ getValue }) => getValue() === principal ? "You" : <span className="identifier">{String(getValue())}</span> },
     { accessorKey: "revision", header: "Metadata revision" },
+    { accessorKey: "availability", header: "Availability", cell: ({ getValue }) => String(getValue() ?? "active") },
   ], [principal]);
   const table = useReactTable({ data: datasets.data?.items ?? [], columns, getCoreRowModel: getCoreRowModel(), manualPagination: true });
   async function create(event: FormEvent<HTMLFormElement>) {
@@ -74,6 +77,7 @@ function CatalogView({ csrf, principal }: { csrf: string; principal: string }) {
         <div className="catalog-tools"><label>Search datasets <input maxLength={200} value={search} onChange={event => { setSearch(event.target.value); setCursors([null]); }} /></label>
           <label>Modality <select value={modality} onChange={event => { setModality(event.target.value); setCursors([null]); }}><option value="">All modalities</option>{["image", "text", "document", "mixed", "audio", "video"].map(value => <option key={value}>{value}</option>)}</select></label>
           <label><input type="checkbox" checked={mine} onChange={event => { setMine(event.target.checked); setCursors([null]); }} /> Owned by me</label>
+          <label><input type="checkbox" checked={includeArchived} onChange={event => { setIncludeArchived(event.target.checked); setCursors([null]); }} /> Show archived datasets</label>
           {selected.access === "write" && <button onClick={() => setCreating(!creating)}>Create dataset</button>}
           <button onClick={() => void datasets.refetch()}>Refresh</button></div>
         {creating && <form onSubmit={event => void create(event)}><h2>Create dataset</h2><label>Name <input name="name" required maxLength={200} /></label><label>Slug <input name="slug" required maxLength={100} pattern="[a-z0-9]+(-[a-z0-9]+)*" /></label><label>Modality <input name="modality" required maxLength={50} /></label><button disabled={saving}>Save dataset</button></form>}
@@ -85,7 +89,7 @@ function CatalogView({ csrf, principal }: { csrf: string; principal: string }) {
         </>}
       </>}
       {selected && route.dataset && <p><a href={`/?namespace=${route.namespace}`} onClick={event => { event.preventDefault(); navigate(route.namespace); }}>Back to datasets</a></p>}
-      {selected && route.dataset && <DatasetView namespace={route.namespace} id={route.dataset} csrf={csrf} writable={selected.access === "write"} />}
+      {selected && route.dataset && <DatasetView key={`${route.namespace}/${route.dataset}`} namespace={route.namespace} id={route.dataset} csrf={csrf} writable={selected.access === "write"} />}
     </>}
   </section>;
 }
