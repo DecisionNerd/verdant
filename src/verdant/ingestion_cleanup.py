@@ -6,7 +6,7 @@ pending rather than treating an interrupted write as absent.
 
 import hashlib
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from verdant.contracts import Contract
 from verdant.domain import Conflict, NotFound
@@ -41,41 +41,10 @@ class IngestionCleanup:
         )
         self.operations = self.ingestion.operations
 
-    @observed("ingestion")
     def request_cancel(self, actor, namespace_id, operation_id, epoch, *, expired_only=False):
-        with self.sessions.begin() as session:
-            operation = self.operations._locked_operation(
-                session, actor, namespace_id, operation_id, epoch
-            )
-            if operation.kind != "ingest_upload":
-                raise Conflict("Unsupported ingestion operation kind")
-            if operation.status in {"cancellation_requested", "cancelled"}:
-                return self.ingestion._view(session, operation)
-            if operation.status not in {"running", "queued", "failed"}:
-                raise Conflict("Operation does not permit cancellation")
-            if expired_only:
-                expired = session.scalar(
-                    select(IngestionItemRow.id)
-                    .where(
-                        IngestionItemRow.operation_id == operation_id,
-                        IngestionItemRow.state.in_(["awaiting_upload", "uploading"]),
-                        IngestionItemRow.expires_at <= func.clock_timestamp(),
-                    )
-                    .limit(1)
-                )
-                if expired is None:
-                    raise Conflict("Operation has no expired incomplete upload")
-            if operation.revision == 9223372036854775807:
-                raise Conflict("Operation revision limit reached")
-            operation.status = "cancellation_requested"
-            operation.revision += 1
-            self.operations._record_transition(
-                session,
-                actor,
-                operation,
-                extra={"reason": "upload_expired" if expired_only else "user_requested"},
-            )
-            return self.ingestion._view(session, operation)
+        return self.ingestion.request_cancel(
+            actor, namespace_id, operation_id, epoch, expired_only=expired_only
+        )
 
     def _snapshot(self, session, actor, namespace_id, operation_id, item_id, epoch):
         operation = self.operations._locked_operation(

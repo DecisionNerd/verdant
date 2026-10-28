@@ -1207,13 +1207,21 @@ class OperationService:
 
     @observed("operations")
     def list_operations(
-        self, actor: Principal, namespace_id: UUID, after: UUID | None = None, limit: int = 25
+        self,
+        actor: Principal,
+        namespace_id: UUID,
+        after: UUID | None = None,
+        limit: int = 25,
+        *,
+        kind: str | None = None,
     ) -> OperationPage:
         if not 1 <= limit <= 100:
             raise ValueError("Operation page must be between 1 and 100")
         with self.sessions.begin() as session:
             current_principal(session, actor.id).require(namespace_id)
             query = select(OperationRow).where(OperationRow.namespace_id == namespace_id)
+            if kind is not None:
+                query = query.where(OperationRow.kind == kind)
             if after is not None:
                 query = query.where(OperationRow.id > after)
             rows = session.scalars(query.order_by(OperationRow.id).limit(limit + 1)).all()

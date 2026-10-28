@@ -341,6 +341,6 @@ class IdentityRuntime:
 
         from verdant.mcp_server import create_mcp_app
 
-        mcp_app = create_mcp_app(self)
+        mcp_app = create_mcp_app(self, storage=getattr(app.state, "storage", None))
         app.router.lifespan_context = mcp_app.lifespan
         app.mount("/mcp", mcp_app)

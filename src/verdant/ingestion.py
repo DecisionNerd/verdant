@@ -5,7 +5,7 @@ import json
 from datetime import timedelta
 from uuid import UUID, uuid4
 
-from pydantic import Field, JsonValue, model_validator
+from pydantic import Field, JsonValue, ValidationError, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
@@ -18,6 +18,7 @@ from verdant.operations import (
     EffectRequest,
     EffectResult,
     Operation,
+    OperationAction,
     OperationRequest,
     OperationService,
 )
@@ -86,10 +87,23 @@ class UploadRequest(Contract):
         )
 
 
+class ReuploadRequest(Contract):
+    request_key: str = Field(min_length=1, max_length=200)
+    item_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def distinct_items(self):
+        if len(set(self.item_ids)) != len(self.item_ids):
+            raise ValueError("Recovery cannot repeat an item identity")
+        return self
+
+
 class IngestionItem(Contract):
     id: UUID
     artifact_id: UUID
     retry_of_item_id: UUID | None
+    replacement_operation_id: UUID | None = None
+    replacement_item_id: UUID | None = None
     position: int
     source_key: str
     modality: str
@@ -111,6 +125,18 @@ class SignedUploadPart(Contract):
     size_bytes: int
     url: str = Field(repr=False)
     expires_in: int = URL_SECONDS
+
+
+class UploadPartRequest(OperationAction):
+    part_number: int = Field(ge=1, le=32, strict=True)
+
+
+class UploadLimits(Contract):
+    configured: bool
+    max_artifact_bytes: int = MAX_ARTIFACT_BYTES
+    max_items: int = 100
+    part_bytes: int = PART_BYTES
+    signed_url_seconds: int = URL_SECONDS
 
 
 class UploadedPart(Contract):
@@ -165,6 +191,17 @@ class IngestionService:
             raise ValueError("Ingestion storage does not match configured bucket")
         self.storage = storage
 
+    def require_storage(self, actor, namespace_id):
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id, write=True)
+        if self.storage is None:
+            raise StorageUnavailable("Upload storage is not configured")
+
+    def limits(self, actor, namespace_id):
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id)
+        return UploadLimits(configured=self.storage is not None)
+
     @staticmethod
     def _view(session, operation):
         rows = session.execute(
@@ -181,6 +218,17 @@ class IngestionService:
             .order_by(IngestionItemRow.position)
             .limit(100)
         ).all()
+        replacements = {}
+        if rows:
+            children = session.scalars(
+                select(IngestionItemRow)
+                .where(
+                    IngestionItemRow.namespace_id == operation.namespace_id,
+                    IngestionItemRow.retry_of_item_id.in_([item.id for item, artifact in rows]),
+                )
+                .limit(100)
+            ).all()
+            replacements = {child.retry_of_item_id: child for child in children}
         return IngestionBatch(
             operation=OperationService._view(operation),
             items=[
@@ -188,6 +236,12 @@ class IngestionService:
                     id=item.id,
                     artifact_id=item.artifact_id,
                     retry_of_item_id=item.retry_of_item_id,
+                    replacement_operation_id=replacements[item.id].operation_id
+                    if item.id in replacements
+                    else None,
+                    replacement_item_id=replacements[item.id].id
+                    if item.id in replacements
+                    else None,
                     position=item.position,
                     source_key=item.source_key,
                     modality=item.modality,
@@ -366,15 +420,62 @@ class IngestionService:
         with self.sessions.begin() as session:
             current_principal(session, actor.id).require(namespace_id)
             row = session.scalar(
-                select(OperationRow).where(
+                select(OperationRow)
+                .where(
                     OperationRow.namespace_id == namespace_id,
                     OperationRow.id == operation_id,
                     OperationRow.kind == "ingest_upload",
                 )
+                .with_for_update(read=True)
             )
             if row is None:
                 raise NotFound("Ingestion operation not found")
             return self._view(session, row)
+
+    @observed("ingestion")
+    def reupload(self, actor, namespace_id, command: ReuploadRequest):
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id, write=True)
+            rows = session.execute(
+                select(IngestionItemRow, ArtifactRow)
+                .join(
+                    ArtifactRow,
+                    (ArtifactRow.id == IngestionItemRow.artifact_id)
+                    & (ArtifactRow.namespace_id == IngestionItemRow.namespace_id),
+                )
+                .where(
+                    IngestionItemRow.namespace_id == namespace_id,
+                    IngestionItemRow.id.in_(command.item_ids),
+                )
+                .limit(100)
+            ).all()
+            if len(rows) != len(command.item_ids):
+                raise NotFound("Re-upload origin not found")
+            by_id = {item.id: (item, artifact) for item, artifact in rows}
+            declarations = []
+            for item_id in command.item_ids:
+                item, artifact = by_id[item_id]
+                declarations.append(
+                    UploadDeclaration(
+                        source_key=item.source_key,
+                        modality=item.modality,
+                        sha256=artifact.sha256,
+                        size_bytes=artifact.size_bytes,
+                        metadata=item.metadata_json,
+                        target_sample_id=item.target_sample_id,
+                        expected_revision=item.expected_revision,
+                        retry_of_item_id=item.id,
+                    )
+                )
+            try:
+                request = UploadRequest(request_key=command.request_key, items=declarations)
+            except ValidationError:
+                raise Conflict(
+                    "Recovery inputs conflict or exceed limits; select fewer items"
+                ) from None
+        # Declaration fields are immutable; admission rechecks current grants and origin state
+        # under parent/item locks before committing the replacement operation.
+        return self.admit(actor, namespace_id, request)
 
     def _upload_item(
         self, session, actor, namespace_id, operation_id, item_id, epoch, *, allow_ready=False
@@ -961,5 +1062,41 @@ class IngestionService:
                     "item_id": str(item_id),
                     "error": error,
                 },
+            )
+            return self._view(session, operation)
+
+    @observed("ingestion")
+    def request_cancel(self, actor, namespace_id, operation_id, epoch, *, expired_only=False):
+        with self.sessions.begin() as session:
+            operation = self.operations._locked_operation(
+                session, actor, namespace_id, operation_id, epoch
+            )
+            if operation.kind != "ingest_upload":
+                raise Conflict("Unsupported ingestion operation kind")
+            if operation.status in {"cancellation_requested", "cancelled"}:
+                return self._view(session, operation)
+            if operation.status not in {"running", "queued", "failed"}:
+                raise Conflict("Operation does not permit cancellation")
+            if expired_only:
+                expired = session.scalar(
+                    select(IngestionItemRow.id)
+                    .where(
+                        IngestionItemRow.operation_id == operation_id,
+                        IngestionItemRow.state.in_(["awaiting_upload", "uploading"]),
+                        IngestionItemRow.expires_at <= func.clock_timestamp(),
+                    )
+                    .limit(1)
+                )
+                if expired is None:
+                    raise Conflict("Operation has no expired incomplete upload")
+            if operation.revision == 9223372036854775807:
+                raise Conflict("Operation revision limit reached")
+            operation.status = "cancellation_requested"
+            operation.revision += 1
+            self.operations._record_transition(
+                session,
+                actor,
+                operation,
+                extra={"reason": "upload_expired" if expired_only else "user_requested"},
             )
             return self._view(session, operation)

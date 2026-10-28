@@ -5,6 +5,7 @@ creation, so replayable staging URLs cannot mutate an accepted artifact.
 """
 
 import hashlib
+import os
 import re
 from dataclasses import dataclass
 from tempfile import SpooledTemporaryFile
@@ -87,6 +88,32 @@ def _translate(exc):
 
 
 class S3Storage:
+    @classmethod
+    def from_env(cls):
+        endpoint = os.environ.get("VERDANT_S3_ENDPOINT")
+        if not endpoint:
+            return None
+        access, secret = (
+            os.environ.get("VERDANT_S3_ACCESS_KEY"),
+            os.environ.get("VERDANT_S3_SECRET_KEY"),
+        )
+        if bool(access) != bool(secret):
+            raise ValueError("Incomplete configured object-storage credentials")
+        settings = S3Settings(
+            bucket=os.environ["VERDANT_S3_BUCKET"],
+            endpoint=endpoint,
+            browser_endpoint=os.environ.get("VERDANT_S3_BROWSER_ENDPOINT", endpoint),
+            region=os.environ.get("VERDANT_S3_REGION", "us-east-1"),
+            addressing_style=os.environ.get("VERDANT_S3_ADDRESSING_STYLE", "path"),
+            allow_insecure_http=os.environ.get("VERDANT_INSECURE_LOCAL_HTTP") == "1",
+        )
+        session = (
+            boto3.Session(aws_access_key_id=access, aws_secret_access_key=secret)
+            if access
+            else None
+        )
+        return cls(settings, session=session)
+
     def __init__(self, settings: S3Settings, *, session=None):
         self.settings = settings
         session = session or boto3.Session()
@@ -104,9 +131,19 @@ class S3Storage:
             "s3", endpoint_url=settings.browser_endpoint, region_name=settings.region, config=config
         )
 
+    def close(self):
+        self.client.close()
+        self.signer.close()
+
     def _call(self, method, **kwargs):
         try:
             return getattr(self.client, method)(Bucket=self.settings.bucket, **kwargs)
+        except (BotoCoreError, ClientError) as exc:
+            raise _translate(exc) from None
+
+    def _sign(self, method, params):
+        try:
+            return self.signer.generate_presigned_url(method, Params=params, ExpiresIn=URL_SECONDS)
         except (BotoCoreError, ClientError) as exc:
             raise _translate(exc) from None
 
@@ -133,16 +170,15 @@ class S3Storage:
     def sign_part(self, key: str, upload_id: str, number: int, size_bytes: int):
         if not 1 <= number <= 32 or not 0 <= size_bytes <= PART_BYTES:
             raise ValueError("Unsupported upload part number or size")
-        return self.signer.generate_presigned_url(
+        return self._sign(
             "upload_part",
-            Params={
+            {
                 "Bucket": self.settings.bucket,
                 "Key": key,
                 "UploadId": upload_id,
                 "PartNumber": number,
                 "ContentLength": size_bytes,
             },
-            ExpiresIn=URL_SECONDS,
         )
 
     def complete(self, key: str, upload_id: str, expected_size: int):
@@ -228,15 +264,14 @@ class S3Storage:
 
     def sign_read(self, key: str):
         # Force attachment. Text/image preview belongs to a sandboxed rendering boundary.
-        return self.signer.generate_presigned_url(
+        return self._sign(
             "get_object",
-            Params={
+            {
                 "Bucket": self.settings.bucket,
                 "Key": key,
                 "ResponseContentDisposition": "attachment",
                 "ResponseContentType": "application/octet-stream",
             },
-            ExpiresIn=URL_SECONDS,
         )
 
     def list_page(self, prefix: str, *, continuation: str | None = None, limit: int = 100):
