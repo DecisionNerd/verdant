@@ -1,0 +1,221 @@
+"""Namespace-owned ingestion declarations composed with durable operation admission."""
+
+from datetime import timedelta
+from uuid import UUID, uuid4
+
+from pydantic import Field, JsonValue, model_validator
+from sqlalchemy import func, select
+
+from verdant.contracts import Contract, Digest, Revision
+from verdant.domain import Conflict, NotFound, Principal
+from verdant.identity import current_principal
+from verdant.operations import Operation, OperationRequest, OperationService
+from verdant.persistence import (
+    ArtifactLocationRow,
+    ArtifactRow,
+    IngestionItemRow,
+    OperationRow,
+    SampleRow,
+)
+from verdant.storage import MAX_ARTIFACT_BYTES
+from verdant.telemetry import observed
+
+
+class UploadDeclaration(Contract):
+    source_key: str = Field(min_length=1, max_length=500)
+    modality: str = Field(min_length=1, max_length=50)
+    sha256: Digest
+    size_bytes: int = Field(ge=0, le=MAX_ARTIFACT_BYTES, strict=True)
+    metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    target_sample_id: UUID | None = None
+    expected_revision: Revision | None = None
+
+    @model_validator(mode="after")
+    def revision_target(self):
+        if (self.target_sample_id is None) != (self.expected_revision is None):
+            raise ValueError("Sample replacement requires sample identity and expected revision")
+        if self.expected_revision is not None and self.expected_revision < 1:
+            raise ValueError("Sample replacement requires an existing revision")
+        return self
+
+
+class UploadRequest(Contract):
+    request_key: str = Field(min_length=1, max_length=200)
+    items: list[UploadDeclaration] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def bounded_identity(self):
+        if len({item.source_key for item in self.items}) != len(self.items):
+            raise ValueError("A batch cannot repeat a source identity")
+        targets = [item.target_sample_id for item in self.items if item.target_sample_id]
+        if len(set(targets)) != len(targets):
+            raise ValueError("A batch cannot replace the same sample twice")
+        self.operation_request()  # Apply the shared UTF-8 64-KiB operation-input bound.
+        return self
+
+    def operation_request(self):
+        return OperationRequest(
+            request_key=self.request_key,
+            kind="ingest_upload",
+            inputs={"items": [item.model_dump(mode="json") for item in self.items]},
+        )
+
+
+class IngestionItem(Contract):
+    id: UUID
+    artifact_id: UUID
+    position: int
+    source_key: str
+    modality: str
+    sha256: str
+    size_bytes: int
+    state: str
+    error: str | None
+    sample_id: UUID | None
+    accepted_revision_id: UUID | None
+
+
+class IngestionBatch(Contract):
+    operation: Operation
+    items: list[IngestionItem]
+
+
+class IngestionService:
+    def __init__(self, sessions, *, bucket: str, store_id: str = "primary"):
+        if not bucket or len(bucket) > 255 or not store_id or len(store_id) > 100:
+            raise ValueError("Invalid configured ingestion store")
+        self.sessions = sessions
+        self.operations = OperationService(sessions)
+        self.bucket = bucket
+        self.store_id = store_id
+
+    @staticmethod
+    def _view(session, operation):
+        rows = session.execute(
+            select(IngestionItemRow, ArtifactRow)
+            .join(
+                ArtifactRow,
+                (ArtifactRow.id == IngestionItemRow.artifact_id)
+                & (ArtifactRow.namespace_id == IngestionItemRow.namespace_id),
+            )
+            .where(
+                IngestionItemRow.namespace_id == operation.namespace_id,
+                IngestionItemRow.operation_id == operation.id,
+            )
+            .order_by(IngestionItemRow.position)
+            .limit(100)
+        ).all()
+        return IngestionBatch(
+            operation=OperationService._view(operation),
+            items=[
+                IngestionItem(
+                    id=item.id,
+                    artifact_id=item.artifact_id,
+                    position=item.position,
+                    source_key=item.source_key,
+                    modality=item.modality,
+                    sha256=artifact.sha256,
+                    size_bytes=artifact.size_bytes,
+                    state=item.state,
+                    error=item.error,
+                    sample_id=item.sample_id,
+                    accepted_revision_id=item.accepted_revision_id,
+                )
+                for item, artifact in rows
+            ],
+        )
+
+    @observed("ingestion")
+    def admit(self, actor: Principal, namespace_id: UUID, command: UploadRequest):
+        with self.sessions.begin() as session:
+            operation = self.operations._admit(
+                session, actor, namespace_id, command.operation_request()
+            )
+            row = self.operations._locked_operation(session, actor, namespace_id, operation.id)
+            prior = session.scalar(
+                select(IngestionItemRow.id).where(IngestionItemRow.operation_id == row.id).limit(1)
+            )
+            if prior is not None:
+                return self._view(session, row)
+            expires_at = session.scalar(select(func.clock_timestamp())) + timedelta(hours=1)
+            for position, declaration in enumerate(command.items):
+                if declaration.target_sample_id is not None:
+                    target = session.scalar(
+                        select(SampleRow).where(
+                            SampleRow.namespace_id == namespace_id,
+                            SampleRow.id == declaration.target_sample_id,
+                        )
+                    )
+                    if target is None:
+                        raise NotFound("Replacement sample not found")
+                    if target.revision != declaration.expected_revision:
+                        raise Conflict("Replacement sample revision changed")
+                    if (
+                        target.source_key != declaration.source_key
+                        or target.modality != declaration.modality
+                    ):
+                        raise Conflict(
+                            "Replacement must preserve sample source identity and modality"
+                        )
+                elif (
+                    session.scalar(
+                        select(SampleRow.id).where(
+                            SampleRow.namespace_id == namespace_id,
+                            SampleRow.source_key == declaration.source_key,
+                        )
+                    )
+                    is not None
+                ):
+                    raise Conflict("Source identity already exists; select sample replacement")
+                artifact_id, item_id = uuid4(), uuid4()
+                session.add(
+                    ArtifactRow(
+                        id=artifact_id,
+                        namespace_id=namespace_id,
+                        sha256=declaration.sha256,
+                        size_bytes=declaration.size_bytes,
+                    )
+                )
+                session.flush()
+                session.add(
+                    ArtifactLocationRow(
+                        namespace_id=namespace_id,
+                        artifact_id=artifact_id,
+                        store_id=self.store_id,
+                        bucket=self.bucket,
+                        object_key=f"{namespace_id}/artifacts/{artifact_id}",
+                    )
+                )
+                session.add(
+                    IngestionItemRow(
+                        id=item_id,
+                        namespace_id=namespace_id,
+                        operation_id=row.id,
+                        position=position,
+                        artifact_id=artifact_id,
+                        source_key=declaration.source_key,
+                        modality=declaration.modality,
+                        metadata_json=declaration.metadata,
+                        target_sample_id=declaration.target_sample_id,
+                        expected_revision=declaration.expected_revision,
+                        staging_key=f"{namespace_id}/staging/{item_id}",
+                        expires_at=expires_at,
+                    )
+                )
+            session.flush()
+            return self._view(session, row)
+
+    @observed("ingestion")
+    def get(self, actor: Principal, namespace_id: UUID, operation_id: UUID):
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id)
+            row = session.scalar(
+                select(OperationRow).where(
+                    OperationRow.namespace_id == namespace_id,
+                    OperationRow.id == operation_id,
+                    OperationRow.kind == "ingest_upload",
+                )
+            )
+            if row is None:
+                raise NotFound("Ingestion operation not found")
+            return self._view(session, row)

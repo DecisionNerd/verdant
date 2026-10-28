@@ -192,78 +192,82 @@ class OperationService:
 
     @observed("operations")
     def admit(self, actor: Principal, namespace_id: UUID, command: OperationRequest) -> Operation:
-        digest = hashlib.sha256(command.canonical().encode()).hexdigest()
         with self.sessions.begin() as session:
-            current_principal(session, actor.id).require(namespace_id, write=True)
-            if session.get(NamespaceRow, namespace_id) is None:
-                raise NotFound("Namespace not found")
-            if command.kind == "verify_sample_artifact":
-                try:
-                    sample_id, revision_id = (
-                        UUID(command.inputs["sample_id"]),
-                        UUID(command.inputs["revision_id"]),
-                    )
-                except (KeyError, TypeError, ValueError):
-                    raise Conflict("Verification request has invalid sample identity") from None
-                source = session.scalar(
-                    select(SampleRevisionRow.id).where(
-                        SampleRevisionRow.namespace_id == namespace_id,
-                        SampleRevisionRow.sample_id == sample_id,
-                        SampleRevisionRow.id == revision_id,
-                    )
+            return self._admit(session, actor, namespace_id, command)
+
+    def _admit(self, session, actor: Principal, namespace_id: UUID, command: OperationRequest):
+        """Compose admission with owning-domain rows in one caller-owned transaction."""
+        digest = hashlib.sha256(command.canonical().encode()).hexdigest()
+        current_principal(session, actor.id).require(namespace_id, write=True)
+        if session.get(NamespaceRow, namespace_id) is None:
+            raise NotFound("Namespace not found")
+        if command.kind == "verify_sample_artifact":
+            try:
+                sample_id, revision_id = (
+                    UUID(command.inputs["sample_id"]),
+                    UUID(command.inputs["revision_id"]),
                 )
-                if source is None:
-                    raise NotFound("Verification sample revision not found")
-            operation_id = session.scalar(
-                insert(OperationRow)
-                .values(
-                    id=uuid4(),
-                    namespace_id=namespace_id,
-                    creator_id=actor.id,
-                    request_key=command.request_key,
-                    request_digest=digest,
-                    kind=command.kind,
-                    inputs=command.inputs,
-                )
-                .on_conflict_do_nothing(constraint="uq_operation_request")
-                .returning(OperationRow.id)
-            )
-            if operation_id is None:
-                existing = session.scalar(
-                    select(OperationRow).where(
-                        OperationRow.namespace_id == namespace_id,
-                        OperationRow.creator_id == actor.id,
-                        OperationRow.request_key == command.request_key,
-                    )
-                )
-                if existing.request_digest != digest:
-                    raise Conflict("Operation request key was already used for different inputs")
-                return self._view(existing)
-            event_id = uuid4()
-            session.add(
-                OperationEventRow(
-                    id=event_id,
-                    namespace_id=namespace_id,
-                    operation_id=operation_id,
-                    revision=0,
-                    event_type="operation.queued",
-                    schema_version=1,
-                    payload={"operation_id": str(operation_id), "epoch": 1},
+            except (KeyError, TypeError, ValueError):
+                raise Conflict("Verification request has invalid sample identity") from None
+            source = session.scalar(
+                select(SampleRevisionRow.id).where(
+                    SampleRevisionRow.namespace_id == namespace_id,
+                    SampleRevisionRow.sample_id == sample_id,
+                    SampleRevisionRow.id == revision_id,
                 )
             )
-            session.flush()
-            session.add(OutboxRow(event_id=event_id))
-            session.add(
-                AuditRow(
-                    namespace_id=namespace_id,
-                    actor_id=actor.id,
-                    aggregate_id=operation_id,
-                    action="operation.admitted",
-                    schema_version=1,
-                    payload={"transport": actor.transport, "event_id": str(event_id), "epoch": 1},
+            if source is None:
+                raise NotFound("Verification sample revision not found")
+        operation_id = session.scalar(
+            insert(OperationRow)
+            .values(
+                id=uuid4(),
+                namespace_id=namespace_id,
+                creator_id=actor.id,
+                request_key=command.request_key,
+                request_digest=digest,
+                kind=command.kind,
+                inputs=command.inputs,
+            )
+            .on_conflict_do_nothing(constraint="uq_operation_request")
+            .returning(OperationRow.id)
+        )
+        if operation_id is None:
+            existing = session.scalar(
+                select(OperationRow).where(
+                    OperationRow.namespace_id == namespace_id,
+                    OperationRow.creator_id == actor.id,
+                    OperationRow.request_key == command.request_key,
                 )
             )
-            return self._view(session.get(OperationRow, operation_id))
+            if existing.request_digest != digest:
+                raise Conflict("Operation request key was already used for different inputs")
+            return self._view(existing)
+        event_id = uuid4()
+        session.add(
+            OperationEventRow(
+                id=event_id,
+                namespace_id=namespace_id,
+                operation_id=operation_id,
+                revision=0,
+                event_type="operation.queued",
+                schema_version=1,
+                payload={"operation_id": str(operation_id), "epoch": 1},
+            )
+        )
+        session.flush()
+        session.add(OutboxRow(event_id=event_id))
+        session.add(
+            AuditRow(
+                namespace_id=namespace_id,
+                actor_id=actor.id,
+                aggregate_id=operation_id,
+                action="operation.admitted",
+                schema_version=1,
+                payload={"transport": actor.transport, "event_id": str(event_id), "epoch": 1},
+            )
+        )
+        return self._view(session.get(OperationRow, operation_id))
 
     @staticmethod
     def _record_transition(
