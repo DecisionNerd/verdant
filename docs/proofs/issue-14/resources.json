@@ -1,0 +1,25 @@
+{
+  "artifact_size_bytes": 268435456,
+  "artifact_sha256": "e1324c21b9a3645d7479c1cd8bcdda698f8b8008e8d2299abcef694d6448bc02",
+  "platform": "darwin",
+  "process_baseline_high_water_rss_bytes": 61603840,
+  "process_peak_rss_bytes": 61603840,
+  "rss_bound_bytes": 201326592,
+  "spool_count": 1,
+  "scratch_peak_logical_bytes": 268435456,
+  "spool_rolled_to_disk": true,
+  "spool_closed": true,
+  "scratch_directory_empty": true,
+  "final_digest_verified": true,
+  "limits": [
+    "Single serial adapter promotion, not aggregate worker concurrency",
+    "RSS high-water includes interpreter, SDK and fixture streaming",
+    "Logical scratch size, not filesystem physical reclamation",
+    "Not browser memory, API batch memory or disk-exhaustion recovery"
+  ],
+  "source_sha256": {
+    "scripts/qualify_ingestion_resources.py": "0e5cc2f996385dc67fd20bc39c8efcd73df0d0e3cdcc46c5302287686e242c14",
+    "src/verdant/storage.py": "c3544299bec510993dd686870b15534811844ec4542d9425e8580ee26c91a195"
+  },
+  "owned_fixture_objects_deleted": true
+}

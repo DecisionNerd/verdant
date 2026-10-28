@@ -119,3 +119,9 @@ Runner process recovery has two real SIGKILL regression cases in `tests/test_ing
 
 
 Native storage failure/retry is qualified by `scripts/qualify_ingestion_fault.py` against fixed local test targets. Modes are `prepare`, `worker-failing`, `failed`, `retry`, `worker` and `observe`. Observe actual terminal failure before stopping the owned failing worker; then retry and start the healthy worker. Continue observation until ingestion and linked cleanup succeed, then stop only that owned worker. The qualifier uses distinct deployment names/pool and refuses existing receipt overwrite. A closed loopback S3 endpoint induces actual native failure without stopping shared services. Safe evidence is [native-storage-fault.json](../proofs/issue-14/native-storage-fault.json). This does not qualify Prefect server outage or supervisor restart.
+
+
+The maximum256MiB artifact passed actual serial promotion with61603840-byte process high-water RSS on Darwin and one256MiB rolled disk spool, closed after use. See [resources.json](../proofs/issue-14/resources.json) and `scripts/qualify_ingestion_resources.py`. Provision at least256MiB usable scratch per concurrent promotion plus filesystem headroom; the packaged worker admits two process runs concurrently. This measured adapter bound is not a measured total worker-container/browser budget. Retained final artifacts remain separate from staging cleanup and must never be deleted to reclaim scratch.
+
+
+Actual browser read-only access and grant revocation are qualified: read grants expose ingestion limits/history without upload/source controls; revoking the selected namespace grant makes the open view unmount after the namespace poll returns403. The cached workspace choice can remain visible until its list refreshes, but never authorizes access. See [browser-read-revocation.json](../proofs/issue-14/browser-read-revocation.json) for the empty-fixture scope.
