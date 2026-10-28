@@ -113,3 +113,6 @@ Before migration, all 22 registry table counts and row hashes matched. Actual re
 `scripts/qualify_checkpoint_restore.py` requires a unique database marker before inspection or candidate mutation. Run it only against an isolated restored environment, before migration and then with `--upgraded`. Retain private credentials and diagnostic output outside Git. The [safe receipt](../proofs/issue-14/checkpoint-restore.json) records bounded evidence. Clone containers stopped after proof; their volumes and checkpoint remain preserved. This does not qualify restored browser UI or replace the independent live-browser gate.
 
 Future checkpoints must inventory every bind mount and retain its bytes or an exact verified Git source, plus coordinated databases, objects, roles, private inputs and image pins. Stop writers before capture; restore into isolation and verify identities, grants, objects and workflow references before any recovery cutover.
+
+
+Runner process recovery has two real SIGKILL regression cases in `tests/test_ingestion_process.py`: before promotion and after final creation but before acceptance. Both preserve the durable unknown receipt and recover exactly once, including final-only recovery after owned staging removal. These controlled runner boundaries do not establish native Prefect worker supervision or arbitrary transfer-fault recovery.
