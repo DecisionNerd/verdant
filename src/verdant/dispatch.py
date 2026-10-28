@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from verdant.domain import Conflict, NotFound, Principal
+from verdant.ingestion import IngestionService
 from verdant.operations import OperationService
 from verdant.prefect_submission import PrefectSubmission, WorkflowProviderUnavailable
 
@@ -15,17 +16,33 @@ class DispatchBatch:
     acknowledged: int
     deferred: int
     quarantined: int
+    unconfigured: int = 0
 
 
 class WorkflowDispatcher:
-    def __init__(self, sessions, client, deployment_id: UUID):
+    def __init__(
+        self, sessions, client, deployment_id: UUID, ingestion_deployment_id: UUID | None = None
+    ):
         self.operations = OperationService(sessions)
+        self.ingestion = IngestionService(sessions, bucket="unconfigured")
         self.submission = PrefectSubmission(sessions, client, deployment_id)
+        self.ingestion_submission = (
+            PrefectSubmission(sessions, client, ingestion_deployment_id)
+            if ingestion_deployment_id is not None
+            else None
+        )
+
+    def _submission(self, kind):
+        if kind == "verify_sample_artifact":
+            return self.submission
+        if kind in {"ingest_upload", "ingest_cleanup"}:
+            return self.ingestion_submission
+        return None
 
     async def tick(self, actor: Principal, namespace_id: UUID, limit: int = 25) -> DispatchBatch:
         operations = self.operations
         claims = await asyncio.to_thread(operations.claim_delivery, actor, namespace_id, limit)
-        acknowledged = deferred = quarantined = 0
+        acknowledged = deferred = quarantined = unconfigured = 0
         for claim in claims:
             try:
                 outcome = await asyncio.to_thread(
@@ -45,10 +62,17 @@ class WorkflowDispatcher:
                 state = await asyncio.to_thread(
                     operations.get, actor, namespace_id, claim.operation_id
                 )
+                submission = self._submission(state.kind)
+                if submission is None and state.kind in {"ingest_upload", "ingest_cleanup"}:
+                    # Known capabilities can be configured later. Keep inbox/dispatch facts
+                    # replayable rather than permanently quarantining valid admitted work.
+                    deferred += 1
+                    unconfigured += 1
+                    continue
                 if claim.event_type == "operation.reconciliation_requested":
-                    if claim.payload["epoch"] == state.epoch:
+                    if claim.payload["epoch"] == state.epoch and submission is not None:
                         try:
-                            await self.submission.reconcile_run(
+                            await submission.reconcile_run(
                                 actor, namespace_id, state.id, state.epoch
                             )
                         except NotFound:
@@ -64,10 +88,11 @@ class WorkflowDispatcher:
                     continue
                 if (
                     outcome.dispatch is not None
+                    and submission is not None
                     and outcome.dispatch.status == "unknown"
                     and outcome.dispatch.epoch != state.epoch
                 ):
-                    reconciled = await self.submission.submit(
+                    reconciled = await submission.submit(
                         actor,
                         namespace_id,
                         claim.operation_id,
@@ -80,7 +105,7 @@ class WorkflowDispatcher:
                     and state.kind == "verify_sample_artifact"
                 ):
                     try:
-                        await self.submission.submit(
+                        await submission.submit(
                             actor, namespace_id, state.id, state.epoch, reconcile_only=True
                         )
                     except NotFound:
@@ -88,8 +113,39 @@ class WorkflowDispatcher:
                     await asyncio.to_thread(
                         operations.cancel_verification, actor, namespace_id, state.id, state.epoch
                     )
+                elif (
+                    state.status == "cancellation_requested"
+                    and state.kind in {"ingest_upload", "ingest_cleanup"}
+                    and submission is not None
+                ):
+                    try:
+                        await submission.submit(
+                            actor, namespace_id, state.id, state.epoch, reconcile_only=True
+                        )
+                    except NotFound:
+                        pass
+                    if state.kind == "ingest_upload":
+                        await asyncio.to_thread(
+                            self.ingestion.ensure_cleanup,
+                            actor,
+                            namespace_id,
+                            state.id,
+                            state.epoch,
+                        )
+                    else:
+                        await asyncio.to_thread(
+                            operations.confirm_cancel, actor, namespace_id, state.id, state.epoch
+                        )
+                elif (
+                    state.status == "succeeded"
+                    and state.kind == "ingest_upload"
+                    and submission is not None
+                ):
+                    await asyncio.to_thread(
+                        self.ingestion.ensure_cleanup, actor, namespace_id, state.id, state.epoch
+                    )
                 elif outcome.dispatch is not None:
-                    if state.kind != "verify_sample_artifact":
+                    if submission is None:
                         # Preserve unsupported work as durable quarantine without a hot claim loop.
                         await asyncio.to_thread(
                             operations.quarantine_workflow_kind, actor, namespace_id, claim.event_id
@@ -105,12 +161,12 @@ class WorkflowDispatcher:
                         quarantined += 1
                         continue
                     if state.epoch == outcome.dispatch.epoch and state.status == "queued":
-                        await self.submission.submit(
+                        await submission.submit(
                             actor, namespace_id, claim.operation_id, outcome.dispatch.epoch
                         )
                     elif outcome.dispatch.status == "unknown":
                         # Record old provider facts without reissuing work for a stale attempt.
-                        reconciled = await self.submission.submit(
+                        reconciled = await submission.submit(
                             actor,
                             namespace_id,
                             claim.operation_id,
@@ -133,10 +189,14 @@ class WorkflowDispatcher:
                 # Leave the lease unacknowledged. Redelivery reuses the inbox and exact invocation.
                 # A stale acknowledgment can never acknowledge another dispatcher's lease.
                 deferred += 1
-        return DispatchBatch(len(claims), acknowledged, deferred, quarantined)
+        return DispatchBatch(len(claims), acknowledged, deferred, quarantined, unconfigured)
 
 
-async def serve(namespace_ids: list[UUID] | None, deployment_id: UUID):
+async def serve(
+    namespace_ids: list[UUID] | None,
+    deployment_id: UUID,
+    ingestion_deployment_id: UUID | None = None,
+):
     """Run a single bounded dispatcher, with graceful native process shutdown."""
     import logging
     import os
@@ -158,7 +218,9 @@ async def serve(namespace_ids: list[UUID] | None, deployment_id: UUID):
         loop.add_signal_handler(sig, stop.set)
     try:
         async with get_client() as client:
-            dispatcher = WorkflowDispatcher(sessions, client, deployment_id)
+            dispatcher = WorkflowDispatcher(
+                sessions, client, deployment_id, ingestion_deployment_id
+            )
             while not stop.is_set():
                 try:
                     actor = await asyncio.to_thread(service_principal, sessions)
@@ -186,12 +248,13 @@ async def serve(namespace_ids: list[UUID] | None, deployment_id: UUID):
                         if result.claimed:
                             logger.info(
                                 "workflow delivery namespace=%s claimed=%s acknowledged=%s "
-                                "deferred=%s quarantined=%s",
+                                "deferred=%s quarantined=%s unconfigured=%s",
                                 namespace_id,
                                 result.claimed,
                                 result.acknowledged,
                                 result.deferred,
                                 result.quarantined,
+                                result.unconfigured,
                             )
                 except WorkerIdentityUnavailable:
                     logger.warning("Dispatcher identity unavailable; no work admitted")
@@ -213,8 +276,11 @@ def main():
     parser = argparse.ArgumentParser(description="Deliver authorized Verdant operations to Prefect")
     parser.add_argument("--namespace", type=UUID, action="append", required=True)
     parser.add_argument("--deployment", type=UUID, required=True)
+    parser.add_argument("--ingestion-deployment", type=UUID)
     args = parser.parse_args()
-    asyncio.run(serve(list(dict.fromkeys(args.namespace)), args.deployment))
+    asyncio.run(
+        serve(list(dict.fromkeys(args.namespace)), args.deployment, args.ingestion_deployment)
+    )
 
 
 if __name__ == "__main__":

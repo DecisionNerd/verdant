@@ -350,7 +350,9 @@ class OperationService:
                 raise Conflict("Operation attempt is stale")
             if row.status == target and not new_attempt:
                 return self._view(row)
-            if row.status not in allowed:
+            if row.status not in allowed or (
+                new_attempt and row.status == "cancelled" and row.kind != "ingest_cleanup"
+            ):
                 raise Conflict("Operation state does not permit this transition")
             if (
                 new_attempt
@@ -485,7 +487,11 @@ class OperationService:
     ):
         with self.sessions.begin() as session:
             row = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
-            if row.kind != "verify_sample_artifact" or row.status in {"succeeded", "cancelled"}:
+            if row.kind not in {
+                "verify_sample_artifact",
+                "ingest_upload",
+                "ingest_cleanup",
+            } or row.status in {"succeeded", "cancelled"}:
                 raise Conflict("Operation does not permit reconciliation")
             pending = session.scalar(
                 select(OperationEventRow.id)
@@ -517,7 +523,13 @@ class OperationService:
     @observed("operations")
     def retry(self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int):
         return self._transition(
-            actor, namespace_id, operation_id, epoch, {"failed"}, "queued", new_attempt=True
+            actor,
+            namespace_id,
+            operation_id,
+            epoch,
+            {"failed", "cancelled"},
+            "queued",
+            new_attempt=True,
         )
 
     @observed("operations")
@@ -1055,7 +1067,7 @@ class OperationService:
                 raise Conflict("Started provider admission must be reconciled")
             if inbox.outcome != "quarantined":
                 inbox.outcome = "quarantined"
-                inbox.error = "Unsupported operation kind for artifact verification deployment"
+                inbox.error = "Unsupported operation kind for configured workflow deployments"
                 session.add(
                     AuditRow(
                         namespace_id=namespace_id,

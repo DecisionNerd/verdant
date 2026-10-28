@@ -26,6 +26,7 @@ from verdant.persistence import (
     ArtifactLocationRow,
     ArtifactRow,
     EffectReceiptRow,
+    IngestionCleanupTaskRow,
     IngestionItemRow,
     OperationRow,
     RegistryRepository,
@@ -118,6 +119,7 @@ class IngestionItem(Contract):
 class IngestionBatch(Contract):
     operation: Operation
     items: list[IngestionItem]
+    cleanup_operation_id: UUID | None = None
 
 
 class SignedUploadPart(Contract):
@@ -231,6 +233,13 @@ class IngestionService:
             replacements = {child.retry_of_item_id: child for child in children}
         return IngestionBatch(
             operation=OperationService._view(operation),
+            cleanup_operation_id=session.scalar(
+                select(IngestionCleanupTaskRow.operation_id).where(
+                    IngestionCleanupTaskRow.namespace_id == operation.namespace_id,
+                    IngestionCleanupTaskRow.parent_operation_id == operation.id,
+                    IngestionCleanupTaskRow.parent_epoch == operation.epoch,
+                )
+            ),
             items=[
                 IngestionItem(
                     id=item.id,
@@ -1018,6 +1027,8 @@ class IngestionService:
                 "operation.succeeded" if remaining is None else "operation.ingestion_item_accepted",
                 {"item_id": str(item_id), "sample_revision_id": str(revision.id)},
             )
+            if remaining is None:
+                self._admit_cleanup(session, actor, operation)
             return self._view(session, operation)
 
     @observed("ingestion")
@@ -1074,6 +1085,7 @@ class IngestionService:
             if operation.kind != "ingest_upload":
                 raise Conflict("Unsupported ingestion operation kind")
             if operation.status in {"cancellation_requested", "cancelled"}:
+                self._admit_cleanup(session, actor, operation)
                 return self._view(session, operation)
             if operation.status not in {"running", "queued", "failed"}:
                 raise Conflict("Operation does not permit cancellation")
@@ -1099,4 +1111,50 @@ class IngestionService:
                 operation,
                 extra={"reason": "upload_expired" if expired_only else "user_requested"},
             )
+            self._admit_cleanup(session, actor, operation)
             return self._view(session, operation)
+
+    def _admit_cleanup(self, session, actor, parent):
+        if parent.kind != "ingest_upload" or parent.status not in {
+            "cancellation_requested",
+            "cancelled",
+            "succeeded",
+        }:
+            raise Conflict("Parent operation does not permit cleanup admission")
+        existing = session.scalar(
+            select(IngestionCleanupTaskRow).where(
+                IngestionCleanupTaskRow.namespace_id == parent.namespace_id,
+                IngestionCleanupTaskRow.parent_operation_id == parent.id,
+                IngestionCleanupTaskRow.parent_epoch == parent.epoch,
+            )
+        )
+        if existing is not None:
+            return self.operations._view(session.get(OperationRow, existing.operation_id))
+        child = self.operations._admit(
+            session,
+            actor,
+            parent.namespace_id,
+            OperationRequest(
+                request_key=f"ingestion-cleanup:{parent.id}:{parent.epoch}",
+                kind="ingest_cleanup",
+                inputs={"parent_operation_id": str(parent.id), "parent_epoch": parent.epoch},
+            ),
+        )
+        session.add(
+            IngestionCleanupTaskRow(
+                operation_id=child.id,
+                namespace_id=parent.namespace_id,
+                parent_operation_id=parent.id,
+                parent_epoch=parent.epoch,
+            )
+        )
+        session.flush()
+        return child
+
+    @observed("ingestion")
+    def ensure_cleanup(self, actor, namespace_id, operation_id, epoch):
+        with self.sessions.begin() as session:
+            parent = self.operations._locked_operation(
+                session, actor, namespace_id, operation_id, epoch
+            )
+            return self._admit_cleanup(session, actor, parent)

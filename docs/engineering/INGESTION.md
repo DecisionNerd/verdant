@@ -1,6 +1,6 @@
 # Verified ingestion transport
 
-The backend implements bounded direct uploads, resumable multipart state, immutable verified sample acceptance, re-upload lineage and staging cleanup. REST and MCP call the same domain services. Native ingestion scheduling and the upload/preview UI are still in progress; the current workflow overlay executes artifact verification only. A queued ingestion records durable admission. Runtime execution needs the ingestion deployment and dispatcher wiring before this capability is released.
+The backend implements bounded direct uploads, resumable multipart state, immutable verified sample acceptance, re-upload lineage and staging cleanup. REST and MCP call the same domain services. Native Prefect dispatch now routes upload verification and linked staging cleanup through one fixed ingestion deployment. The existing artifact-verification deployment remains separate. Actual host-process execution and a graceful restart are qualified; packaged runtime and upload/preview UI qualification remain open.
 
 ## Configuration and identity
 
@@ -49,6 +49,12 @@ Re-upload requires failed/cancelled origins and exact pinned inputs. Changed inp
 
 Cancellation remains requested while provider writes or native admission are uncertain. Cleanup removes only exact owned staging and retains final artifacts. A bounded position cursor lets later items progress past unresolved facts. A pending cleanup requires further observation or qualified reconciliation, not blind write replay. See the [storage proof](../proofs/issue-14/storage.md) for actual and fixture-only evidence.
 
+## Native execution
+
+The runtime registers `verdant-ingestion/local-ingestion` alongside the existing verification deployment in the same process pool. Deployment parameters contain only namespace ID, operation ID and integer epoch. Workers validate the exact deployment, operation kind, invocation identity and parameters before recording submission, then check current service grants. Known ingestion work remains deferred if its deployment is unconfigured and becomes dispatchable after configuration.
+
+Upload verification uses bounded batches. Cleanup uses a separate `ingest_cleanup` operation with an immutable namespace-owned parent/epoch pointer. Parent artifact and cleanup receipts remain authoritative; the child owns execution admission and can retry pending observations. Cancelling a cleanup invocation does not finish or cancel its parent. This permits cleanup after the parent native run is already final, without reusing that completed invocation.
+
 ## Remaining qualification
 
-Native Prefect ingestion/cleanup deployment and dispatch, UI controls and file reselection, browser upload/preview/retry/cancel, configured S3 source registration, safe exact-revision preview, process interruptions and retention/fault qualification remain open. Arbitrary HTTP source ingestion is disabled; no URL-fetch endpoint exists. Backend modality storage is byte-oriented; rendering/native modality dependencies will be documented with the actual preview implementation.
+Packaged Prefect ingestion/cleanup execution, UI controls and file reselection, browser upload/preview/retry/cancel, configured S3 source registration, safe exact-revision preview, process interruptions and retention/fault qualification remain open. Arbitrary HTTP source ingestion is disabled; no URL-fetch endpoint exists. Backend modality storage is byte-oriented; rendering/native modality dependencies will be documented with the actual preview implementation.

@@ -40,7 +40,7 @@ Keycloak uses native Quarkus JDBC validation on borrow through `quarkus.properti
 
 ## Optional workflow execution
 
-The native Prefect execution overlay uses a separate persistent PostgreSQL database and generated machine credentials. It publishes no additional host ports and disables the Prefect dashboard. The worker executes the fixed artifact-verification flow; PostgreSQL registry Operations remains the logical authority.
+The native Prefect execution overlay uses a separate persistent PostgreSQL database and generated machine credentials. It publishes no additional host ports and disables the Prefect dashboard. The worker executes the fixed artifact-verification and ingestion flows; PostgreSQL registry Operations remains the logical authority. Ingestion dispatch handles uploads and separate linked cleanup operations.
 
 ```sh
 python3 infrastructure/compose/bootstrap-workflows.py
@@ -48,7 +48,7 @@ docker compose --env-file infrastructure/compose/.local/compose.env --env-file i
 docker compose --env-file infrastructure/compose/.local/compose.env --env-file infrastructure/compose/.local/workflows.env -f infrastructure/compose/compose.yaml -f infrastructure/compose/workflows.yaml up -d --build
 ```
 
-Preserve `.local/workflows.env` with the `workflow-database` volume. Repeated bootstrap retains credentials; it does not change existing platform inputs or reset any database. Native Prefect starts its own metadata migrations before becoming healthy. One registration job creates/updates the fixed process pool/deployment before worker and dispatcher startup. One workflow image build supplies all execution services.
+Preserve `.local/workflows.env` with the `workflow-database` volume. Repeated bootstrap retains credentials; it does not change existing platform inputs or reset any database. Native Prefect starts its own metadata migrations before becoming healthy. One registration job creates/updates the fixed process pool and both deployments before worker and dispatcher startup. One workflow image build supplies all execution services.
 
 The service identity still requires explicit operator provisioning and namespace write grants. The dispatcher discovers only currently authorized namespaces, at most 100 per discovery page, and cycles pages. Each namespace delivery batch is bounded. New grants become eligible without restarting the dispatcher; revoked grants are rechecked before claims and commands. The worker independently verifies Keycloak service identity and current grants for execution.
 

@@ -390,6 +390,32 @@ def make_sessions(database_url: str) -> sessionmaker[Session]:
     return sessionmaker(engine, expire_on_commit=False)
 
 
+class IngestionCleanupTaskRow(Base):
+    __tablename__ = "ingestion_cleanup_tasks"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "parent_operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        UniqueConstraint(
+            "namespace_id",
+            "parent_operation_id",
+            "parent_epoch",
+            name="uq_ingestion_cleanup_parent",
+        ),
+        CheckConstraint(
+            "parent_epoch >= 1 AND operation_id <> parent_operation_id",
+            name="ck_ingestion_cleanup_target",
+        ),
+    )
+    operation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    namespace_id: Mapped[UUID]
+    parent_operation_id: Mapped[UUID]
+    parent_epoch: Mapped[int] = mapped_column(BigInteger)
+
+
 class ArtifactRow(Base):
     __tablename__ = "artifacts"
     __table_args__ = (
