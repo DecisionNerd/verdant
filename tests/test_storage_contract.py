@@ -9,7 +9,6 @@ import hashlib
 import os
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
-from uuid import uuid4
 
 import httpx
 import pytest
@@ -23,34 +22,6 @@ from verdant.storage import (
     S3Storage,
     StorageUnavailable,
 )
-
-
-@pytest.fixture
-def storage():
-    endpoint = os.environ.get("VERDANT_STORAGE_TEST_ENDPOINT")
-    if not endpoint:
-        pytest.skip("Explicit disposable S3 contract target is not configured")
-    adapter = S3Storage(
-        S3Settings(
-            bucket=os.environ["VERDANT_STORAGE_TEST_BUCKET"],
-            endpoint=endpoint,
-            browser_endpoint=os.environ.get("VERDANT_STORAGE_TEST_BROWSER_ENDPOINT", endpoint),
-            region=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"),
-            allow_insecure_http=os.environ.get("VERDANT_STORAGE_TEST_LOCAL_HTTP") == "1",
-        )
-    )
-    prefix = "qualification/issue14/" + uuid4().hex + "/"
-    yield adapter, prefix
-    continuation = None
-    keys = []
-    while True:
-        page = adapter.list_page(prefix, continuation=continuation)
-        keys.extend(item["Key"] for item in page.get("Contents", []))
-        if not page.get("IsTruncated"):
-            break
-        continuation = page["NextContinuationToken"]
-    for offset in range(0, len(keys), 100):
-        adapter.delete(keys[offset : offset + 100])
 
 
 def digest(body):

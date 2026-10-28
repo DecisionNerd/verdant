@@ -1,5 +1,6 @@
 """Namespace-owned ingestion declarations composed with durable operation admission."""
 
+import hashlib
 from datetime import timedelta
 from uuid import UUID, uuid4
 
@@ -9,7 +10,14 @@ from sqlalchemy import func, select
 from verdant.contracts import Contract, Digest, Revision
 from verdant.domain import Conflict, NotFound, Principal
 from verdant.identity import current_principal
-from verdant.operations import Operation, OperationRequest, OperationService
+from verdant.operations import (
+    EffectReconciliation,
+    EffectRequest,
+    EffectResult,
+    Operation,
+    OperationRequest,
+    OperationService,
+)
 from verdant.persistence import (
     ArtifactLocationRow,
     ArtifactRow,
@@ -17,8 +25,16 @@ from verdant.persistence import (
     OperationRow,
     SampleRow,
 )
-from verdant.storage import MAX_ARTIFACT_BYTES
+from verdant.storage import (
+    MAX_ARTIFACT_BYTES,
+    PART_BYTES,
+    URL_SECONDS,
+    S3Storage,
+    StorageUnavailable,
+)
 from verdant.telemetry import observed
+
+UPLOAD_TTL = timedelta(hours=1)
 
 
 class UploadDeclaration(Contract):
@@ -80,14 +96,36 @@ class IngestionBatch(Contract):
     items: list[IngestionItem]
 
 
+class SignedUploadPart(Contract):
+    part_number: int
+    size_bytes: int
+    url: str = Field(repr=False)
+    expires_in: int = URL_SECONDS
+
+
+class UploadedPart(Contract):
+    part_number: int
+    size_bytes: int
+
+
+class UploadProgress(Contract):
+    parts: list[UploadedPart]
+    part_bytes: int = PART_BYTES
+
+
 class IngestionService:
-    def __init__(self, sessions, *, bucket: str, store_id: str = "primary"):
+    def __init__(
+        self, sessions, *, bucket: str, store_id: str = "primary", storage: S3Storage | None = None
+    ):
         if not bucket or len(bucket) > 255 or not store_id or len(store_id) > 100:
             raise ValueError("Invalid configured ingestion store")
         self.sessions = sessions
         self.operations = OperationService(sessions)
         self.bucket = bucket
         self.store_id = store_id
+        if storage is not None and storage.settings.bucket != bucket:
+            raise ValueError("Ingestion storage does not match configured bucket")
+        self.storage = storage
 
     @staticmethod
     def _view(session, operation):
@@ -129,7 +167,7 @@ class IngestionService:
     def admit(self, actor: Principal, namespace_id: UUID, command: UploadRequest):
         with self.sessions.begin() as session:
             operation = self.operations._admit(
-                session, actor, namespace_id, command.operation_request()
+                session, actor, namespace_id, command.operation_request(), initial_status="running"
             )
             row = self.operations._locked_operation(session, actor, namespace_id, operation.id)
             prior = session.scalar(
@@ -137,7 +175,7 @@ class IngestionService:
             )
             if prior is not None:
                 return self._view(session, row)
-            expires_at = session.scalar(select(func.clock_timestamp())) + timedelta(hours=1)
+            expires_at = session.scalar(select(func.clock_timestamp())) + UPLOAD_TTL
             for position, declaration in enumerate(command.items):
                 if declaration.target_sample_id is not None:
                     target = session.scalar(
@@ -219,3 +257,141 @@ class IngestionService:
             if row is None:
                 raise NotFound("Ingestion operation not found")
             return self._view(session, row)
+
+    def _upload_item(self, session, actor, namespace_id, operation_id, item_id, epoch):
+        operation = self.operations._locked_operation(
+            session, actor, namespace_id, operation_id, epoch
+        )
+        if operation.kind != "ingest_upload" or operation.status != "running":
+            raise Conflict("Operation does not permit upload changes")
+        item = session.scalar(
+            select(IngestionItemRow)
+            .where(
+                IngestionItemRow.namespace_id == namespace_id,
+                IngestionItemRow.operation_id == operation_id,
+                IngestionItemRow.id == item_id,
+            )
+            .with_for_update()
+        )
+        if item is None:
+            raise NotFound("Upload item not found")
+        if item.state not in {"awaiting_upload", "uploading"}:
+            raise Conflict("Item does not permit upload changes")
+        if item.expires_at <= session.scalar(select(func.clock_timestamp())):
+            raise Conflict("Upload expired; create a new upload declaration")
+        artifact = session.get(ArtifactRow, item.artifact_id)
+        location = session.scalar(
+            select(ArtifactLocationRow.id).where(
+                ArtifactLocationRow.namespace_id == namespace_id,
+                ArtifactLocationRow.artifact_id == item.artifact_id,
+                ArtifactLocationRow.store_id == self.store_id,
+                ArtifactLocationRow.bucket == self.bucket,
+            )
+        )
+        if location is None:
+            raise StorageUnavailable("Stored upload location is unavailable in this configuration")
+        return operation, item, artifact
+
+    def _upload_snapshot(self, actor, namespace_id, operation_id, item_id, epoch):
+        with self.sessions.begin() as session:
+            _, item, artifact = self._upload_item(
+                session, actor, namespace_id, operation_id, item_id, epoch
+            )
+            if self.storage is None:
+                raise StorageUnavailable("Upload storage is not configured")
+            return item, artifact
+
+    @observed("ingestion")
+    def initiate_upload(self, actor, namespace_id, operation_id, item_id, epoch):
+        item, artifact = self._upload_snapshot(actor, namespace_id, operation_id, item_id, epoch)
+        receipt = self.operations.prepare_effect(
+            actor,
+            namespace_id,
+            operation_id,
+            epoch,
+            EffectRequest(
+                kind="artifact.multipart.initiate",
+                item=str(item.id),
+                input_revision=artifact.sha256,
+                request={"bucket": self.bucket, "key": item.staging_key},
+            ),
+        )
+        if receipt.status == "prepared":
+            receipt = self.operations.begin_effect(
+                actor, namespace_id, operation_id, epoch, receipt.id
+            )
+            # Recheck current grants/cancellation after persisting uncertainty, before provider I/O.
+            self._upload_snapshot(actor, namespace_id, operation_id, item_id, epoch)
+            upload_id = self.storage.initiate(item.staging_key)
+            self.operations.complete_effect(
+                actor,
+                namespace_id,
+                operation_id,
+                epoch,
+                receipt.id,
+                receipt.dispatch_id,
+                EffectResult(
+                    result_digest=hashlib.sha256(upload_id.encode()).hexdigest(),
+                    provider_reference=upload_id,
+                ),
+            )
+        elif receipt.status == "unknown":
+            uploads = self.storage.find_uploads(item.staging_key)
+            if len(uploads) != 1:
+                # Absence cannot prove a timed-out initiation is no longer in flight.
+                raise Conflict("Upload initiation is uncertain; retry reconciliation")
+            upload_id = uploads[0]
+            self.operations.reconcile_effect(
+                actor,
+                namespace_id,
+                operation_id,
+                receipt.id,
+                EffectReconciliation(
+                    expected_revision=receipt.revision,
+                    outcome="found",
+                    result=EffectResult(
+                        result_digest=hashlib.sha256(upload_id.encode()).hexdigest(),
+                        provider_reference=upload_id,
+                    ),
+                    evidence="Exact domain-allocated staging key has one active multipart upload",
+                ),
+            )
+        else:
+            upload_id = receipt.provider_reference
+        with self.sessions.begin() as session:
+            operation, current, _ = self._upload_item(
+                session, actor, namespace_id, operation_id, item_id, epoch
+            )
+            if current.upload_id not in {None, upload_id}:
+                raise Conflict("Upload identity conflicts with committed provider receipt")
+            current.upload_id = upload_id
+            current.state = "uploading"
+            session.flush()
+            return self._view(session, operation)
+
+    @observed("ingestion")
+    def sign_upload_part(self, actor, namespace_id, operation_id, item_id, epoch, number: int):
+        item, artifact = self._upload_snapshot(actor, namespace_id, operation_id, item_id, epoch)
+        count = max(1, (artifact.size_bytes + PART_BYTES - 1) // PART_BYTES)
+        if type(number) is not int or not 1 <= number <= count:
+            raise Conflict("Part number is outside the declared upload")
+        if not item.upload_id or item.state != "uploading":
+            raise Conflict("Upload has not been initiated")
+        size = min(PART_BYTES, max(0, artifact.size_bytes - (number - 1) * PART_BYTES))
+        url = self.storage.sign_part(item.staging_key, item.upload_id, number, size)
+        self._upload_snapshot(actor, namespace_id, operation_id, item_id, epoch)
+        return SignedUploadPart(part_number=number, size_bytes=size, url=url)
+
+    @observed("ingestion")
+    def upload_progress(self, actor, namespace_id, operation_id, item_id, epoch):
+        item, _ = self._upload_snapshot(actor, namespace_id, operation_id, item_id, epoch)
+        if not item.upload_id:
+            return UploadProgress(parts=[])
+        parts = self.storage.parts(item.staging_key, item.upload_id)
+        self._upload_snapshot(actor, namespace_id, operation_id, item_id, epoch)
+        return UploadProgress(
+            parts=[
+                UploadedPart(part_number=part["PartNumber"], size_bytes=part["Size"])
+                for part in parts
+            ]
+        )

@@ -195,8 +195,18 @@ class OperationService:
         with self.sessions.begin() as session:
             return self._admit(session, actor, namespace_id, command)
 
-    def _admit(self, session, actor: Principal, namespace_id: UUID, command: OperationRequest):
+    def _admit(
+        self,
+        session,
+        actor: Principal,
+        namespace_id: UUID,
+        command: OperationRequest,
+        *,
+        initial_status: str = "queued",
+    ):
         """Compose admission with owning-domain rows in one caller-owned transaction."""
+        if initial_status not in {"queued", "running"}:
+            raise ValueError("Unsupported initial operation state")
         digest = hashlib.sha256(command.canonical().encode()).hexdigest()
         current_principal(session, actor.id).require(namespace_id, write=True)
         if session.get(NamespaceRow, namespace_id) is None:
@@ -228,6 +238,7 @@ class OperationService:
                 request_digest=digest,
                 kind=command.kind,
                 inputs=command.inputs,
+                status=initial_status,
             )
             .on_conflict_do_nothing(constraint="uq_operation_request")
             .returning(OperationRow.id)
@@ -250,7 +261,7 @@ class OperationService:
                 namespace_id=namespace_id,
                 operation_id=operation_id,
                 revision=0,
-                event_type="operation.queued",
+                event_type="operation." + initial_status,
                 schema_version=1,
                 payload={"operation_id": str(operation_id), "epoch": 1},
             )

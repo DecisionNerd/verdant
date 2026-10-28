@@ -44,7 +44,7 @@ def test_competing_admission_commits_one_owned_batch_and_operation(registry, ses
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         first, second = pool.map(admit, range(2))
-    assert first == second and first.operation.status == "queued"
+    assert first == second and first.operation.status == "running"
     assert first.items[0].state == "awaiting_upload"
     assert "staging_key" not in first.items[0].model_dump()
     with sessions() as session:
