@@ -12,7 +12,7 @@ async function fixture(content = "abcdefghij") {
   const file = new File([data], "file.txt");
   Object.defineProperty(file, "arrayBuffer", { value: async () => data.buffer });
   const digest = await fileDigest(file);
-  const batch: UploadBatch = { operation: { id: "op", epoch: 2, status: "running" }, cleanup_operation_id: null,
+  const batch: UploadBatch = { operation: { id: "op", kind: "ingest_upload", epoch: 2, status: "running" }, cleanup_operation_id: null,
     items: [{ id: "item", source_key: "source", modality: "text", sha256: digest, size_bytes: file.size,
       state: "uploading", error: null, sample_id: null, accepted_revision_id: null, replacement_operation_id: null, retry_of_item_id: null }] };
   const calls: { path: string; body: unknown }[] = [];
@@ -63,4 +63,10 @@ it("uploads one zero-byte part for an empty declared artifact", async () => {
   const test = await fixture("");
   await transferUploads("ns", "csrf", "op", test.files, limits, new AbortController().signal, vi.fn());
   expect(test.put).toHaveBeenCalledTimes(1); expect(test.put.mock.calls[0][1].body.size).toBe(0);
+});
+
+it("never sends source registrations through upload controls", async () => {
+  const test = await fixture(); test.batch.operation.kind = "ingest_source";
+  await expect(transferUploads("ns", "csrf", "op", test.files, limits, new AbortController().signal, vi.fn())).rejects.toThrow(/cannot receive uploads/);
+  expect(test.calls).toHaveLength(1); expect(test.put).not.toHaveBeenCalled();
 });

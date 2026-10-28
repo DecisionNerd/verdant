@@ -5,6 +5,7 @@ from uuid import UUID
 
 from prefect.client.schemas.filters import FlowRunFilter, FlowRunFilterIdempotencyKey
 
+from verdant.contracts import SAMPLE_INGESTION_KINDS
 from verdant.domain import Conflict, Principal
 from verdant.operations import OperationService, WorkflowReconciliation
 
@@ -152,7 +153,7 @@ class PrefectSubmission:
             raise Conflict("Operation attempt is stale")
         if run.state is not None and run.state.is_final():
             if state.status == "cancellation_requested":
-                if state.kind == "ingest_upload":
+                if state.kind in SAMPLE_INGESTION_KINDS:
                     from verdant.ingestion import IngestionService
 
                     await asyncio.to_thread(

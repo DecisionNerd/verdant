@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, request, type Page } from "./api";
+import { SourceRegistration } from "./sources";
 import { SamplePreview } from "./preview";
 import { fileDigest, transferUploads, type Declaration, type UploadBatch, type UploadItem, type UploadLimits } from "./upload";
 
@@ -69,6 +70,8 @@ export function Ingestions({ namespace, csrf, writable }: { namespace: string; c
     <p>Upload original files, then verify bytes before registering sample revisions. Accepted samples can be added to dataset drafts.</p>
     {limits.isPending ? <p role="status">Loading upload limits…</p> : limits.isError ? <p role="alert">{limits.error.message}</p> : <>
       <p>At most {limits.data.max_items} files per batch, {limits.data.max_artifact_bytes / 1024 / 1024} MiB each. Parts: {limits.data.part_bytes / 1024 / 1024} MiB. Files upload one at a time.</p>
+      {writable && limits.data.sources_configured && <SourceRegistration namespace={namespace} csrf={csrf} limits={limits.data} select={select} />}
+      {!limits.data.sources_configured && <p>Registration of existing S3 sources is not configured. File uploads remain a separate capability.</p>}
       {!limits.data.configured && <p role="alert">Object storage is not configured. Existing history remains available.</p>}
       {writable && limits.data.configured && <form onSubmit={event => void admit(event)}><h3>New upload</h3>
         <label>Files to upload <input type="file" multiple disabled={busy || admission.current !== null} onChange={event => { setError(""); setChoices(Array.from(event.target.files ?? []).map(file => ({ file, source: file.name, modality: inferModality(file) }))); }} /></label>
@@ -81,10 +84,10 @@ export function Ingestions({ namespace, csrf, writable }: { namespace: string; c
       </form>}
     </>}
     {error && <p role="alert">{error}</p>}
-    <h3>Upload history</h3><button onClick={() => void history.refetch()}>Refresh upload history</button>
+    <h3>Ingestion history</h3><button onClick={() => void history.refetch()}>Refresh ingestion history</button>
     {history.isError && <p role="alert">{history.error.message} Last known status may be stale.</p>}
     {history.isPending ? <p role="status">Loading uploads…</p> : history.data && <>
-      {!history.data.items.length ? <p>No upload operations on this page.</p> : <ul>{history.data.items.map(operation => <li key={operation.id}><button onClick={() => select(operation.id)}>{operation.id}</button> · {operation.status.replaceAll("_", " ")}</li>)}</ul>}
+      {!history.data.items.length ? <p>No ingestion operations on this page.</p> : <ul>{history.data.items.map(operation => <li key={operation.id}><button onClick={() => select(operation.id)}>{operation.id}</button> · {operation.status.replaceAll("_", " ")}</li>)}</ul>}
       <nav aria-label="Upload history pages"><button disabled={cursors.length === 1} onClick={() => setCursors(cursors.slice(0, -1))}>Previous uploads</button><button disabled={!history.data.next_after} onClick={() => setCursors([...cursors, history.data!.next_after])}>Next uploads</button></nav>
     </>}
     {selected && limits.data && <UploadDetail key={selected} namespace={namespace} id={selected} csrf={csrf} writable={writable} limits={limits.data} initialFiles={files.current} select={select} />}
@@ -147,9 +150,10 @@ function UploadDetail({ namespace, id, csrf, writable, limits, initialFiles, sel
   if (accessDenied || denied(query.error)) return <p role="alert">Workspace access changed. Upload details are hidden.</p>;
   if (!query.data) return <p role={query.isError ? "alert" : "status"}>{query.isError ? query.error.message : "Loading upload operation…"}</p>;
   const batch = query.data, status = batch.operation.status;
-  const canTransfer = status === "running" && batch.items.some(item => ["awaiting_upload", "uploading"].includes(item.state));
+  const canTransfer = batch.operation.kind === "ingest_upload" && status === "running" && batch.items.some(item => ["awaiting_upload", "uploading"].includes(item.state));
   const recoverable = ["failed", "cancelled"].includes(status) && batch.items.some(item => !["accepted", "superseded"].includes(item.state) && !item.replacement_operation_id);
-  return <article aria-label="Upload operation"><h3 ref={heading} tabIndex={-1}>Upload {id}</h3>
+  return <article aria-label="Ingestion operation"><h3 ref={heading} tabIndex={-1}>Ingestion {id}</h3>
+    <p>{batch.operation.kind === "ingest_source" ? "Configured source registration" : "File upload"}</p>
     <p>Status: <strong>{status.replaceAll("_", " ")}</strong> · attempt {batch.operation.epoch}</p>
     {query.isError && <p role="alert">Connection interrupted. Last known status shown; write controls paused.</p>}
     {status === "running" && batch.items.some(item => item.state === "failed") && <p>Some uploads failed before verification. Cancel this operation, wait for cleanup, then create a linked re-upload.</p>}
@@ -164,6 +168,7 @@ function UploadDetail({ namespace, id, csrf, writable, limits, initialFiles, sel
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {batch.cleanup_operation_id && <p><a href={`/?${new URLSearchParams({ namespace, view: "operations", operation: batch.cleanup_operation_id })}`}>Inspect staging cleanup</a></p>}
     <ul>{batch.items.map(item => <li key={item.id}><strong>{item.source_key}</strong> · {item.modality} · {item.size_bytes} bytes · {item.state}{item.error && <p role="alert">{item.error.replaceAll("_", " ")}</p>}
+      {item.source_object && <p>Read-only source object: <span className="identifier">{item.source_object}</span></p>}
       {item.retry_of_item_id && <p>Re-upload of item <span className="identifier">{item.retry_of_item_id}</span></p>}
       {item.replacement_operation_id && <button onClick={() => select(item.replacement_operation_id!)}>Open replacement upload</button>}
       {item.accepted_revision_id && item.sample_id && <><p>Accepted sample <span className="identifier">{item.sample_id}</span> · exact revision <span className="identifier">{item.accepted_revision_id}</span></p><button onClick={() => setPreview(item.id)}>Inspect accepted content for {item.source_key}</button>{writable && <button onClick={() => setReplacement(item.id)}>Replace bytes for {item.source_key}</button>}{replacement === item.id && <ReplaceUpload key={item.accepted_revision_id} namespace={namespace} csrf={csrf} item={item} limits={limits} select={select} />}{preview === item.id && <SamplePreview key={item.accepted_revision_id} namespace={namespace} sample={item.sample_id} revision={item.accepted_revision_id} csrf={csrf} />}</>}

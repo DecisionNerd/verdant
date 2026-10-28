@@ -1,6 +1,7 @@
 """Actual PostgreSQL/S3 transport composition; signed service JWT/JWKS are fixtures."""
 
 import hashlib
+from dataclasses import replace
 from time import time
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -381,3 +382,42 @@ def test_reupload_after_reload_derives_pins_and_exposes_recovery_links(upload_cl
         actor, ns, accepted.sample_id, accepted.accepted_revision_id
     )
     assert revision.metadata == {"title": "retained only on server"}
+
+
+def test_rest_mcp_source_admission_verification_and_provenance(
+    upload_client, storage, sessions, monkeypatch
+):
+    client, headers, ns, principal_id, adapter, app = upload_client
+    _, owned_prefix = storage
+    monkeypatch.setattr(
+        adapter, "settings", replace(adapter.settings, source_prefix=owned_prefix.rstrip("/"))
+    )
+    from verdant.storage import configured_source_key
+
+    body = b"registered configured source"
+    key = configured_source_key(adapter.settings.source_prefix, ns, "source.txt")
+    adapter.client.put_object(Bucket=adapter.settings.bucket, Key=key, Body=body)
+    declaration = command(body)
+    declaration["items"][0]["source_object"] = "source.txt"
+    path = f"/api/v1/namespaces/{ns}/ingestions"
+    rest = client.post(path + "/sources", json=declaration, headers=headers)
+    assert rest.status_code == 202 and rest.json()["operation"]["kind"] == "ingest_source"
+    assert rest.json() == call_tool(
+        client, headers, "ingestion_source_admit", namespace_id=str(ns), command=declaration
+    )
+    assert client.get(path + "/limits", headers=headers).json()["sources_configured"]
+    actor = app.state.identity.identities.resolve(
+        app.state.identity.settings.issuer,
+        next_identity_subject(sessions, principal_id),
+        kind="service",
+    )
+    accepted = IngestionRunner(sessions, adapter).run(
+        actor, ns, UUID(rest.json()["operation"]["id"]), 1
+    )
+    assert accepted.operation.status == "succeeded"
+    listing = client.get(path, headers=headers).json()
+    assert listing["items"][0]["kind"] == "ingest_source"
+    assert client.get(path, headers={}).status_code == 401
+    malicious = command(body)
+    malicious["items"][0]["source_object"] = "https://untrusted/source"
+    assert client.post(path + "/sources", json=malicious, headers=headers).status_code == 422

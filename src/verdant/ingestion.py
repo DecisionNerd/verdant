@@ -5,12 +5,12 @@ import json
 from datetime import timedelta
 from uuid import UUID, uuid4
 
-from pydantic import Field, JsonValue, ValidationError, model_validator
+from pydantic import Field, JsonValue, ValidationError, field_validator, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from verdant.application import RegistryService
-from verdant.contracts import Contract, Digest, Revision, SampleContent
+from verdant.contracts import SAMPLE_INGESTION_KINDS, Contract, Digest, Revision, SampleContent
 from verdant.domain import Conflict, NotFound, Principal
 from verdant.identity import current_principal
 from verdant.operations import (
@@ -41,6 +41,8 @@ from verdant.storage import (
     ObjectMissing,
     S3Storage,
     StorageUnavailable,
+    configured_source_key,
+    validate_source_path,
 )
 from verdant.telemetry import observed
 
@@ -88,6 +90,32 @@ class UploadRequest(Contract):
         )
 
 
+class SourceDeclaration(UploadDeclaration):
+    source_object: str = Field(min_length=1, max_length=500)
+
+    @field_validator("source_object")
+    @classmethod
+    def canonical_key(cls, value):
+        return validate_source_path(value)
+
+    @model_validator(mode="after")
+    def no_source_retry_origin(self):
+        if self.retry_of_item_id is not None:
+            raise ValueError("Retry source verification or use explicit linked re-upload")
+        return self
+
+
+class SourceRegistrationRequest(UploadRequest):
+    items: list[SourceDeclaration] = Field(min_length=1, max_length=100)
+
+    def operation_request(self):
+        return OperationRequest(
+            request_key=self.request_key,
+            kind="ingest_source",
+            inputs={"items": [item.model_dump(mode="json") for item in self.items]},
+        )
+
+
 class ReuploadRequest(Contract):
     request_key: str = Field(min_length=1, max_length=200)
     item_ids: list[UUID] = Field(min_length=1, max_length=100)
@@ -114,6 +142,7 @@ class IngestionItem(Contract):
     error: str | None
     sample_id: UUID | None
     accepted_revision_id: UUID | None
+    source_object: str | None = None
 
 
 class IngestionBatch(Contract):
@@ -135,6 +164,7 @@ class UploadPartRequest(OperationAction):
 
 class UploadLimits(Contract):
     configured: bool
+    sources_configured: bool = False
     max_artifact_bytes: int = MAX_ARTIFACT_BYTES
     max_items: int = 100
     part_bytes: int = PART_BYTES
@@ -202,7 +232,11 @@ class IngestionService:
     def limits(self, actor, namespace_id):
         with self.sessions.begin() as session:
             current_principal(session, actor.id).require(namespace_id)
-        return UploadLimits(configured=self.storage is not None)
+        return UploadLimits(
+            configured=self.storage is not None,
+            sources_configured=self.storage is not None
+            and self.storage.settings.source_prefix is not None,
+        )
 
     @staticmethod
     def _view(session, operation):
@@ -253,6 +287,11 @@ class IngestionService:
                     else None,
                     position=item.position,
                     source_key=item.source_key,
+                    source_object=(
+                        operation.inputs["items"][item.position]["source_object"]
+                        if operation.kind == "ingest_source"
+                        else None
+                    ),
                     modality=item.modality,
                     sha256=artifact.sha256,
                     size_bytes=artifact.size_bytes,
@@ -294,7 +333,10 @@ class IngestionService:
         for origin in origins:
             parent = parents[origin.operation_id]
             session.refresh(origin, with_for_update=True)
-            if parent.kind != "ingest_upload" or parent.status not in {"failed", "cancelled"}:
+            if parent.kind not in SAMPLE_INGESTION_KINDS or parent.status not in {
+                "failed",
+                "cancelled",
+            }:
                 raise Conflict("Re-upload requires a failed or cancelled original operation")
             if origin.state in {"accepted", "superseded"}:
                 raise Conflict("Accepted or already re-uploaded items cannot be re-uploaded")
@@ -329,9 +371,48 @@ class IngestionService:
 
     @observed("ingestion")
     def admit(self, actor: Principal, namespace_id: UUID, command: UploadRequest):
+        return self._admit_ingestion(actor, namespace_id, command, command.operation_request())
+
+    @observed("ingestion")
+    def admit_source(self, actor, namespace_id, command: SourceRegistrationRequest):
+        self.require_storage(actor, namespace_id)
+        prefix = self.storage.settings.source_prefix
+        if prefix is None:
+            raise StorageUnavailable("Source registration is not configured")
+        try:
+            for item in command.items:
+                configured_source_key(prefix, namespace_id, item.source_object)
+        except ValueError:
+            raise Conflict("Source key exceeds the configured namespace bounds") from None
+        request = command.operation_request()
+        request = request.model_copy(
+            update={
+                "inputs": request.inputs
+                | {
+                    "source_scope": {
+                        "store_id": self.store_id,
+                        "bucket": self.bucket,
+                        "prefix": prefix,
+                    }
+                }
+            }
+        )
+        # Revalidate the complete pinned request, including source scope, against shared bounds.
+        try:
+            request = OperationRequest.model_validate(request.model_dump())
+        except ValidationError:
+            raise Conflict("Pinned source inputs exceed limits; select fewer items") from None
+        return self._admit_ingestion(actor, namespace_id, command, request)
+
+    def _admit_ingestion(self, actor, namespace_id, command, request):
+        source_registration = request.kind == "ingest_source"
         with self.sessions.begin() as session:
             operation = self.operations._admit(
-                session, actor, namespace_id, command.operation_request(), initial_status="running"
+                session,
+                actor,
+                namespace_id,
+                request,
+                initial_status="queued" if source_registration else "running",
             )
             row = self.operations._locked_operation(session, actor, namespace_id, operation.id)
             prior = session.scalar(
@@ -404,23 +485,25 @@ class IngestionService:
                         object_key=f"{namespace_id}/artifacts/{artifact_id}",
                     )
                 )
-                session.add(
-                    IngestionItemRow(
-                        id=item_id,
-                        namespace_id=namespace_id,
-                        operation_id=row.id,
-                        retry_of_item_id=declaration.retry_of_item_id,
-                        position=position,
-                        artifact_id=artifact_id,
-                        source_key=declaration.source_key,
-                        modality=declaration.modality,
-                        metadata_json=declaration.metadata,
-                        target_sample_id=declaration.target_sample_id,
-                        expected_revision=declaration.expected_revision,
-                        staging_key=f"{namespace_id}/staging/{item_id}",
-                        expires_at=expires_at,
-                    )
+                item = IngestionItemRow(
+                    id=item_id,
+                    namespace_id=namespace_id,
+                    operation_id=row.id,
+                    retry_of_item_id=declaration.retry_of_item_id,
+                    position=position,
+                    artifact_id=artifact_id,
+                    source_key=declaration.source_key,
+                    modality=declaration.modality,
+                    metadata_json=declaration.metadata,
+                    target_sample_id=declaration.target_sample_id,
+                    expected_revision=declaration.expected_revision,
+                    staging_key=f"{namespace_id}/staging/{item_id}",
+                    expires_at=expires_at,
                 )
+                session.add(item)
+                if source_registration:
+                    session.flush()
+                    item.state = "ready"
             session.flush()
             return self._view(session, row)
 
@@ -433,7 +516,7 @@ class IngestionService:
                 .where(
                     OperationRow.namespace_id == namespace_id,
                     OperationRow.id == operation_id,
-                    OperationRow.kind == "ingest_upload",
+                    OperationRow.kind.in_(SAMPLE_INGESTION_KINDS),
                 )
                 .with_for_update(read=True)
             )
@@ -794,7 +877,10 @@ class IngestionService:
             operation = self.operations._locked_operation(
                 session, actor, namespace_id, operation_id, epoch
             )
-            if operation.kind != "ingest_upload" or operation.status not in {"queued", "running"}:
+            if operation.kind not in SAMPLE_INGESTION_KINDS or operation.status not in {
+                "queued",
+                "running",
+            }:
                 raise Conflict("Operation does not permit ingestion verification")
             pending = session.scalar(
                 select(IngestionItemRow.id)
@@ -822,7 +908,10 @@ class IngestionService:
         operation = self.operations._locked_operation(
             session, actor, namespace_id, operation_id, epoch
         )
-        if operation.kind != "ingest_upload" or operation.status not in {"running", "succeeded"}:
+        if operation.kind not in SAMPLE_INGESTION_KINDS or operation.status not in {
+            "running",
+            "succeeded",
+        }:
             raise Conflict("Operation does not permit sample acceptance")
         item = session.scalar(
             select(IngestionItemRow)
@@ -857,15 +946,61 @@ class IngestionService:
             raise StorageUnavailable(
                 "Stored artifact location is unavailable in this configuration"
             )
-        source = IngestionSource(
+        return (
+            operation,
+            item,
+            artifact,
+            self._promotion_source(operation, item, artifact, location),
+        )
+
+    def _promotion_source(self, operation, item, artifact, location, *, require_configuration=True):
+        source_key = item.staging_key
+        if operation.kind == "ingest_source":
+            try:
+                scope = operation.inputs["source_scope"]
+                declaration = SourceDeclaration.model_validate(
+                    operation.inputs["items"][item.position]
+                )
+                if set(scope) != {"store_id", "bucket", "prefix"} or (
+                    scope["store_id"],
+                    scope["bucket"],
+                ) != (self.store_id, self.bucket):
+                    raise ValueError("Source storage differs")
+                if (
+                    declaration.source_key,
+                    declaration.modality,
+                    declaration.sha256,
+                    declaration.size_bytes,
+                    declaration.metadata,
+                    declaration.target_sample_id,
+                    declaration.expected_revision,
+                ) != (
+                    item.source_key,
+                    item.modality,
+                    artifact.sha256,
+                    artifact.size_bytes,
+                    item.metadata_json,
+                    item.target_sample_id,
+                    item.expected_revision,
+                ):
+                    raise ValueError("Source declaration differs")
+                if require_configuration and (
+                    self.storage is None or self.storage.settings.source_prefix != scope["prefix"]
+                ):
+                    raise StorageUnavailable("Recorded source scope is not enabled")
+                source_key = configured_source_key(
+                    scope["prefix"], operation.namespace_id, declaration.source_object
+                )
+            except (KeyError, IndexError, TypeError, ValueError):
+                raise Conflict("Stored source declaration is invalid") from None
+        return IngestionSource(
             item_id=item.id,
             artifact_id=artifact.id,
-            staging_key=item.staging_key,
+            staging_key=source_key,
             final_key=location.object_key,
             sha256=artifact.sha256,
             size_bytes=artifact.size_bytes,
         )
-        return operation, item, artifact, source
 
     @observed("ingestion")
     def verification_source(self, actor, namespace_id, operation_id, item_id, epoch):
@@ -1054,7 +1189,7 @@ class IngestionService:
                 .with_for_update()
             )
             if (
-                operation.kind != "ingest_upload"
+                operation.kind not in SAMPLE_INGESTION_KINDS
                 or operation.status != "running"
                 or item is None
                 or item.state != "ready"
@@ -1082,7 +1217,7 @@ class IngestionService:
             operation = self.operations._locked_operation(
                 session, actor, namespace_id, operation_id, epoch
             )
-            if operation.kind != "ingest_upload":
+            if operation.kind not in SAMPLE_INGESTION_KINDS:
                 raise Conflict("Unsupported ingestion operation kind")
             if operation.status in {"cancellation_requested", "cancelled"}:
                 self._admit_cleanup(session, actor, operation)
@@ -1115,7 +1250,7 @@ class IngestionService:
             return self._view(session, operation)
 
     def _admit_cleanup(self, session, actor, parent):
-        if parent.kind != "ingest_upload" or parent.status not in {
+        if parent.kind not in SAMPLE_INGESTION_KINDS or parent.status not in {
             "cancellation_requested",
             "cancelled",
             "succeeded",

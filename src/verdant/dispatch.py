@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import dataclass
 from uuid import UUID
 
+from verdant.contracts import SAMPLE_INGESTION_KINDS
 from verdant.domain import Conflict, NotFound, Principal
 from verdant.ingestion import IngestionService
 from verdant.operations import OperationService
@@ -35,7 +36,7 @@ class WorkflowDispatcher:
     def _submission(self, kind):
         if kind == "verify_sample_artifact":
             return self.submission
-        if kind in {"ingest_upload", "ingest_cleanup"}:
+        if kind in SAMPLE_INGESTION_KINDS | {"ingest_cleanup"}:
             return self.ingestion_submission
         return None
 
@@ -63,7 +64,7 @@ class WorkflowDispatcher:
                     operations.get, actor, namespace_id, claim.operation_id
                 )
                 submission = self._submission(state.kind)
-                if submission is None and state.kind in {"ingest_upload", "ingest_cleanup"}:
+                if submission is None and state.kind in SAMPLE_INGESTION_KINDS | {"ingest_cleanup"}:
                     # Known capabilities can be configured later. Keep inbox/dispatch facts
                     # replayable rather than permanently quarantining valid admitted work.
                     deferred += 1
@@ -115,7 +116,7 @@ class WorkflowDispatcher:
                     )
                 elif (
                     state.status == "cancellation_requested"
-                    and state.kind in {"ingest_upload", "ingest_cleanup"}
+                    and state.kind in SAMPLE_INGESTION_KINDS | {"ingest_cleanup"}
                     and submission is not None
                 ):
                     try:
@@ -124,7 +125,7 @@ class WorkflowDispatcher:
                         )
                     except NotFound:
                         pass
-                    if state.kind == "ingest_upload":
+                    if state.kind in SAMPLE_INGESTION_KINDS:
                         await asyncio.to_thread(
                             self.ingestion.ensure_cleanup,
                             actor,
@@ -138,7 +139,7 @@ class WorkflowDispatcher:
                         )
                 elif (
                     state.status == "succeeded"
-                    and state.kind == "ingest_upload"
+                    and state.kind in SAMPLE_INGESTION_KINDS
                     and submission is not None
                 ):
                     await asyncio.to_thread(

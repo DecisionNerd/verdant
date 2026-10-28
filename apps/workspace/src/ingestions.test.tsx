@@ -9,7 +9,7 @@ import { fileDigest, transferUploads } from "./upload";
 vi.mock("./api", async original => ({ ...await original<typeof import("./api")>(), request: vi.fn() }));
 vi.mock("./upload", async original => ({ ...await original<typeof import("./upload")>(), fileDigest: vi.fn(), transferUploads: vi.fn() }));
 afterEach(() => { cleanup(); vi.resetAllMocks(); history.replaceState(null, "", "/"); });
-const operation = { id: "op", status: "running", epoch: 1 };
+const operation = { id: "op", kind: "ingest_upload", status: "running", epoch: 1 };
 const item = { id: "item", state: "awaiting_upload", source_key: "file.txt", modality: "text", sha256: "a".repeat(64), size_bytes: 5, error: null, replacement_operation_id: null, retry_of_item_id: null, sample_id: null, accepted_revision_id: null };
 function setup({ selected = false, writable = true, status = "running", state = "awaiting_upload", itemError = null as string | null } = {}) {
   history.replaceState(null, "", selected ? "/?namespace=ns&view=ingestions&ingestion=op" : "/?namespace=ns&view=ingestions");
@@ -39,7 +39,7 @@ it("retries an uncertain admission with exactly the same request identity", asyn
   await screen.findByText("Response lost");
   expect((input as HTMLInputElement).disabled).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Create upload operation" }));
-  await screen.findByRole("article", { name: "Upload operation" });
+  await screen.findByRole("article", { name: "Ingestion operation" });
   const commands = vi.mocked(request).mock.calls.filter(call => call[0].endsWith("/uploads"));
   expect(commands).toHaveLength(2); expect(commands[0][2]).toEqual(commands[1][2]);
 });
@@ -64,17 +64,17 @@ it("runs resumed transfer correctly after StrictMode effect replay", async () =>
   fireEvent.click(await screen.findByRole("button", { name: "Upload or resume files" }));
   await screen.findByText(/Awaiting independent worker verification/);
   expect(transferUploads).toHaveBeenCalledTimes(1);
-  expect(document.activeElement?.textContent).toBe("Upload op");
+  expect(document.activeElement?.textContent).toBe("Ingestion op");
 });
 it("shows read-only history without upload or recovery controls", async () => {
   setup({ selected: true, writable: false });
-  await screen.findByRole("article", { name: "Upload operation" });
+  await screen.findByRole("article", { name: "Ingestion operation" });
   expect(screen.queryByLabelText("Files to upload")).toBeNull();
   expect(screen.queryByRole("button", { name: "Cancel upload operation" })).toBeNull();
 });
 it("hides operation details after current access is denied", async () => {
   setup({ selected: true });
-  await screen.findByRole("article", { name: "Upload operation" });
+  await screen.findByRole("article", { name: "Ingestion operation" });
   const original = vi.mocked(request).getMockImplementation()!;
   vi.mocked(request).mockImplementation(async (...args) => { if (args[0].endsWith("/op")) throw new ApiError(403, "Revoked"); return original(...args); });
   fireEvent.click(screen.getByRole("button", { name: "Refresh upload operation" }));

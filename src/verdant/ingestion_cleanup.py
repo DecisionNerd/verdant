@@ -8,9 +8,9 @@ import hashlib
 
 from sqlalchemy import select
 
-from verdant.contracts import Contract
+from verdant.contracts import SAMPLE_INGESTION_KINDS, Contract
 from verdant.domain import Conflict, NotFound
-from verdant.ingestion import IngestionBatch, IngestionService, IngestionSource
+from verdant.ingestion import IngestionBatch, IngestionService
 from verdant.operations import EffectReconciliation, EffectRequest, EffectResult
 from verdant.persistence import (
     ArtifactLocationRow,
@@ -50,7 +50,7 @@ class IngestionCleanup:
         operation = self.operations._locked_operation(
             session, actor, namespace_id, operation_id, epoch
         )
-        if operation.kind != "ingest_upload" or operation.status not in CLEANUP_STATES:
+        if operation.kind not in SAMPLE_INGESTION_KINDS or operation.status not in CLEANUP_STATES:
             raise Conflict("Operation does not permit staging cleanup")
         item = session.scalar(
             select(IngestionItemRow)
@@ -182,14 +182,13 @@ class IngestionCleanup:
             )
         promotion = by_kind.get("artifact.promote")
         if promotion is not None and promotion.status == "unknown":
-            source = IngestionSource(
-                item_id=item.id,
-                artifact_id=artifact.id,
-                staging_key=item.staging_key,
-                final_key=location.object_key,
-                sha256=artifact.sha256,
-                size_bytes=artifact.size_bytes,
-            )
+            with self.sessions.begin() as session:
+                parent = self.operations._locked_operation(
+                    session, actor, namespace_id, operation_id, epoch
+                )
+                source = self.ingestion._promotion_source(
+                    parent, item, artifact, location, require_configuration=False
+                )
             expected = source.promotion(self.ingestion.bucket, self.ingestion.store_id)
             if promotion.identity != expected.identity() or promotion.request != expected.request:
                 raise Conflict("Cleanup has an unexpected promotion receipt")
@@ -335,7 +334,10 @@ class IngestionCleanup:
             operation = self.operations._locked_operation(
                 session, actor, namespace_id, operation_id, epoch
             )
-            if operation.kind != "ingest_upload" or operation.status not in CLEANUP_STATES:
+            if (
+                operation.kind not in SAMPLE_INGESTION_KINDS
+                or operation.status not in CLEANUP_STATES
+            ):
                 raise Conflict("Operation does not permit staging cleanup")
             rows = session.execute(
                 select(IngestionItemRow, ArtifactRow)

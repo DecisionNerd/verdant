@@ -13,12 +13,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from verdant import contracts as c
 from verdant.application import RegistryService
 from verdant.auth import IdentityRuntime, IdentitySettings
+from verdant.contracts import SAMPLE_INGESTION_KINDS
 from verdant.domain import DomainError, Forbidden, NotFound, Principal
 from verdant.ingestion import (
     IngestionBatch,
     IngestionService,
     ReuploadRequest,
     SignedUploadPart,
+    SourceRegistrationRequest,
     UploadLimits,
     UploadPartRequest,
     UploadProgress,
@@ -141,12 +143,18 @@ def create_app(
         after: UUID | None = None,
         limit: int = Query(default=25, ge=1, le=100),
     ):
-        return operations.list_operations(actor, namespace_id, after, limit, kind="ingest_upload")
+        return operations.list_operations(
+            actor, namespace_id, after, limit, kind=SAMPLE_INGESTION_KINDS
+        )
 
     @app.post(prefix + "/ingestions/uploads", response_model=IngestionBatch, status_code=202)
     def admit_upload(namespace_id: UUID, command: UploadRequest, actor: Actor):
         ingestion.require_storage(actor, namespace_id)
         return ingestion.admit(actor, namespace_id, command)
+
+    @app.post(prefix + "/ingestions/sources", response_model=IngestionBatch, status_code=202)
+    def register_sources(namespace_id: UUID, command: SourceRegistrationRequest, actor: Actor):
+        return ingestion.admit_source(actor, namespace_id, command)
 
     @app.post(prefix + "/ingestions/reuploads", response_model=IngestionBatch, status_code=202)
     def reupload(namespace_id: UUID, command: ReuploadRequest, actor: Actor):

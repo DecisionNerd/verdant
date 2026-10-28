@@ -10,6 +10,7 @@ from prefect import flow
 from prefect.context import get_run_context
 
 from verdant.access_tokens import AccessTokenSettings, AccessTokenVerifier
+from verdant.contracts import SAMPLE_INGESTION_KINDS
 from verdant.domain import Conflict
 from verdant.identity import IdentityService
 from verdant.ingestion import IngestionService
@@ -120,10 +121,10 @@ def ingest_operations(namespace_id: str, operation_id: str, epoch: int):
     try:
         namespace, operation = UUID(namespace_id), UUID(operation_id)
         actor, operations = admitted_worker(
-            sessions, namespace, operation, epoch, {"ingest_upload", "ingest_cleanup"}
+            sessions, namespace, operation, epoch, SAMPLE_INGESTION_KINDS | {"ingest_cleanup"}
         )
         state = operations.get(actor, namespace, operation)
-        if state.kind == "ingest_upload" and state.status == "cancellation_requested":
+        if state.kind in SAMPLE_INGESTION_KINDS and state.status == "cancellation_requested":
             IngestionService(sessions, bucket="unconfigured").ensure_cleanup(
                 actor, namespace, operation, epoch
             )

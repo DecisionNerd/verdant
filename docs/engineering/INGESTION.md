@@ -1,6 +1,6 @@
 # Verified ingestion transport
 
-The backend implements bounded direct uploads, resumable multipart state, immutable verified sample acceptance, re-upload lineage and staging cleanup. REST and MCP call the same domain services. Native Prefect dispatch now routes upload verification and linked staging cleanup through one fixed ingestion deployment. The existing artifact-verification deployment remains separate. Actual host-process execution and a graceful restart are qualified; packaged runtime and browser qualification remain open. The exact-revision inspection UI exposes verified text/image previews and attachment downloads.
+The backend implements bounded direct uploads, resumable multipart state, immutable verified sample acceptance, re-upload lineage, configured read-only source registration and staging cleanup. REST and MCP call the same domain services. Native Prefect dispatch now routes upload verification and linked staging cleanup through one fixed ingestion deployment. The existing artifact-verification deployment remains separate. Actual host-process execution and a graceful restart are qualified; packaged runtime and browser qualification remain open. The exact-revision inspection UI exposes verified text/image previews and attachment downloads.
 
 ## Configuration and identity
 
@@ -63,6 +63,18 @@ A failed/cancelled operation can create a linked re-upload of every unfinished, 
 
 Accepted items offer exact content inspection and **Replace bytes**. Replacement preserves source identity, modality and selected revision metadata, and pins that sample revision as the expected predecessor. A concurrent newer revision produces a conflict; the UI does not silently overwrite it. Uncertain replacement admission retries preserve the same request identity. The replacement then follows the same upload/verification path and appends a revision under the stable sample identity.
 
+## Register configured S3 sources
+
+`VERDANT_S3_SOURCE_PREFIX` explicitly enables source registration in the configured primary bucket. It defaults to disabled. API and worker must use the same value. Relative object `reports/page.txt` resolves to `<configured-prefix>/<namespace-uuid>/reports/page.txt`; namespace is always supplied by the authorized server command, never selected inside a URL. Prefix and relative keys are canonical paths: no empty/dot/traversal segments, absolute paths, URL schemes, backslashes, percent escapes, query strings, fragments or control characters. The complete key is limited to 1024 UTF-8 bytes. No source credentials or alternate endpoints enter commands.
+
+In the **Ingest data** view, add source rows with relative object key, stable source identity, modality, expected SHA-256 and size. Up to 100 items fit the shared bounded command. Source objects must already exist in the configured workspace source area. The server queues a separate `ingest_source` operation without multipart upload or source mutation. Acknowledged registration clears the form for the next batch; uncertain retries preserve the exact command identity. Histories expose read-only relative references and ordinary durable state. A source operation never exposes file-upload controls.
+
+REST `POST /ingestions/sources` and MCP `ingestion_source_admit` accept the same request-key/items structure as upload admission, with `source_object` on each item. The source scope (store ID, bucket, prefix), declarations, metadata and replacement pins are captured in immutable operation inputs. The worker revalidates this exact scope against current configuration, streams and verifies the source into bounded scratch, conditionally writes an owned final artifact, verifies final bytes, then uses the same atomic sample/revision acceptance transaction. A changed scope rejects acceptance; endpoints and signed URLs remain outside artifact identity.
+
+Source failure records missing/corrupt/unavailable outcomes without accepting a sample. Verification retry retains the original pins. Explicit new declarations are required for changed bytes; a source operation may also recover through a linked fresh **file upload**, preserving its original declaration and origin lineage. API source declarations support explicit sample/expected-revision targets. Existing accepted content can use the UI's pinned file replacement path.
+
+Source originals are read-only throughout admission, verification, retry, cancellation and cleanup. The source reference is never a staging-deletion target. Unknown promotion reconciles only against verified owned final bytes; linked maintenance removes only the operation's separately allocated staging key. Disabling source registration does not prevent authorized cleanup of those owned effects. Migration 18 extends immutable cleanup/re-upload guards to source parents and refuses downgrade while any source history exists.
+
 ## Exact-revision content inspection
 
 `GET /samples/{sample_id}/revisions/{revision_id}/preview` and MCP `sample_revision_preview` resolve the same verified artifact binding. A legacy caller-declared object key never authorizes reads. The namespace, sample, revision, artifact digest/size and configured store/bucket must match. Every byte is independently verified into bounded scratch before returning content or a signed attachment link. Current grants and placement are checked again after provider I/O and signing. The response is no-store; the browser keeps it only in the mounted inspection component.
@@ -79,4 +91,4 @@ Upload verification uses bounded batches. Cleanup uses a separate `ingest_cleanu
 
 ## Remaining qualification
 
-Packaged Prefect ingestion/cleanup execution, browser upload/preview/retry/cancel, configured S3 source registration, browser preview validation, process interruptions and retention/fault qualification remain open. Arbitrary HTTP source ingestion is disabled; no URL-fetch endpoint exists. Backend modality storage remains byte-oriented. Inline rendering supports the bounded text/PNG/JPEG paths above; other modalities retain verified original downloads.
+Packaged Prefect ingestion/cleanup/source execution, browser upload/source/preview/retry/cancel, process interruptions and retention/fault qualification remain open. Arbitrary HTTP source ingestion is disabled; no URL-fetch endpoint exists. Backend modality storage remains byte-oriented. Inline rendering supports the bounded text/PNG/JPEG paths above; other modalities retain verified original downloads.

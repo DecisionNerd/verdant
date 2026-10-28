@@ -55,3 +55,7 @@ The service identity still requires explicit operator provisioning and namespace
 Stop the overlay using the same two `-f` files and private env files with `down`, without `--volumes`. Keep private inputs and both PostgreSQL volumes together for recovery. Native process workers inherit service credentials from container environment; deployment parameters contain only namespace ID, operation ID, and epoch. No cloud account or model access is configured.
 
 Packaged-runtime qualification is tracked in `docs/proofs/issue-19/verification.md`; configuration validity and container health alone do not prove operation execution or browser recovery.
+
+### Optional read-only ingestion sources
+
+Set `VERDANT_S3_SOURCE_PREFIX` consistently for API and workflow services to enable existing-object registration in the primary bucket. The default empty value disables this capability. Object references resolve below `<prefix>/<namespace UUID>/`; users supply relative keys, expected SHA-256 and size. Keep source provision/write authority separate from application registration. Workers copy verified bytes into their owned final artifacts and never clean up source originals. The UI keeps source registration distinct from file upload. Enabling configuration alone is not backend or browser qualification; see `docs/proofs/issue-14/storage.md`.

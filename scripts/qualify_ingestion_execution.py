@@ -23,14 +23,21 @@ from verdant.access_tokens import AccessTokenSettings, AccessTokenVerifier
 from verdant.dispatch import WorkflowDispatcher
 from verdant.flows import ingest_operations, service_principal, verify_artifact
 from verdant.identity import IdentityService
-from verdant.ingestion import IngestionService, UploadDeclaration, UploadRequest
+from verdant.ingestion import (
+    IngestionService,
+    SourceDeclaration,
+    SourceRegistrationRequest,
+    UploadDeclaration,
+    UploadRequest,
+)
 from verdant.operations import OperationService
 from verdant.persistence import NamespaceRow, make_sessions
-from verdant.storage import ObjectDigest, ObjectMissing, S3Storage
+from verdant.storage import ObjectDigest, ObjectMissing, S3Storage, configured_source_key
 
 ROOT = Path(__file__).resolve().parents[1]
 RECEIPT = Path("/tmp/verdant-issue14-execution-receipt.json")
 POOL = "verdant-issue14-qualification"
+SOURCE_MODE = False
 
 
 async def ensure_pool():
@@ -89,36 +96,62 @@ def prepare(sessions, storage):
     actor, ns = actor_and_namespace(sessions)
     asyncio.run(ensure_pool())
     verification = verify_artifact.to_deployment(
-        name="issue14-regression", work_pool_name=POOL, job_variables={"working_dir": str(ROOT)}
+        name="issue14-source-regression" if SOURCE_MODE else "issue14-regression",
+        work_pool_name=POOL,
+        job_variables={"working_dir": str(ROOT)},
     ).apply()
     ingestion = ingest_operations.to_deployment(
-        name="issue14-local", work_pool_name=POOL, job_variables={"working_dir": str(ROOT)}
+        name="issue14-source-local" if SOURCE_MODE else "issue14-local",
+        work_pool_name=POOL,
+        job_variables={"working_dir": str(ROOT)},
     ).apply()
     service = IngestionService(sessions, bucket=storage.settings.bucket, storage=storage)
     body = b"Actual native Prefect ingestion and retained final artifact\n"
     digest = hashlib.sha256(body).hexdigest()
-    batch = service.admit(
-        actor,
-        ns,
-        UploadRequest(
-            request_key=str(uuid4()),
-            items=[
-                UploadDeclaration(
-                    source_key="native-qualification",
-                    modality="text",
-                    sha256=digest,
-                    size_bytes=len(body),
-                    metadata={"qualification": "real native process"},
-                )
-            ],
-        ),
-    )
-    item = batch.items[0]
-    service.initiate_upload(actor, ns, batch.operation.id, item.id, 1)
-    part = service.sign_upload_part(actor, ns, batch.operation.id, item.id, 1, 1)
-    with httpx.Client(timeout=10, trust_env=False) as client:
-        client.put(part.url, content=body).raise_for_status()
-    service.complete_upload(actor, ns, batch.operation.id, item.id, 1)
+    if SOURCE_MODE:
+        key = configured_source_key(storage.settings.source_prefix, ns, "source.txt")
+        storage.client.put_object(Bucket=storage.settings.bucket, Key=key, Body=body)
+        batch = service.admit_source(
+            actor,
+            ns,
+            SourceRegistrationRequest(
+                request_key=str(uuid4()),
+                items=[
+                    SourceDeclaration(
+                        source_key="native-source-qualification",
+                        source_object="source.txt",
+                        modality="text",
+                        sha256=digest,
+                        size_bytes=len(body),
+                        metadata={"qualification": "real native source process"},
+                    )
+                ],
+            ),
+        )
+        item = batch.items[0]
+    else:
+        batch = service.admit(
+            actor,
+            ns,
+            UploadRequest(
+                request_key=str(uuid4()),
+                items=[
+                    UploadDeclaration(
+                        source_key="native-qualification",
+                        modality="text",
+                        sha256=digest,
+                        size_bytes=len(body),
+                        metadata={"qualification": "real native process"},
+                    )
+                ],
+            ),
+        )
+        item = batch.items[0]
+        service.initiate_upload(actor, ns, batch.operation.id, item.id, 1)
+        part = service.sign_upload_part(actor, ns, batch.operation.id, item.id, 1, 1)
+        with httpx.Client(timeout=10, trust_env=False) as client:
+            client.put(part.url, content=body).raise_for_status()
+        service.complete_upload(actor, ns, batch.operation.id, item.id, 1)
     sources = [
         "flows.py",
         "dispatch.py",
@@ -126,6 +159,8 @@ def prepare(sessions, storage):
         "ingestion_cleanup.py",
         "ingestion_maintenance.py",
     ]
+    if SOURCE_MODE:
+        sources = sorted(path.name for path in (ROOT / "src/verdant").glob("*.py"))
     receipt = {
         "namespace_id": str(ns),
         "principal_id": str(actor.id),
@@ -136,7 +171,10 @@ def prepare(sessions, storage):
         "verification_deployment_id": str(verification),
         "ingestion_deployment_id": str(ingestion),
         "pool": POOL,
-        "database": "verdant_issue14_reupload_test",
+        "database": "verdant_issue14_sources_test"
+        if SOURCE_MODE
+        else "verdant_issue14_reupload_test",
+        "mode": "source" if SOURCE_MODE else "upload",
         "source_sha256": {
             name: hashlib.sha256((ROOT / "src/verdant" / name).read_bytes()).hexdigest()
             for name in sources
@@ -215,6 +253,10 @@ def observe(sessions, storage):
         pass
     else:
         raise RuntimeError("Native maintenance did not remove owned staging")
+    if SOURCE_MODE:
+        key = configured_source_key(storage.settings.source_prefix, ns, "source.txt")
+        storage.verify(key, ObjectDigest(item.sha256, item.size_bytes))
+        receipt["original_source_retained"] = True
     proof = asyncio.run(provider_proof(sessions, actor, ns, receipt, child.id))
     receipt.update(
         status=status,
@@ -228,14 +270,22 @@ def observe(sessions, storage):
 
 
 def main():
+    global SOURCE_MODE, POOL, RECEIPT
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--sources", action="store_true")
     parser.add_argument("--worker", action="store_true")
     parser.add_argument("--observe", action="store_true")
     args = parser.parse_args()
+    SOURCE_MODE = args.sources
+    if SOURCE_MODE:
+        POOL = "verdant-issue14-source-qualification"
+        RECEIPT = Path("/tmp/verdant-issue14-source-execution-receipt.json")
+        os.environ["VERDANT_S3_SOURCE_PREFIX"] = "qualification/issue14-native-sources"
     url = configure()
-    if not url.endswith("/verdant_issue14_reupload_test"):
+    database = "verdant_issue14_sources_test" if SOURCE_MODE else "verdant_issue14_reupload_test"
+    if not url.endswith("/" + database):
         raise RuntimeError("This qualifier requires its explicit isolated ingestion proof database")
-    os.environ["PREFECT_WORKER_WEBSERVER_PORT"] = "18422"
+    os.environ["PREFECT_WORKER_WEBSERVER_PORT"] = "18423" if SOURCE_MODE else "18422"
     os.environ["PREFECT_SERVER_ANALYTICS_ENABLED"] = "false"
     if args.worker:
         executable = ROOT / ".venv/bin/prefect"

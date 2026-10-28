@@ -10,7 +10,7 @@ from pydantic import Field, JsonValue, model_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 
-from verdant.contracts import Contract, Digest, Revision
+from verdant.contracts import SAMPLE_INGESTION_KINDS, Contract, Digest, Revision
 from verdant.domain import Conflict, NotFound, Principal
 from verdant.identity import current_principal
 from verdant.persistence import (
@@ -356,7 +356,7 @@ class OperationService:
                 raise Conflict("Operation state does not permit this transition")
             if (
                 new_attempt
-                and row.kind == "ingest_upload"
+                and row.kind in SAMPLE_INGESTION_KINDS
                 and session.scalar(
                     select(IngestionItemRow.id)
                     .where(
@@ -489,7 +489,7 @@ class OperationService:
             row = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
             if row.kind not in {
                 "verify_sample_artifact",
-                "ingest_upload",
+                *SAMPLE_INGESTION_KINDS,
                 "ingest_cleanup",
             } or row.status in {"succeeded", "cancelled"}:
                 raise Conflict("Operation does not permit reconciliation")
@@ -1225,7 +1225,7 @@ class OperationService:
         after: UUID | None = None,
         limit: int = 25,
         *,
-        kind: str | None = None,
+        kind: str | frozenset[str] | None = None,
     ) -> OperationPage:
         if not 1 <= limit <= 100:
             raise ValueError("Operation page must be between 1 and 100")
@@ -1233,7 +1233,9 @@ class OperationService:
             current_principal(session, actor.id).require(namespace_id)
             query = select(OperationRow).where(OperationRow.namespace_id == namespace_id)
             if kind is not None:
-                query = query.where(OperationRow.kind == kind)
+                query = query.where(
+                    OperationRow.kind.in_([kind] if isinstance(kind, str) else kind)
+                )
             if after is not None:
                 query = query.where(OperationRow.id > after)
             rows = session.scalars(query.order_by(OperationRow.id).limit(limit + 1)).all()

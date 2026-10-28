@@ -12,9 +12,15 @@ from starlette.concurrency import run_in_threadpool
 
 from verdant.access_tokens import InvalidAccessToken
 from verdant.application import RegistryService
-from verdant.contracts import DatasetCreate, DatasetUpdate
+from verdant.contracts import SAMPLE_INGESTION_KINDS, DatasetCreate, DatasetUpdate
 from verdant.domain import DomainError, Forbidden, Principal
-from verdant.ingestion import IngestionService, ReuploadRequest, UploadPartRequest, UploadRequest
+from verdant.ingestion import (
+    IngestionService,
+    ReuploadRequest,
+    SourceRegistrationRequest,
+    UploadPartRequest,
+    UploadRequest,
+)
 from verdant.operations import OperationService, VerificationRequest
 from verdant.preview import PreviewService
 from verdant.storage import StorageError
@@ -85,13 +91,17 @@ def create_mcp_app(runtime, *, storage=None):
         namespace_id: UUID, after: UUID | None = None, limit: OperationLimit = 25
     ):
         return await invoke(
-            operations.list_operations, namespace_id, after, limit, kind="ingest_upload"
+            operations.list_operations, namespace_id, after, limit, kind=SAMPLE_INGESTION_KINDS
         )
 
     @mcp.tool()
     async def ingestion_upload_admit(namespace_id: UUID, command: UploadRequest):
         await invoke(ingestion.require_storage, namespace_id)
         return await invoke(ingestion.admit, namespace_id, command)
+
+    @mcp.tool()
+    async def ingestion_source_admit(namespace_id: UUID, command: SourceRegistrationRequest):
+        return await invoke(ingestion.admit_source, namespace_id, command)
 
     @mcp.tool()
     async def ingestion_reupload(namespace_id: UUID, command: ReuploadRequest):

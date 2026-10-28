@@ -1,15 +1,15 @@
 import { ApiError, request } from "./api";
 
 export type UploadItem = {
-  id: string; source_key: string; modality: string; sha256: string; size_bytes: number;
+  id: string; source_object?: string | null; source_key: string; modality: string; sha256: string; size_bytes: number;
   state: string; error: string | null; sample_id: string | null; accepted_revision_id: string | null;
   replacement_operation_id: string | null; retry_of_item_id: string | null;
 };
 export type UploadBatch = {
-  operation: { id: string; epoch: number; status: string }; items: UploadItem[];
+  operation: { id: string; kind: string; epoch: number; status: string }; items: UploadItem[];
   cleanup_operation_id: string | null;
 };
-export type UploadLimits = { configured: boolean; max_artifact_bytes: number; max_items: number; part_bytes: number };
+export type UploadLimits = { configured: boolean; sources_configured?: boolean; max_artifact_bytes: number; max_items: number; part_bytes: number };
 export type Declaration = {
   source_key: string; modality: string; sha256: string; size_bytes: number; metadata: Record<string, unknown>;
   target_sample_id?: string; expected_revision?: number;
@@ -26,7 +26,7 @@ export async function transferUploads(namespace: string, csrf: string, id: strin
   const base = `/api/v1/namespaces/${namespace}/ingestions/${id}`;
   const batch = await request<UploadBatch>(base, csrf);
   signal.throwIfAborted();
-  if (batch.operation.status !== "running") throw new Error("This operation cannot receive uploads. Inspect its current status.");
+  if (batch.operation.kind !== "ingest_upload" || batch.operation.status !== "running") throw new Error("This operation cannot receive uploads. Inspect its current status.");
   const epoch = batch.operation.epoch;
   // Hash one bounded file at a time. Browser-selected names never authorize server locations.
   const byDigest = new Map<string, File>();

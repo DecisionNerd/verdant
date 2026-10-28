@@ -38,6 +38,28 @@ class StorageUnavailable(StorageError):
     pass
 
 
+def validate_source_path(value: str):
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value) <= 500
+        or any(part in {"", ".", ".."} for part in value.split("/"))
+        or any(ord(char) < 32 or ord(char) == 127 for char in value)
+        or any(char in value for char in "\\:%?#")
+    ):
+        raise ValueError("Source paths must be canonical relative keys, not URLs")
+    value.encode("utf-8")  # Reject non-UTF-8 surrogate input before provider requests.
+    return value
+
+
+def configured_source_key(prefix: str, namespace_id, relative: str):
+    validate_source_path(prefix)
+    validate_source_path(relative)
+    key = f"{prefix}/{namespace_id}/{relative}"
+    if len(key.encode("utf-8")) > 1024:
+        raise ValueError("Configured source key exceeds supported length")
+    return key
+
+
 @dataclass(frozen=True)
 class S3Settings:
     bucket: str
@@ -46,8 +68,11 @@ class S3Settings:
     region: str = "us-east-1"
     addressing_style: str = "path"
     allow_insecure_http: bool = False
+    source_prefix: str | None = None
 
     def __post_init__(self):
+        if self.source_prefix is not None:
+            validate_source_path(self.source_prefix)
         for endpoint in (self.endpoint, self.browser_endpoint):
             parsed = urlsplit(endpoint)
             if (
@@ -105,6 +130,7 @@ class S3Storage:
             browser_endpoint=os.environ.get("VERDANT_S3_BROWSER_ENDPOINT", endpoint),
             region=os.environ.get("VERDANT_S3_REGION", "us-east-1"),
             addressing_style=os.environ.get("VERDANT_S3_ADDRESSING_STYLE", "path"),
+            source_prefix=os.environ.get("VERDANT_S3_SOURCE_PREFIX") or None,
             allow_insecure_http=os.environ.get("VERDANT_INSECURE_LOCAL_HTTP") == "1",
         )
         session = (

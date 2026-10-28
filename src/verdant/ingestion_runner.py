@@ -1,5 +1,6 @@
 """Bounded ingestion worker; provider bytes are verified outside database transactions."""
 
+from verdant.contracts import SAMPLE_INGESTION_KINDS
 from verdant.domain import Conflict, DomainError
 from verdant.ingestion import IngestionService, RegistrationConflict
 from verdant.storage import ObjectCorrupt, ObjectDigest, ObjectMissing, StorageError
@@ -31,7 +32,7 @@ class IngestionRunner:
         state = self.operations.get(actor, namespace_id, operation_id)
         if state.epoch != epoch:
             raise Conflict("Operation attempt is stale")
-        if state.kind != "ingest_upload":
+        if state.kind not in SAMPLE_INGESTION_KINDS:
             raise Conflict("Unsupported ingestion operation kind")
         if state.status == "succeeded":
             return self.ingestion.get(actor, namespace_id, operation_id)
