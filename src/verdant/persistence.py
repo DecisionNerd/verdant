@@ -229,6 +229,9 @@ class MembershipRow(Base):
             name="ck_membership_interval",
         ),
         CheckConstraint("split ~ '^[a-z][a-z0-9_-]*$'", name="ck_membership_split"),
+        CheckConstraint(
+            "jsonb_typeof(interpretation) = 'object'", name="ck_membership_interpretation"
+        ),
         ExcludeConstraint(
             ("draft_id", "="),
             ("sample_id", "="),
@@ -251,6 +254,14 @@ class MembershipRow(Base):
     sample_revision_id: Mapped[UUID]
     split: Mapped[str] = mapped_column(String(50))
     valid_to: Mapped[int | None] = mapped_column(BigInteger)
+    interpretation: Mapped[dict] = mapped_column(
+        JSONB,
+        server_default=text(
+            """jsonb_build_object('schema', 'verdant.membership.v1',
+            'annotation_revision', NULL, 'task_schema_revision', NULL,
+            'review_evidence', NULL, 'transformation', NULL)"""
+        ),
+    )
 
 
 class AuditRow(Base):

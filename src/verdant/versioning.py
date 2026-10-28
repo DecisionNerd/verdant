@@ -10,7 +10,7 @@ from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
-from verdant.contracts import Contract, Revision
+from verdant.contracts import Contract, InterpretationPins, Revision
 from verdant.domain import Conflict, NotFound, Principal
 from verdant.identity import current_principal
 from verdant.persistence import (
@@ -194,15 +194,10 @@ class VersioningService:
                         sample_id=member.sample_id,
                         sample_revision_id=member.sample_revision_id,
                         split=member.split,
-                        # Current registry supports unannotated, unreviewed, untransformed samples.
-                        # Absence is pinned explicitly; it never resolves a future "latest" value.
-                        interpretation={
-                            "schema": "verdant.membership.v1",
-                            "annotation_revision": None,
-                            "task_schema_revision": None,
-                            "review_evidence": None,
-                            "transformation": None,
-                        },
+                        # Copy the captured interval's exact contract, never current evidence.
+                        interpretation=InterpretationPins.model_validate(
+                            member.interpretation
+                        ).model_dump(by_alias=True),
                     )
                 )
             # INSERT guards lock the candidate and require preparing state. Flush before sealing.

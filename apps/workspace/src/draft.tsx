@@ -3,7 +3,7 @@ import { useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { request } from "./api";
 
-type Member = { sample_id: string; sample_revision_id: string; split: string };
+type Member = { sample_id: string; sample_revision_id: string; split: string; interpretation?: Record<string, unknown> };
 type DraftPage = { draft_id: string; revision: number; members: Member[]; next_after: string | null };
 type Sample = { sample_id: string; revision_id: string; revision: number; modality: string; sha256: string; size_bytes: number };
 export function DraftEditor({ namespace, dataset, csrf, writable }: { namespace: string; dataset: string; csrf: string; writable: boolean }) {
@@ -11,6 +11,7 @@ export function DraftEditor({ namespace, dataset, csrf, writable }: { namespace:
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [snapshot, setSnapshot] = useState<number | null>(null);
   const [sampleCursors, setSampleCursors] = useState<(string | null)[]>([null]);
+  const [interpretationInput, setInterpretationInput] = useState("");
   const [editRevision, setEditRevision] = useState<number | null>(null);
   const [sampleId, setSampleId] = useState("");
   const [revisionId, setRevisionId] = useState("");
@@ -44,7 +45,12 @@ export function DraftEditor({ namespace, dataset, csrf, writable }: { namespace:
     event.preventDefault(); if (!draft.data) return;
     setBusy(true); setError(""); setMessage("");
     try {
-      const changed = await request<{revision: number}>(`${base}/${sampleId}`, csrf, { expected_revision: editRevision ?? draft.data.revision, sample_revision_id: revisionId, split }, "PUT");
+      let interpretation: unknown;
+      if (interpretationInput.trim()) {
+        try { interpretation = JSON.parse(interpretationInput); }
+        catch { throw new Error("Interpretation evidence must be valid JSON."); }
+      }
+      const changed = await request<{revision: number}>(`${base}/${sampleId}`, csrf, { expected_revision: editRevision ?? draft.data.revision, sample_revision_id: revisionId, split, ...(interpretation === undefined ? {} : { interpretation }) }, "PUT");
       setEditRevision(changed.revision);
       await refresh(); setMessage("Draft membership saved.");
     } catch (failure) { setError((failure as Error).message); } finally { setBusy(false); }
@@ -61,16 +67,18 @@ export function DraftEditor({ namespace, dataset, csrf, writable }: { namespace:
     {error && <p role="alert">{error} Your selected sample and split are preserved.</p>}{message && <p role="status">{message}</p>}
     {draft.isPending ? <p role="status">Loading draft…</p> : draft.isError ? <p role="alert">{draft.error.message}</p> : <>
       <p>Draft revision {draft.data.revision}{draft.isFetching ? " · Refreshing…" : ""}</p>
-      {!draft.data.members.length ? <p>No samples on this draft page.</p> : <div className="table-scroll"><table><caption>Exact sample revisions in this draft</caption><thead><tr><th scope="col">Sample</th><th scope="col">Revision</th><th scope="col">Split</th>{writable && <th scope="col">Actions</th>}</tr></thead><tbody>{draft.data.members.map(member => <tr key={member.sample_id}><td className="identifier">{member.sample_id}</td><td className="identifier"><button onClick={() => setInspected(member)}>Inspect {member.sample_revision_id}</button></td><td>{member.split}</td>{writable && <td><button onClick={() => { setEditRevision(draft.data.revision); setSampleId(member.sample_id); setRevisionId(member.sample_revision_id); setSplit(member.split); }}>Edit split</button><button disabled={busy} onClick={() => void remove(member)}>Remove</button></td>}</tr>)}</tbody></table></div>}
+      {!draft.data.members.length ? <p>No samples on this draft page.</p> : <div className="table-scroll"><table><caption>Exact sample revisions in this draft</caption><thead><tr><th scope="col">Sample</th><th scope="col">Revision</th><th scope="col">Split</th><th scope="col">Interpretation</th>{writable && <th scope="col">Actions</th>}</tr></thead><tbody>{draft.data.members.map(member => <tr key={member.sample_id}><td className="identifier">{member.sample_id}</td><td className="identifier"><button onClick={() => setInspected(member)}>Inspect {member.sample_revision_id}</button></td><td>{member.split}</td><td><details><summary>Interpretation evidence</summary><pre>{JSON.stringify(member.interpretation ?? {}, null, 2)}</pre></details></td>{writable && <td><button onClick={() => { setEditRevision(draft.data.revision); setSampleId(member.sample_id); setRevisionId(member.sample_revision_id); setSplit(member.split); setInterpretationInput(""); }}>Edit split</button><button disabled={busy} onClick={() => void remove(member)}>Remove</button></td>}</tr>)}</tbody></table></div>}
       <nav aria-label="Draft pages"><button disabled={cursors.length === 1} onClick={() => setCursors(cursors.slice(0,-1))}>Previous</button><button disabled={!draft.data.next_after} onClick={() => { setSnapshot(draft.data.revision); setCursors([...cursors, draft.data.next_after]); }}>Next</button></nav>
       {writable && <form onSubmit={event => void write(event)}><h3>Add sample or change split</h3>
         {samples.isPending ? <p role="status">Loading samples…</p> : samples.isError ? <p role="alert">{samples.error.message}</p> : <>
-          <label>Available sample <select value="" onChange={event => { const sample = samples.data.items.find(item => item.sample_id === event.target.value); if (sample) { setEditRevision(draft.data.revision); setSampleId(sample.sample_id); setRevisionId(sample.revision_id); } }}><option value="">Choose a sample revision</option>{samples.data.items.map(sample => <option key={sample.sample_id} value={sample.sample_id}>{sample.modality} · {sample.sample_id} · revision {sample.revision}</option>)}</select></label>
+          <label>Available sample <select value="" onChange={event => { const sample = samples.data.items.find(item => item.sample_id === event.target.value); if (sample) { setEditRevision(draft.data.revision); setSampleId(sample.sample_id); setRevisionId(sample.revision_id); setInterpretationInput(""); } }}><option value="">Choose a sample revision</option>{samples.data.items.map(sample => <option key={sample.sample_id} value={sample.sample_id}>{sample.modality} · {sample.sample_id} · revision {sample.revision}</option>)}</select></label>
           {!samples.data.items.length && <p>No registered samples on this page.</p>}
           <div><button type="button" disabled={sampleCursors.length === 1} onClick={() => setSampleCursors(sampleCursors.slice(0,-1))}>Previous samples</button><button type="button" disabled={!samples.data.next_after} onClick={() => setSampleCursors([...sampleCursors, samples.data.next_after])}>Next samples</button></div>
         </>}
         <p className="identifier">Selected sample: {sampleId || "None"}<br />Exact revision: {revisionId || "None"}</p>
         <label>Split <input required maxLength={50} pattern="[a-z][a-z0-9_-]*" value={split} onChange={event => setSplit(event.target.value)} /></label>
+        <label>Interpretation evidence (JSON, optional)<textarea maxLength={65536} value={interpretationInput} onChange={event => setInterpretationInput(event.target.value)} /></label>
+        <p>Blank preserves existing evidence. An empty object clears it. Inline annotation and task-schema content, review records, and transformation code/configuration/environment are pinned with this membership revision. Input review records do not approve quality gates.</p>
         <button disabled={busy || !sampleId || !revisionId || draft.isFetching}>Save membership</button>
       </form>}
     </>}

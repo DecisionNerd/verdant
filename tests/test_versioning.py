@@ -365,3 +365,138 @@ def test_explicit_current_draft_conflict_preserves_selected_generation(registry,
     assert selected.generation_id == sealed.generation_id
     assert selected.source_revision == 3 and selected.latest_draft_revision == 4
     assert selected.prepared_count == 3 and selected.state == "sealed"
+
+
+def test_nonnull_interpretation_pins_are_retained_from_captured_interval(registry, sessions):
+    from sqlalchemy.exc import DBAPIError
+
+    from verdant.contracts import InlineEvidence, InterpretationPins, ReviewPin, TransformationPin
+    from verdant.persistence import GenerationMemberRow, MembershipRow
+    from verdant.versioning import CandidatePrepare
+
+    registry_service, service, actor, ns, dataset, samples, _ = preparation_fixture(
+        registry, sessions
+    )
+    annotation = InlineEvidence(format="qualification.annotation.v1", payload={"text": "Original"})
+    pins = InterpretationPins(
+        annotation_revision=annotation,
+        task_schema_revision=InlineEvidence(
+            format="qualification.schema.v1", payload={"label": "transcription"}
+        ),
+        review_evidence=ReviewPin(
+            annotation_digest=annotation.sha256,
+            decision="accepted",
+            rationale="Recorded input review; not a policy gate",
+        ),
+        transformation=TransformationPin(
+            payload={
+                "code": "text.strip()",
+                "configuration": {"strip": True},
+                "environment": {"python": "3.12"},
+            }
+        ),
+    )
+    registry_service.set_membership(
+        actor,
+        ns,
+        dataset.id,
+        samples[0].sample_id,
+        MembershipWrite(
+            expected_revision=3,
+            sample_revision_id=samples[0].id,
+            split="train",
+            interpretation=pins,
+        ),
+    )
+    captured = service.capture(
+        actor, ns, dataset.id, CandidateCapture(request_key="with-pins", expected_revision=4)
+    )
+    replacement_annotation = InlineEvidence(
+        format="qualification.annotation.v1", payload={"text": "Changed"}
+    )
+    replacement = InterpretationPins(
+        annotation_revision=replacement_annotation,
+        task_schema_revision=InlineEvidence(
+            format="qualification.schema.v2", payload={"label": "document-layout"}
+        ),
+        review_evidence=ReviewPin(
+            annotation_digest=replacement_annotation.sha256,
+            decision="rejected",
+            rationale="Changed input review",
+        ),
+        transformation=TransformationPin(
+            payload={"code": "text.upper()", "configuration": {}, "environment": {"python": "3.12"}}
+        ),
+    )
+    registry_service.set_membership(
+        actor,
+        ns,
+        dataset.id,
+        samples[0].sample_id,
+        MembershipWrite(
+            expected_revision=4,
+            sample_revision_id=samples[0].id,
+            split="test",
+            interpretation=replacement,
+        ),
+    )
+    sealed = service.prepare(actor, ns, dataset.id, captured.id, CandidatePrepare(expected_count=0))
+    assert sealed.source_revision == 4 and sealed.latest_draft_revision == 5
+    with sessions() as session:
+        frozen = session.get(GenerationMemberRow, (captured.generation_id, samples[0].sample_id))
+        assert frozen.interpretation == pins.model_dump(by_alias=True)
+        assert frozen.split == "train"
+    with pytest.raises(DBAPIError, match="Only an open membership interval can be closed"):
+        with sessions.begin() as session:
+            row = session.get(MembershipRow, (dataset.draft_id, samples[0].sample_id, 5))
+            row.valid_to = 6
+            row.interpretation = pins.model_dump(by_alias=True)
+    # An ordinary split-only edit cannot silently erase previously recorded interpretation.
+    registry_service.set_membership(
+        actor,
+        ns,
+        dataset.id,
+        samples[0].sample_id,
+        MembershipWrite(expected_revision=5, sample_revision_id=samples[0].id, split="validation"),
+    )
+    page = registry_service.list_memberships(actor, ns, dataset.id)
+    assert (
+        next(m for m in page.members if m.sample_id == samples[0].sample_id).interpretation
+        == replacement
+    )
+
+    from verdant.contracts import SampleRevise
+
+    changed_sample = registry_service.revise_sample(
+        actor,
+        ns,
+        samples[0].sample_id,
+        SampleRevise(
+            expected_revision=1,
+            sha256="c" * 64,
+            object_key="private/changed-revision",
+            size_bytes=1,
+        ),
+    )
+    with pytest.raises(Conflict, match="explicit replacement"):
+        registry_service.set_membership(
+            actor,
+            ns,
+            dataset.id,
+            samples[0].sample_id,
+            MembershipWrite(
+                expected_revision=6, sample_revision_id=changed_sample.id, split="test"
+            ),
+        )
+    registry_service.set_membership(
+        actor,
+        ns,
+        dataset.id,
+        samples[0].sample_id,
+        MembershipWrite(
+            expected_revision=6,
+            sample_revision_id=changed_sample.id,
+            split="test",
+            interpretation=InterpretationPins(),
+        ),
+    )
