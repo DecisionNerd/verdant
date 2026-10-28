@@ -121,6 +121,35 @@ class DraftRow(Base):
     revision: Mapped[int] = mapped_column(BigInteger, default=0)
 
 
+class CandidateRow(Base):
+    __tablename__ = "publication_candidates"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "draft_id"], ["dataset_drafts.namespace_id", "dataset_drafts.id"]
+        ),
+        ForeignKeyConstraint(["creator_id"], ["principals.id"]),
+        UniqueConstraint("namespace_id", "creator_id", "request_key", name="uq_candidate_request"),
+        UniqueConstraint("namespace_id", "generation_id", name="uq_candidate_generation"),
+        CheckConstraint(
+            "source_revision >= 0 AND prepared_count >= 0", name="ck_candidate_progress"
+        ),
+        CheckConstraint("state IN ('preparing', 'sealed')", name="ck_candidate_state"),
+        CheckConstraint("request_digest ~ '^[0-9a-f]{64}$'", name="ck_candidate_request_digest"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    draft_id: Mapped[UUID]
+    source_revision: Mapped[int] = mapped_column(BigInteger)
+    generation_id: Mapped[UUID]
+    creator_id: Mapped[UUID]
+    request_key: Mapped[str] = mapped_column(String(200))
+    request_digest: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(20), server_default="preparing")
+    prepared_count: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    cursor: Mapped[UUID | None]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class SampleRow(Base):
     __tablename__ = "samples"
     __table_args__ = (
