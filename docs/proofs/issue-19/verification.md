@@ -68,3 +68,9 @@ REST `POST /api/v1/namespaces/{namespace_id}/operations/{operation_id}/reconcile
 The dispatcher performs trusted exact admission lookup, then observes the persisted provider run with deployment, invocation key, parameters, and run ID checks. A final provider state without a committed domain result fails the logical attempt safely; explicit retry can reconcile the immutable artifact read. Provider completion never creates an accepted verification result. No admission is created by the reconciliation path. Quarantined events are acknowledged without executing operation actions.
 
 Real PostgreSQL tests cover durable request deduplication, current read-only denial, stale epochs, terminal rejection, and provider Completed without domain acceptance becoming failed rather than succeeded. Provider observation is a labeled double. Full workflow-enabled backend suite: 115 passed. Ruff checks passed. UI controls and live provider/browser qualification remain incomplete.
+
+## Operation workspace implementation
+
+Workspace navigation now includes operation list/detail, bounded operation/effect pagination, polling/reconnect status, queued/running/cancellation requested/cancelled/failed/succeeded labels, reconciliation-needed indication, prior effects, accepted digest, and write-authorized retry/cancel/reconcile requests. Exact sample inspection can admit verification with a stable per-inspection request identity and link to durable operation status.
+
+Component regression tests cover epoch-only reconciliation requests, stale status with disabled actions, reconnect, revoked access hiding details, read-only controls, and admission response-loss request identity reuse. Workspace typecheck and production build passed; 15 component tests passed. These remain component/build evidence; real authenticated browser operation proof and packaged workflow deployment remain required.
