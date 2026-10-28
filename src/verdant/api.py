@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
 from verdant import contracts as c
+from verdant import publication as p
 from verdant import quality_service as q
 from verdant.application import RegistryService
 from verdant.auth import IdentityRuntime, IdentitySettings
@@ -24,6 +25,8 @@ from verdant.operations import (
     VerificationRequest,
 )
 from verdant.persistence import make_sessions
+from verdant.publication_runner import PublicationRunner
+from verdant.storage import S3Storage, StorageError, configured_storage
 from verdant.versioning import (
     Candidate,
     CandidateCapture,
@@ -44,13 +47,21 @@ Actor = Annotated[Principal, Depends(verified_principal)]
 
 
 def create_app(
-    sessions: sessionmaker[Session] | None = None, identity_settings: IdentitySettings | None = None
+    sessions: sessionmaker[Session] | None = None,
+    identity_settings: IdentitySettings | None = None,
+    artifact_storage: S3Storage | None = None,
 ) -> FastAPI:
     configure_access_logging()
     sessions = sessions or make_sessions(os.environ["VERDANT_DATABASE_URL"])
     service = RegistryService(sessions)
     operations = OperationService(sessions)
     quality = q.QualityService(sessions)
+    publications = p.PublicationService(
+        sessions,
+        bucket=artifact_storage.settings.bucket
+        if artifact_storage
+        else os.environ.get("VERDANT_S3_BUCKET", "verdant-artifacts"),
+    )
     versioning = VersioningService(sessions)
     app = FastAPI(title="Verdant platform", version=str(c.CONTRACT_VERSION))
     identity_settings = identity_settings or IdentitySettings.from_env()
@@ -61,6 +72,12 @@ def create_app(
     async def domain_error(request: Request, exc: DomainError):
         code = {Forbidden: 403, NotFound: 404, Conflict: 409}[type(exc)]
         return JSONResponse(status_code=code, content={"detail": str(exc)})
+
+    @app.exception_handler(StorageError)
+    async def storage_error(request: Request, exc: StorageError):
+        return JSONResponse(
+            status_code=503, content={"detail": "Required artifact storage is unavailable"}
+        )
 
     @app.get("/health/live")
     def live():
@@ -97,6 +114,90 @@ def create_app(
         return service.get_namespace(actor, namespace_id)
 
     prefix = "/api/v1/namespaces/{namespace_id}"
+    publication_prefix = prefix + "/datasets/{dataset_id}"
+
+    @app.post(
+        publication_prefix + "/candidates/{candidate_id}/publications",
+        response_model=p.Publication,
+        status_code=202,
+    )
+    def start_publication(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        candidate_id: UUID,
+        command: p.PublicationStart,
+        actor: Actor,
+    ):
+        return publications.start(actor, namespace_id, dataset_id, candidate_id, command)
+
+    @app.get(
+        publication_prefix + "/candidates/{candidate_id}/publications",
+        response_model=p.PublicationPage,
+    )
+    def list_publications(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        candidate_id: UUID,
+        actor: Actor,
+        after: UUID | None = None,
+        limit: int = Query(default=25, ge=1, le=100),
+    ):
+        return publications.list(actor, namespace_id, dataset_id, candidate_id, after, limit)
+
+    @app.get(publication_prefix + "/publications/{publication_id}", response_model=p.Publication)
+    def get_publication(namespace_id: UUID, dataset_id: UUID, publication_id: UUID, actor: Actor):
+        return publications.get(actor, namespace_id, dataset_id, publication_id)
+
+    @app.post(
+        publication_prefix + "/publications/{publication_id}/prepare", response_model=p.Publication
+    )
+    def prepare_publication(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        publication_id: UUID,
+        command: p.PublicationBatch,
+        actor: Actor,
+    ):
+        return PublicationRunner(sessions, artifact_storage or configured_storage()).prepare(
+            actor, namespace_id, dataset_id, publication_id, command
+        )
+
+    @app.post(
+        publication_prefix + "/publications/{publication_id}/finalize", response_model=p.Publication
+    )
+    def finalize_publication(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        publication_id: UUID,
+        command: p.EmptyCommand,
+        actor: Actor,
+    ):
+        return publications.finalize(actor, namespace_id, dataset_id, publication_id)
+
+    @app.post(
+        publication_prefix + "/publications/{publication_id}/renew", response_model=p.Publication
+    )
+    def renew_publication(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        publication_id: UUID,
+        command: p.EmptyCommand,
+        actor: Actor,
+    ):
+        return publications.renew(actor, namespace_id, dataset_id, publication_id)
+
+    @app.post(
+        publication_prefix + "/publications/{publication_id}/release", response_model=p.Publication
+    )
+    def release_publication(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        publication_id: UUID,
+        command: p.PublicationRelease,
+        actor: Actor,
+    ):
+        return publications.release(actor, namespace_id, dataset_id, publication_id, command)
+
     quality_prefix = prefix + "/datasets/{dataset_id}/quality"
 
     @app.post(quality_prefix + "/policies", response_model=q.Policy, status_code=201)

@@ -67,6 +67,11 @@ services:
       VERDANT_API_AUDIENCE: verdant-api
       VERDANT_SERVICE_CLIENTS: verdant-worker
       VERDANT_INSECURE_LOCAL_HTTP: '1'
+      VERDANT_S3_ENDPOINT: http://objects:8333
+      VERDANT_S3_BROWSER_ENDPOINT: http://127.0.0.1:18833
+      VERDANT_S3_BUCKET: verdant-artifacts
+      VERDANT_S3_ACCESS_KEY: verdant-local-registry
+      VERDANT_S3_SECRET_KEY: ${OBJECT_REGISTRY_SECRET:?}
     depends_on:
       migrate: {condition: service_completed_successfully}
       auth: {condition: service_healthy}

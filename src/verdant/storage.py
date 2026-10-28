@@ -5,6 +5,7 @@ creation, so replayable staging URLs cannot mutate an accepted artifact.
 """
 
 import hashlib
+import os
 import re
 from dataclasses import dataclass
 from tempfile import SpooledTemporaryFile
@@ -210,21 +211,42 @@ class S3Storage:
         with SpooledTemporaryFile(max_size=CHUNK_BYTES, mode="w+b") as spool:
             self.verify(staging_key, expected, destination=spool)
             spool.seek(0)
-            try:
-                self.client.put_object(
-                    Bucket=self.settings.bucket,
-                    Key=final_key,
-                    Body=spool,
-                    ContentLength=expected.size_bytes,
-                    IfNoneMatch="*",
-                )
-            except ClientError as exc:
-                if exc.response["ResponseMetadata"]["HTTPStatusCode"] != 412:
-                    raise _translate(exc) from None
-            except BotoCoreError as exc:
+            return self.write_immutable(final_key, spool, expected)
+
+    def write_immutable(self, key: str, source: BinaryIO, expected: ObjectDigest):
+        """Conditionally store a verified seekable file and reconcile by exact readback.
+
+        A durable caller must protect the artifact before invoking this method. The
+        final key and digest stay identical across retries, including a lost response.
+        """
+        try:
+            return self.verify(key, expected)
+        except ObjectMissing:
+            pass
+        digest, size = hashlib.sha256(), 0
+        source.seek(0)
+        while chunk := source.read(CHUNK_BYTES):
+            size += len(chunk)
+            if size > expected.size_bytes:
+                raise ObjectCorrupt("Local artifact exceeds declared size")
+            digest.update(chunk)
+        if size != expected.size_bytes or digest.hexdigest() != expected.sha256:
+            raise ObjectCorrupt("Local artifact bytes differ from declared digest")
+        source.seek(0)
+        try:
+            self.client.put_object(
+                Bucket=self.settings.bucket,
+                Key=key,
+                Body=source,
+                ContentLength=expected.size_bytes,
+                IfNoneMatch="*",
+            )
+        except ClientError as exc:
+            if exc.response["ResponseMetadata"]["HTTPStatusCode"] != 412:
                 raise _translate(exc) from None
-        # Conditional-write replay and lost responses reconcile against actual final bytes.
-        return self.verify(final_key, expected)
+        except BotoCoreError as exc:
+            raise _translate(exc) from None
+        return self.verify(key, expected)
 
     def sign_read(self, key: str):
         # Force attachment. Text/image preview belongs to a sandboxed rendering boundary.
@@ -273,3 +295,30 @@ class S3Storage:
 
     def delete_one(self, key: str):
         self._call("delete_object", Key=key)
+
+
+def configured_storage() -> S3Storage:
+    """Use explicit deployment artifact credentials, never ambient cloud credentials."""
+    names = (
+        "VERDANT_S3_ENDPOINT",
+        "VERDANT_S3_BUCKET",
+        "VERDANT_S3_ACCESS_KEY",
+        "VERDANT_S3_SECRET_KEY",
+    )
+    if not all(os.environ.get(name) for name in names):
+        raise StorageUnavailable("Artifact storage is not configured for this deployment")
+    endpoint = os.environ["VERDANT_S3_ENDPOINT"]
+    settings = S3Settings(
+        bucket=os.environ["VERDANT_S3_BUCKET"],
+        endpoint=endpoint,
+        browser_endpoint=os.environ.get("VERDANT_S3_BROWSER_ENDPOINT", endpoint),
+        region=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"),
+        allow_insecure_http=os.environ.get("VERDANT_INSECURE_LOCAL_HTTP") == "1",
+    )
+    return S3Storage(
+        settings,
+        session=boto3.Session(
+            aws_access_key_id=os.environ["VERDANT_S3_ACCESS_KEY"],
+            aws_secret_access_key=os.environ["VERDANT_S3_SECRET_KEY"],
+        ),
+    )

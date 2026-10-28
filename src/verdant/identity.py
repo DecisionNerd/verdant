@@ -18,17 +18,43 @@ from verdant.telemetry import observed
 
 
 def current_principal(session: Session, principal_id: UUID) -> Principal:
-    row = session.get(PrincipalRow, principal_id)
+    row = session.get(PrincipalRow, principal_id, populate_existing=True)
     if row is None or not row.enabled:
         raise Forbidden("Principal disabled or unavailable")
     grants = session.scalars(
-        select(NamespaceGrantRow).where(NamespaceGrantRow.principal_id == principal_id)
+        select(NamespaceGrantRow)
+        .where(NamespaceGrantRow.principal_id == principal_id)
+        .execution_options(populate_existing=True)
     ).all()
     return Principal(
         id=principal_id,
         readable_namespaces=frozenset(g.namespace_id for g in grants if g.access == "read"),
         writable_namespaces=frozenset(g.namespace_id for g in grants if g.access == "write"),
     )
+
+
+def require_current_access(
+    session: Session, principal_id: UUID, namespace_id: UUID, *, write: bool = False
+) -> None:
+    """Serialize an authoritative command with identity disablement/grant revocation.
+
+    Call after acquiring the command's aggregate guards, so lock waits cannot retain
+    stale ORM identity/grant values. Shared locks last until the caller's transaction
+    ends; a revocation that commits first makes this query fail closed.
+    """
+    row = session.execute(
+        select(PrincipalRow, NamespaceGrantRow)
+        .join(NamespaceGrantRow, NamespaceGrantRow.principal_id == PrincipalRow.id)
+        .where(
+            PrincipalRow.id == principal_id,
+            PrincipalRow.enabled.is_(True),
+            NamespaceGrantRow.namespace_id == namespace_id,
+        )
+        .with_for_update(read=True, of=(PrincipalRow, NamespaceGrantRow))
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    if row is None or (write and row[1].access != "write"):
+        raise Forbidden("Namespace access denied")
 
 
 class IdentityService:
