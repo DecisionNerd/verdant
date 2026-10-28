@@ -278,6 +278,108 @@ def test_api_mcp_share_service_identity_and_namespace_denial(login_app, registry
                 )
             ).all()
             assert {row.payload["transport"] for row in rows} == {"http-bearer", "mcp"}
+        # Candidate transport parity includes actual non-null interpretation, not just IDs.
+        from verdant.application import RegistryService
+        from verdant.contracts import InlineEvidence, SampleCreate
+
+        actor = runtime.identities.resolve(runtime.settings.issuer, subject, kind="service")
+        sample = RegistryService(runtime.sessions).create_sample(
+            actor,
+            ns,
+            SampleCreate(
+                source_key="transport-pins",
+                modality="text",
+                sha256="a" * 64,
+                object_key="private/transport",
+                size_bytes=1,
+            ),
+        )
+        annotation = InlineEvidence(format="test.annotation.v1", payload={"text": "Pinned"})
+        pins = {
+            "annotation_revision": annotation.model_dump(),
+            "task_schema_revision": {"format": "test.schema.v1", "payload": {"label": "text"}},
+            "review_evidence": {
+                "annotation_digest": annotation.sha256,
+                "decision": "accepted",
+                "rationale": "Input review, not a policy gate",
+            },
+            "transformation": {
+                "payload": {
+                    "code": "text.strip()",
+                    "configuration": {},
+                    "environment": {"python": "3.12"},
+                }
+            },
+        }
+        base = f"/api/v1/namespaces/{ns}/datasets/{d['id']}"
+        assert (
+            client.put(
+                base + f"/draft/members/{sample.sample_id}",
+                headers=headers,
+                json={
+                    "expected_revision": 0,
+                    "sample_revision_id": str(sample.id),
+                    "split": "train",
+                    "interpretation": pins,
+                },
+            ).status_code
+            == 200
+        )
+        captured = client.post(
+            base + "/candidates",
+            headers=headers,
+            json={"request_key": "transport-capture", "expected_revision": 1},
+        )
+        assert captured.status_code == 201
+        candidate_id = captured.json()["id"]
+        arguments = {"namespace_id": str(ns), "dataset_id": d["id"], "candidate_id": candidate_id}
+        prepared = client.post(
+            "/mcp/",
+            headers=headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 20,
+                "method": "tools/call",
+                "params": {
+                    "name": "candidate_prepare",
+                    "arguments": arguments | {"command": {"expected_count": 0, "limit": 1}},
+                },
+            },
+        )
+        result = prepared.json()["result"]
+        assert not result.get("isError"), result
+        assert result["structuredContent"]["state"] == "sealed"
+        mcp_members = client.post(
+            "/mcp/",
+            headers=headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 21,
+                "method": "tools/call",
+                "params": {"name": "candidate_members", "arguments": arguments},
+            },
+        )
+        members = mcp_members.json()["result"]["structuredContent"]
+        http_members = client.get(
+            base + f"/candidates/{candidate_id}/members", headers=headers
+        ).json()
+        assert members == http_members
+        assert (
+            members["items"][0]["interpretation"]["annotation_revision"]["sha256"]
+            == annotation.sha256
+        )
+        assert members["items"][0]["interpretation"]["schema"] == "verdant.membership.v1"
+        invalid_page = client.post(
+            "/mcp/",
+            headers=headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 22,
+                "method": "tools/call",
+                "params": {"name": "candidate_members", "arguments": arguments | {"limit": 0}},
+            },
+        )
+        assert invalid_page.json()["result"]["isError"]
         denied = str(uuid4())
         assert (
             client.get(
