@@ -1,0 +1,45 @@
+{
+  "backend_source_commit": "b9cf094",
+  "before_schema": "0014_interpretation",
+  "after_schema": "0018_ingestion_sources",
+  "checkpoint_name": "schema14-to18-b9cf094-20261028T052358Z",
+  "checkpoint_archives_validated": [
+    "registry",
+    "keycloak",
+    "prefect",
+    "objects"
+  ],
+  "checkpoint_restore_tested": false,
+  "old_registry_tables_preserved": 22,
+  "all_old_row_hashes_preserved": true,
+  "original_candidate_preserved": "preparing|100|102|102|467f563d-c1ac-4d5f-8dee-d08bc3591c33",
+  "images": {
+    "api": {
+      "image_id": "sha256:4f6eb03c428fa221218f6999066392f28292b123f445df601f164a19bf208f10",
+      "health": "healthy"
+    },
+    "web": {
+      "image_id": "sha256:5fbe3aa970e24471f6ae7dddc43dba0e293a03df5b97c04fee71d1ec65ae6857",
+      "health": "healthy"
+    },
+    "worker": {
+      "image_id": "sha256:5c3a2d5a1101c6d84e8785613af41a5dd05313ffb7133e3872a15eb6b511f9d1",
+      "health": "healthy"
+    },
+    "dispatcher": {
+      "image_id": "sha256:5c3a2d5a1101c6d84e8785613af41a5dd05313ffb7133e3872a15eb6b511f9d1",
+      "health": "not_defined"
+    },
+    "prefect": {
+      "image_id": "sha256:5c3a2d5a1101c6d84e8785613af41a5dd05313ffb7133e3872a15eb6b511f9d1",
+      "health": "healthy"
+    }
+  },
+  "source_prefix": "ingestion-sources",
+  "web_source_sha256": "28ba726674235efb601d936f7287dfdc9728528bd930271cf6a9deab393fa5ec",
+  "browser_upload_operation": "4f0bafda-2de7-4152-ac74-c644bfebdee7",
+  "browser_source_operation": "3b16a6d5-64c4-48f3-adef-0cf282fdd671",
+  "status_notice_operation": "e187552f-bc14-412a-8955-8b4253e79126",
+  "browser_automation": "CUA in-app browser only; no Chrome retry",
+  "auth": "actual Keycloak sign-in and later SSO reauthentication; no local bypass"
+}

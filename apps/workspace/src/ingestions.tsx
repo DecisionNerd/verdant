@@ -165,7 +165,7 @@ function UploadDetail({ namespace, id, csrf, writable, limits, initialFiles, sel
       {status === "failed" && batch.items.every(item => ["ready", "accepted"].includes(item.state)) && <button disabled={busy || query.isError} onClick={() => void run("retry")}>Retry verification</button>}
       {recoverable && <button disabled={busy || query.isError || !limits.configured} onClick={() => void run("reupload")}>Create linked re-upload for unfinished files</button>}
     </div>}
-    {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
+    {error && <p role="alert">{error}</p>}{message && <p role="status">{status === "succeeded" ? "All items were independently verified and accepted." : status === "failed" ? "Ingestion failed. Review item errors before recovery." : status === "cancelled" ? "Cancelled. Accepted sibling artifacts remain preserved." : message}</p>}
     {batch.cleanup_operation_id && <p><a href={`/?${new URLSearchParams({ namespace, view: "operations", operation: batch.cleanup_operation_id })}`}>Inspect staging cleanup</a></p>}
     <ul>{batch.items.map(item => <li key={item.id}><strong>{item.source_key}</strong> · {item.modality} · {item.size_bytes} bytes · {item.state}{item.error && <p role="alert">{item.error.replaceAll("_", " ")}</p>}
       {item.source_object && <p>Read-only source object: <span className="identifier">{item.source_object}</span></p>}

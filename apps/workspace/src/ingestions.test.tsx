@@ -101,3 +101,15 @@ it("pins replacement identity and retains selected metadata across uncertain adm
   expect(commands[0][2]).toEqual(commands[1][2]);
   expect(commands[0][2]).toMatchObject({ items: [{ source_key: "file.txt", modality: "text", target_sample_id: "sample", expected_revision: 7, metadata: { title: "retain" } }] });
 });
+
+it("replaces transient transfer text with the authoritative accepted outcome", async () => {
+  const batch = setup({ selected: true });
+  vi.mocked(transferUploads).mockImplementation(async () => {
+    batch.operation.status = "succeeded";
+    batch.items[0].state = "accepted";
+    return batch;
+  });
+  fireEvent.click(await screen.findByRole("button", { name: "Upload or resume files" }));
+  await screen.findByText("All items were independently verified and accepted.");
+  expect(screen.queryByText(/Awaiting independent worker verification/)).toBeNull();
+});
