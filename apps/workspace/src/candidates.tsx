@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, request, type Page } from "./api";
+import { Quality } from "./quality";
 
 type Candidate = { id: string; source_revision: number; latest_draft_revision: number; generation_id: string; state: "preparing" | "sealed"; prepared_count: number; cursor: string | null };
 type Member = { sample_id: string; sample_revision_id: string; split: string; interpretation: { schema: string; annotation_revision: unknown; task_schema_revision: unknown; review_evidence: unknown; transformation: unknown } };
@@ -71,7 +72,7 @@ export function Candidates({ namespace, dataset, csrf, writable }: { namespace: 
     {selected && (generation.isPending ? <p role="status">Loading selected candidate…</p> : generation.data ? <article aria-label="Selected candidate"><h3 ref={heading} tabIndex={-1}>Selected candidate {selected}</h3>
       <p>Captured draft revision: <strong>{detail!.source_revision}</strong> · latest draft revision: {source.data?.revision ?? detail!.latest_draft_revision}</p>
       <p>Preparation: {detail!.state} · {detail!.prepared_count} members</p><p>Generation: <span className="identifier">{detail!.generation_id}</span></p>
-      <p>Quality validation has not been run.</p>
+      <p>Quality reports apply to the exact selected generation and policy revision below.</p>
       {writable && <><button disabled={busy || stale || detail!.state === "sealed"} onClick={() => void run("prepare")}>Resume preparation</button>
         <label>Selection mode <select value={mode} onChange={event => setMode(event.target.value)}><option value="selected_candidate">Selected candidate</option><option value="current_draft">Current draft</option></select></label>
         <button disabled={busy || stale || detail!.state !== "sealed"} onClick={() => void run("check-selection")}>Check selection</button></>}
@@ -79,6 +80,7 @@ export function Candidates({ namespace, dataset, csrf, writable }: { namespace: 
       <p>Interpretation evidence is frozen with each member. Input review records are distinct from quality-policy approval.</p>
       <nav aria-label="Frozen member pages"><button disabled={memberPages.length === 1 || busy} onClick={() => setMemberPages(memberPages.slice(0,-1))}>Previous frozen members</button><button disabled={!generation.data.next_after || busy} onClick={() => setMemberPages([...memberPages,generation.data!.next_after])}>Next frozen members</button></nav>
     </article> : <p role="alert">{generation.error?.message} <button onClick={() => void generation.refetch()}>Retry selected candidate</button></p>)}
+    <Quality namespace={namespace} dataset={dataset} candidate={selected} csrf={csrf} writable={writable} />
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
   </section>;
 }

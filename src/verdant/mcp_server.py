@@ -10,6 +10,7 @@ from fastmcp.server.dependencies import get_access_token
 from pydantic import Field
 from starlette.concurrency import run_in_threadpool
 
+from verdant import quality_service as q
 from verdant.access_tokens import InvalidAccessToken
 from verdant.application import RegistryService
 from verdant.contracts import DatasetCreate, DatasetUpdate
@@ -57,6 +58,7 @@ def create_mcp_app(runtime):
     service = RegistryService(runtime.sessions)
     operations = OperationService(runtime.sessions)
     versioning = VersioningService(runtime.sessions)
+    quality = q.QualityService(runtime.sessions)
 
     def actor() -> Principal:
         token = get_access_token()
@@ -69,6 +71,48 @@ def create_mcp_app(runtime):
             return await run_in_threadpool(method, actor(), *args)
         except DomainError as exc:
             raise ToolError(str(exc)) from None
+
+    @mcp.tool()
+    async def quality_policy_create(namespace_id: UUID, dataset_id: UUID, command: q.PolicyCreate):
+        return await invoke(quality.create_policy, namespace_id, dataset_id, command)
+
+    @mcp.tool()
+    async def quality_policies_list(
+        namespace_id: UUID, dataset_id: UUID, after: UUID | None = None, limit: OperationLimit = 25
+    ):
+        return await invoke(quality.list_policies, namespace_id, dataset_id, after, limit)
+
+    @mcp.tool()
+    async def quality_policy_get(namespace_id: UUID, dataset_id: UUID, policy_id: UUID):
+        return await invoke(quality.get_policy, namespace_id, dataset_id, policy_id)
+
+    @mcp.tool()
+    async def quality_validation_start(
+        namespace_id: UUID, dataset_id: UUID, candidate_id: UUID, command: q.ValidationStart
+    ):
+        return await invoke(quality.start, namespace_id, dataset_id, candidate_id, command)
+
+    @mcp.tool()
+    async def quality_reports_list(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        candidate_id: UUID,
+        after: UUID | None = None,
+        limit: OperationLimit = 25,
+    ):
+        return await invoke(
+            quality.list_reports, namespace_id, dataset_id, candidate_id, after, limit
+        )
+
+    @mcp.tool()
+    async def quality_report_get(namespace_id: UUID, dataset_id: UUID, report_id: UUID):
+        return await invoke(quality.get_report, namespace_id, dataset_id, report_id)
+
+    @mcp.tool()
+    async def quality_validation_advance(
+        namespace_id: UUID, dataset_id: UUID, report_id: UUID, command: q.ValidationBatch
+    ):
+        return await invoke(quality.advance, namespace_id, dataset_id, report_id, command)
 
     @mcp.tool()
     async def candidate_capture(namespace_id: UUID, dataset_id: UUID, command: CandidateCapture):
