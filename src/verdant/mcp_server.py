@@ -1,17 +1,23 @@
 """FastMCP transport over the same current-authorization registry use cases."""
 
+from typing import Annotated
 from uuid import UUID
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.auth import AccessToken, TokenVerifier
 from fastmcp.server.dependencies import get_access_token
+from pydantic import Field
 from starlette.concurrency import run_in_threadpool
 
 from verdant.access_tokens import InvalidAccessToken
 from verdant.application import RegistryService
 from verdant.contracts import DatasetCreate, DatasetUpdate
 from verdant.domain import DomainError, Forbidden, Principal
+from verdant.operations import OperationService, VerificationRequest
+
+OperationLimit = Annotated[int, Field(ge=1, le=100)]
+OperationEpoch = Annotated[int, Field(ge=1, le=9223372036854775807, strict=True)]
 
 
 class RegistryTokenVerifier(TokenVerifier):
@@ -43,6 +49,7 @@ class RegistryTokenVerifier(TokenVerifier):
 def create_mcp_app(runtime):
     mcp = FastMCP("Verdant", auth=RegistryTokenVerifier(runtime))
     service = RegistryService(runtime.sessions)
+    operations = OperationService(runtime.sessions)
 
     def actor() -> Principal:
         token = get_access_token()
@@ -55,6 +62,37 @@ def create_mcp_app(runtime):
             return await run_in_threadpool(method, actor(), *args)
         except DomainError as exc:
             raise ToolError(str(exc)) from None
+
+    @mcp.tool()
+    async def operation_verify_artifact(namespace_id: UUID, command: VerificationRequest):
+        return await invoke(operations.admit_verification, namespace_id, command)
+
+    @mcp.tool()
+    async def operations_list(
+        namespace_id: UUID, after: UUID | None = None, limit: OperationLimit = 25
+    ):
+        return await invoke(operations.list_operations, namespace_id, after, limit)
+
+    @mcp.tool()
+    async def operation_get(
+        namespace_id: UUID,
+        operation_id: UUID,
+        after: UUID | None = None,
+        limit: OperationLimit = 25,
+    ):
+        return await invoke(operations.detail, namespace_id, operation_id, after, limit)
+
+    @mcp.tool()
+    async def operation_retry(namespace_id: UUID, operation_id: UUID, epoch: OperationEpoch):
+        return await invoke(operations.retry, namespace_id, operation_id, epoch)
+
+    @mcp.tool()
+    async def operation_cancel(namespace_id: UUID, operation_id: UUID, epoch: OperationEpoch):
+        return await invoke(operations.request_cancel, namespace_id, operation_id, epoch)
+
+    @mcp.tool()
+    async def operation_reconcile(namespace_id: UUID, operation_id: UUID, epoch: OperationEpoch):
+        return await invoke(operations.request_reconcile, namespace_id, operation_id, epoch)
 
     @mcp.tool()
     async def sample_revision_inspect(namespace_id: UUID, sample_id: UUID, revision_id: UUID):

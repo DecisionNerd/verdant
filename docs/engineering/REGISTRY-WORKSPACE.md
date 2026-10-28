@@ -37,3 +37,11 @@ VERDANT_TEST_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST/ISOLATED_test 
 Use a dedicated database ending `_test`. Never point tests at an active registry database. PostgreSQL tests cover current-grant enforcement, literal search, owner/modality filters, 1,001-row keyset pagination, concurrent metadata edits, immutable sample inspection and audit behavior. Component tests distinguish transient transport failure from authorization loss and verify shared-cookie identity changes clear the previous account's cache.
 
 [Browser qualification](../proofs/issue-13/browser-preflight.md) records real creation, edits, conflicts, pages, access changes, exact inspection and logout evidence, with component-only and incomplete checks labeled separately. A successful build alone is not browser acceptance.
+
+## Operations
+
+Choose a workspace, then **Operations** to inspect durable operation status. Links retain the workspace and operation identity, so reloading reconnects to PostgreSQL-backed status. The list and selected detail refresh every three seconds. Connection failures retain the last known status with an explicit stale warning and disable recovery actions. Access denial removes protected details.
+
+Write-authorized users can retry failed attempts, request cancellation for queued/running work, and request trusted reconciliation for nonterminal or failed work. Reconciliation requests contain only the displayed epoch; workers verify provider identity and results. A requested action is not completion. Cancellation remains pending until the logical operation confirms it; a provider run may finish later without changing the cancelled logical outcome.
+
+From an exact sample revision inspection, **Verify artifact** queues verification of that registered revision and links to its operation. Retrying a failed admission request uses the same request identity while the inspection remains mounted. Prior effects and accepted digests are shown without private object keys or provider payloads. Read-only users can inspect operations but cannot invoke recovery controls.

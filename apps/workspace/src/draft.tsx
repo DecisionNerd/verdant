@@ -1,3 +1,4 @@
+import { VerifyArtifact } from "./operations";
 import { useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { request } from "./api";
@@ -56,7 +57,7 @@ export function DraftEditor({ namespace, dataset, csrf, writable }: { namespace:
   return <section className="draft" aria-labelledby="draft-title"><h2 id="draft-title">Draft membership</h2>
     <button disabled={busy} onClick={() => { void refresh(true).catch(failure => setError((failure as Error).message)); }}>Load current draft</button>
     <form onSubmit={event => { event.preventDefault(); setCursors([null]); setSnapshot(Number(revisionInput)); }}><label>Inspect draft revision <input type="number" min="0" max="9007199254740991" step="1" required value={revisionInput} onChange={event => setRevisionInput(event.target.value)} /></label><button>Open revision</button></form>
-    {inspected && <aside aria-label="Exact sample revision"><h3>Exact sample revision</h3>{inspection.isPending ? <p role="status">Loading revision…</p> : inspection.isError ? <p role="alert">{inspection.error.message}</p> : <dl><dt>Sample</dt><dd className="identifier">{inspection.data.sample_id}</dd><dt>Revision</dt><dd>{inspection.data.revision} · {inspection.data.revision_id}</dd><dt>SHA-256</dt><dd className="identifier">{inspection.data.sha256}</dd><dt>Bytes</dt><dd>{inspection.data.size_bytes}</dd><dt>Modality</dt><dd>{inspection.data.modality}</dd></dl>}<button onClick={() => setInspected(null)}>Close inspection</button></aside>}
+    {inspected && <aside aria-label="Exact sample revision"><h3>Exact sample revision</h3>{inspection.isPending ? <p role="status">Loading revision…</p> : inspection.isError ? <p role="alert">{inspection.error.message}</p> : <dl><dt>Sample</dt><dd className="identifier">{inspection.data.sample_id}</dd><dt>Revision</dt><dd>{inspection.data.revision} · {inspection.data.revision_id}</dd><dt>SHA-256</dt><dd className="identifier">{inspection.data.sha256}</dd><dt>Bytes</dt><dd>{inspection.data.size_bytes}</dd><dt>Modality</dt><dd>{inspection.data.modality}</dd></dl>}{writable && inspection.data && !inspection.isError && <VerifyArtifact key={inspection.data.revision_id} namespace={namespace} sample={inspection.data.sample_id} revision={inspection.data.revision_id} csrf={csrf} />}<button onClick={() => setInspected(null)}>Close inspection</button></aside>}
     {error && <p role="alert">{error} Your selected sample and split are preserved.</p>}{message && <p role="status">{message}</p>}
     {draft.isPending ? <p role="status">Loading draft…</p> : draft.isError ? <p role="alert">{draft.error.message}</p> : <>
       <p>Draft revision {draft.data.revision}{draft.isFetching ? " · Refreshing…" : ""}</p>

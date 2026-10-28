@@ -47,3 +47,20 @@ def test_domain_imports_only_standard_library():
         source = Path("src/verdant", name).read_text()
         assert "from verdant.api" not in source
         assert "import fastapi" not in source
+
+
+def test_mcp_operation_bounds_match_http_contract():
+    import pytest
+    from pydantic import TypeAdapter, ValidationError
+
+    from verdant.mcp_server import OperationEpoch, OperationLimit
+
+    epoch = TypeAdapter(OperationEpoch)
+    limit = TypeAdapter(OperationLimit)
+    for invalid in (0, -1, 9223372036854775808, True, "1", 1.0):
+        with pytest.raises(ValidationError):
+            epoch.validate_python(invalid)
+    for invalid in (0, -1, 101):
+        with pytest.raises(ValidationError):
+            limit.validate_python(invalid)
+    assert epoch.validate_python(1) == limit.validate_python(1) == 1

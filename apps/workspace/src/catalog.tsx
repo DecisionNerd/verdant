@@ -1,3 +1,4 @@
+import { Operations } from "./operations";
 import { DatasetView } from "./dataset";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { QueryClient, QueryClientProvider, useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,7 +8,7 @@ type Namespace = { id: string; name: string; access: "read" | "write" };
 import { ApiError, request, type Dataset, type Page } from "./api";
 function initialRoute() {
   const params = new URLSearchParams(location.search);
-  return { namespace: params.get("namespace") ?? "", dataset: params.get("dataset") ?? "" };
+  return { namespace: params.get("namespace") ?? "", dataset: params.get("dataset") ?? "", operations: params.get("view") === "operations" };
 }
 export function Catalog({ csrf, principal }: { csrf: string; principal: string }) {
   // Scope cache lifetime to one authenticated principal, including across logout/login.
@@ -31,18 +32,19 @@ function CatalogView({ csrf, principal }: { csrf: string; principal: string }) {
     getNextPageParam: page => page.next_after ?? undefined });
   const namespaceItems = namespaces.data?.pages.flatMap(page => page.items) ?? [];
   useEffect(() => { const update = () => setRoute(initialRoute()); window.addEventListener("popstate", update); return () => window.removeEventListener("popstate", update); }, []);
-  function navigate(namespace: string, dataset = "") {
-    const query = new URLSearchParams({ namespace }); if (dataset) query.set("dataset", dataset);
-    history.pushState(null, "", `/?${query}`); setRoute({ namespace, dataset }); setCursors([null]); setError("");
+  function navigate(namespace: string, dataset = "", operations = false) {
+    const query = new URLSearchParams({ namespace }); if (dataset) query.set("dataset", dataset); if (operations) query.set("view", "operations");
+    history.pushState(null, "", `/?${query}`); setRoute({ namespace, dataset, operations }); setCursors([null]); setError("");
   }
   const namespace = useQuery({ queryKey: ["namespace", route.namespace], enabled: !!route.namespace,
+    refetchInterval: route.operations ? 3000 : false, refetchOnReconnect: true,
     queryFn: () => request<Namespace>(`/api/v1/namespaces/${route.namespace}`, csrf) });
   const selected = namespace.isError && namespace.error instanceof ApiError && [401,403].includes(namespace.error.status) ? undefined : namespace.data;
   const params = new URLSearchParams({ limit: "25", search });
   if (modality) params.set("modality", modality);
   if (mine) params.set("owner_id", principal);
   const cursor = cursors[cursors.length - 1]; if (cursor) params.set("after", cursor);
-  const datasets = useQuery({ queryKey: ["datasets", route.namespace, search, modality, mine, cursor], enabled: !!selected && !route.dataset,
+  const datasets = useQuery({ queryKey: ["datasets", route.namespace, search, modality, mine, cursor], enabled: !!selected && !route.dataset && !route.operations,
     queryFn: () => request<Page<Dataset>>(`/api/v1/namespaces/${route.namespace}/datasets?${params}`, csrf) });
   const columns = useMemo<ColumnDef<Dataset>[]>(() => [
     { accessorKey: "name", header: "Dataset", cell: ({ row }) => <a href={`/?namespace=${row.original.namespace_id}&dataset=${row.original.id}`} onClick={event => { event.preventDefault(); navigate(row.original.namespace_id, row.original.id); }}>{row.original.name}</a> },
@@ -66,7 +68,9 @@ function CatalogView({ csrf, principal }: { csrf: string; principal: string }) {
       {namespaces.hasNextPage && <button disabled={namespaces.isFetchingNextPage} onClick={() => void namespaces.fetchNextPage()}>Load more workspaces</button>}
       {!namespaceItems.length && <p>No workspace access has been granted. Contact your administrator.</p>}
       {route.namespace && namespace.isPending && <p role="status">Loading selected workspace…</p>}{route.namespace && namespace.isError && <p role="alert">{namespace.error.message} <button onClick={() => void namespace.refetch()}>Retry selected workspace</button></p>}
-      {selected && !route.dataset && <>
+      {selected && <nav aria-label="Workspace views"><button onClick={() => navigate(route.namespace)}>Datasets</button><button onClick={() => navigate(route.namespace, "", true)}>Operations</button></nav>}
+      {selected && route.operations && <Operations key={route.namespace} namespace={route.namespace} csrf={csrf} writable={selected.access === "write"} />}
+      {selected && !route.dataset && !route.operations && <>
         <div className="catalog-tools"><label>Search datasets <input maxLength={200} value={search} onChange={event => { setSearch(event.target.value); setCursors([null]); }} /></label>
           <label>Modality <select value={modality} onChange={event => { setModality(event.target.value); setCursors([null]); }}><option value="">All modalities</option>{["image", "text", "document", "mixed", "audio", "video"].map(value => <option key={value}>{value}</option>)}</select></label>
           <label><input type="checkbox" checked={mine} onChange={event => { setMine(event.target.checked); setCursors([null]); }} /> Owned by me</label>
