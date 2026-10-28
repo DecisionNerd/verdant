@@ -1,7 +1,7 @@
 """immutable quality policy revisions and resumable candidate reports
 
 Revision ID: 0016_quality
-Revises: 0014_interpretation
+Revises: 0015_ingestion
 """
 
 import sqlalchemy as sa
@@ -9,7 +9,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0016_quality"
-down_revision = "0014_interpretation"
+down_revision = "0015_ingestion"
 branch_labels = None
 depends_on = None
 
