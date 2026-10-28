@@ -916,6 +916,8 @@ class OperationService:
                     "workflow_submitted",
                     "workflow_reconciled",
                     "reconciliation_requested",
+                    "upload_ready",
+                    "upload_failed",
                 )
             }
             error = None

@@ -21,6 +21,7 @@ from verdant.operations import (
 from verdant.persistence import (
     ArtifactLocationRow,
     ArtifactRow,
+    EffectReceiptRow,
     IngestionItemRow,
     OperationRow,
     SampleRow,
@@ -29,6 +30,8 @@ from verdant.storage import (
     MAX_ARTIFACT_BYTES,
     PART_BYTES,
     URL_SECONDS,
+    ObjectCorrupt,
+    ObjectMissing,
     S3Storage,
     StorageUnavailable,
 )
@@ -258,11 +261,14 @@ class IngestionService:
                 raise NotFound("Ingestion operation not found")
             return self._view(session, row)
 
-    def _upload_item(self, session, actor, namespace_id, operation_id, item_id, epoch):
+    def _upload_item(
+        self, session, actor, namespace_id, operation_id, item_id, epoch, *, allow_ready=False
+    ):
         operation = self.operations._locked_operation(
             session, actor, namespace_id, operation_id, epoch
         )
-        if operation.kind != "ingest_upload" or operation.status != "running":
+        statuses = {"running", "queued"} if allow_ready else {"running"}
+        if operation.kind != "ingest_upload" or operation.status not in statuses:
             raise Conflict("Operation does not permit upload changes")
         item = session.scalar(
             select(IngestionItemRow)
@@ -275,7 +281,9 @@ class IngestionService:
         )
         if item is None:
             raise NotFound("Upload item not found")
-        if item.state not in {"awaiting_upload", "uploading"}:
+        if allow_ready and item.state == "ready":
+            return operation, item, session.get(ArtifactRow, item.artifact_id)
+        if operation.status != "running" or item.state not in {"awaiting_upload", "uploading"}:
             raise Conflict("Item does not permit upload changes")
         if item.expires_at <= session.scalar(select(func.clock_timestamp())):
             raise Conflict("Upload expired; create a new upload declaration")
@@ -292,14 +300,49 @@ class IngestionService:
             raise StorageUnavailable("Stored upload location is unavailable in this configuration")
         return operation, item, artifact
 
-    def _upload_snapshot(self, actor, namespace_id, operation_id, item_id, epoch):
+    @staticmethod
+    def _completion_status(session, operation_id, item_id):
+        return session.scalar(
+            select(EffectReceiptRow.status)
+            .where(
+                EffectReceiptRow.operation_id == operation_id,
+                EffectReceiptRow.identity["item"].as_string() == str(item_id),
+                EffectReceiptRow.identity["kind"].as_string() == "artifact.multipart.complete",
+                EffectReceiptRow.status.in_(["unknown", "succeeded"]),
+            )
+            .limit(1)
+        )
+
+    def _upload_snapshot(self, actor, namespace_id, operation_id, item_id, epoch, *, signing=False):
         with self.sessions.begin() as session:
             _, item, artifact = self._upload_item(
                 session, actor, namespace_id, operation_id, item_id, epoch
             )
             if self.storage is None:
                 raise StorageUnavailable("Upload storage is not configured")
-            return item, artifact
+            completion = None
+            if signing:
+                completion = self._completion_status(session, operation_id, item_id)
+            if completion == "succeeded":
+                raise Conflict("Completion is in progress; reconcile it before signing more parts")
+        if completion == "unknown":
+            # Repair is safe only while the exact native upload still exists. Keep uncertainty:
+            # an older completion may still be in flight, and final bytes require verification.
+            try:
+                self.storage.parts(item.staging_key, item.upload_id)
+            except ObjectMissing:
+                raise Conflict(
+                    "Completion is in progress; reconcile it before signing more parts"
+                ) from None
+            with self.sessions.begin() as session:
+                _, item, artifact = self._upload_item(
+                    session, actor, namespace_id, operation_id, item_id, epoch
+                )
+                if self._completion_status(session, operation_id, item_id) == "succeeded":
+                    raise Conflict(
+                        "Completion is in progress; reconcile it before signing more parts"
+                    )
+        return item, artifact
 
     @observed("ingestion")
     def initiate_upload(self, actor, namespace_id, operation_id, item_id, epoch):
@@ -371,7 +414,9 @@ class IngestionService:
 
     @observed("ingestion")
     def sign_upload_part(self, actor, namespace_id, operation_id, item_id, epoch, number: int):
-        item, artifact = self._upload_snapshot(actor, namespace_id, operation_id, item_id, epoch)
+        item, artifact = self._upload_snapshot(
+            actor, namespace_id, operation_id, item_id, epoch, signing=True
+        )
         count = max(1, (artifact.size_bytes + PART_BYTES - 1) // PART_BYTES)
         if type(number) is not int or not 1 <= number <= count:
             raise Conflict("Part number is outside the declared upload")
@@ -379,7 +424,7 @@ class IngestionService:
             raise Conflict("Upload has not been initiated")
         size = min(PART_BYTES, max(0, artifact.size_bytes - (number - 1) * PART_BYTES))
         url = self.storage.sign_part(item.staging_key, item.upload_id, number, size)
-        self._upload_snapshot(actor, namespace_id, operation_id, item_id, epoch)
+        self._upload_snapshot(actor, namespace_id, operation_id, item_id, epoch, signing=True)
         return SignedUploadPart(part_number=number, size_bytes=size, url=url)
 
     @observed("ingestion")
@@ -395,3 +440,123 @@ class IngestionService:
                 for part in parts
             ]
         )
+
+    @observed("ingestion")
+    def complete_upload(self, actor, namespace_id, operation_id, item_id, epoch):
+        with self.sessions.begin() as session:
+            operation, item, artifact = self._upload_item(
+                session, actor, namespace_id, operation_id, item_id, epoch, allow_ready=True
+            )
+            if item.state == "ready":
+                return self._view(session, operation)
+            if not item.upload_id or item.state != "uploading":
+                raise Conflict("Upload has not been initiated")
+            if self.storage is None:
+                raise StorageUnavailable("Upload storage is not configured")
+        receipt = self.operations.prepare_effect(
+            actor,
+            namespace_id,
+            operation_id,
+            epoch,
+            EffectRequest(
+                kind="artifact.multipart.complete",
+                item=str(item.id),
+                input_revision=artifact.sha256,
+                request={
+                    "bucket": self.bucket,
+                    "key": item.staging_key,
+                    "upload_id": item.upload_id,
+                    "size_bytes": artifact.size_bytes,
+                },
+            ),
+        )
+        result = EffectResult(
+            result_digest=hashlib.sha256(item.upload_id.encode()).hexdigest(),
+            provider_reference=item.upload_id,
+        )
+        if receipt.status == "prepared":
+            receipt = self.operations.begin_effect(
+                actor, namespace_id, operation_id, epoch, receipt.id
+            )
+            self._upload_snapshot(actor, namespace_id, operation_id, item_id, epoch)
+            try:
+                self.storage.complete(item.staging_key, item.upload_id, artifact.size_bytes)
+            except ObjectCorrupt:
+                # The adapter rejected the part layout before calling provider completion.
+                self.operations.reconcile_effect(
+                    actor,
+                    namespace_id,
+                    operation_id,
+                    receipt.id,
+                    EffectReconciliation(
+                        expected_revision=receipt.revision,
+                        outcome="absent",
+                        evidence="Part-layout preflight rejected completion before provider write",
+                    ),
+                )
+                raise Conflict(
+                    "Uploaded parts are incomplete or invalid; resume the upload"
+                ) from None
+            self.operations.complete_effect(
+                actor, namespace_id, operation_id, epoch, receipt.id, receipt.dispatch_id, result
+            )
+        elif receipt.status == "unknown":
+            try:
+                self.storage.size(item.staging_key)
+            except ObjectMissing:
+                # This exact native upload ID can complete once; never create a replacement here.
+                self.storage.parts(item.staging_key, item.upload_id)
+                self._upload_snapshot(actor, namespace_id, operation_id, item_id, epoch)
+                try:
+                    self.storage.complete(item.staging_key, item.upload_id, artifact.size_bytes)
+                except ObjectCorrupt:
+                    # Preserve unknown state; only repair parts of this same active upload.
+                    raise Conflict(
+                        "Uploaded parts are incomplete or invalid; resume the upload"
+                    ) from None
+            self.operations.reconcile_effect(
+                actor,
+                namespace_id,
+                operation_id,
+                receipt.id,
+                EffectReconciliation(
+                    expected_revision=receipt.revision,
+                    outcome="found",
+                    result=result,
+                    evidence="Staging object exists for the exact native multipart upload",
+                ),
+            )
+        size = self.storage.size(item.staging_key)
+        with self.sessions.begin() as session:
+            operation, current, _ = self._upload_item(
+                session, actor, namespace_id, operation_id, item_id, epoch, allow_ready=True
+            )
+            if current.state == "ready":
+                return self._view(session, operation)
+            current.state = "ready" if size == artifact.size_bytes else "failed"
+            current.error = None if current.state == "ready" else "size_mismatch"
+            session.flush()
+            unfinished = session.scalar(
+                select(IngestionItemRow.id)
+                .where(
+                    IngestionItemRow.operation_id == operation_id,
+                    IngestionItemRow.state != "ready",
+                )
+                .limit(1)
+            )
+            if operation.revision == 9223372036854775807:
+                raise Conflict("Operation revision limit reached")
+            operation.revision += 1
+            if unfinished is None:
+                operation.status = "queued"
+                event = "operation.queued"
+            else:
+                event = (
+                    "operation.upload_ready"
+                    if current.state == "ready"
+                    else "operation.upload_failed"
+                )
+            self.operations._record_transition(
+                session, actor, operation, event, {"item_id": str(item_id)}
+            )
+            return self._view(session, operation)

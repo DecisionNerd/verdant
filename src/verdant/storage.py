@@ -172,6 +172,10 @@ class S3Storage:
         except ObjectMissing:
             pass
 
+    def size(self, key: str):
+        """Provider existence/size observation; this does not establish byte integrity."""
+        return self._call("head_object", Key=key)["ContentLength"]
+
     def verify(self, key: str, expected: ObjectDigest, *, destination: BinaryIO | None = None):
         response = self._call("get_object", Key=key)
         body = response["Body"]

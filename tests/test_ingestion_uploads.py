@@ -5,12 +5,12 @@ from threading import Event
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from verdant.domain import Conflict, Forbidden
 from verdant.identity import IdentityService
 from verdant.ingestion import IngestionService, UploadDeclaration, UploadRequest
-from verdant.persistence import EffectReceiptRow, IngestionItemRow
+from verdant.persistence import ArtifactRow, EffectReceiptRow, IngestionItemRow, OperationEventRow
 from verdant.storage import StorageUnavailable
 
 
@@ -74,6 +74,11 @@ def test_real_upload_signing_progress_and_service_reload(registry, sessions, sto
             resumed.sign_upload_part(actor, ns, operation, item, 1, 2)
         with pytest.raises(Conflict, match="stale"):
             resumed.sign_upload_part(actor, ns, operation, item, 2, 1)
+        completed = resumed.complete_upload(actor, ns, operation, item, 1)
+        assert completed.operation.status == "queued" and completed.items[0].state == "ready"
+        assert resumed.complete_upload(actor, ns, operation, item, 1) == completed
+        with sessions() as session:
+            assert session.get(ArtifactRow, completed.items[0].artifact_id).verified_at is None
     finally:
         cleanup(adapter, key, upload_id)
 
@@ -212,3 +217,232 @@ def test_changed_store_configuration_denies_before_provider(
         if changed == "bucket":
             adapter.client.close()
             adapter.signer.close()
+
+
+def test_incomplete_parts_are_repairable_before_completion(registry, sessions, storage):
+    adapter, _ = storage
+    body = b"repaired upload"
+    service, actor, ns, batch = admit(registry, sessions, adapter, body)
+    operation, item = batch.operation.id, batch.items[0].id
+    key, _ = owned_upload(sessions, item)
+    try:
+        service.initiate_upload(actor, ns, operation, item, 1)
+        with pytest.raises(Conflict, match="incomplete or invalid"):
+            service.complete_upload(actor, ns, operation, item, 1)
+        signed = service.sign_upload_part(actor, ns, operation, item, 1, 1)
+        with httpx.Client(timeout=10, trust_env=False) as http:
+            http.put(signed.url, content=body).raise_for_status()
+        assert service.complete_upload(actor, ns, operation, item, 1).items[0].state == "ready"
+    finally:
+        cleanup(adapter, key, None)
+
+
+def test_completion_response_loss_adopts_staging_without_replay(
+    registry, sessions, storage, monkeypatch
+):
+    adapter, _ = storage
+    body = b"completed once"
+    service, actor, ns, batch = admit(registry, sessions, adapter, body)
+    operation, item = batch.operation.id, batch.items[0].id
+    key, _ = owned_upload(sessions, item)
+    original = adapter.complete
+    calls = []
+
+    def lose_response(*args):
+        calls.append(args)
+        original(*args)
+        raise StorageUnavailable("Completion response lost")
+
+    try:
+        service.initiate_upload(actor, ns, operation, item, 1)
+        signed = service.sign_upload_part(actor, ns, operation, item, 1, 1)
+        with httpx.Client(timeout=10, trust_env=False) as http:
+            http.put(signed.url, content=body).raise_for_status()
+        monkeypatch.setattr(adapter, "complete", lose_response)
+        with pytest.raises(StorageUnavailable):
+            service.complete_upload(actor, ns, operation, item, 1)
+        with pytest.raises(Conflict, match="Completion is in progress"):
+            service.sign_upload_part(actor, ns, operation, item, 1, 1)
+        assert service.complete_upload(actor, ns, operation, item, 1).operation.status == "queued"
+        assert len(calls) == 1
+    finally:
+        cleanup(adapter, key, None)
+
+
+def test_all_items_ready_emit_one_queue_event(registry, sessions, storage):
+    adapter, _ = storage
+    _, actor, ns = registry
+    service = IngestionService(sessions, bucket=adapter.settings.bucket, storage=adapter)
+    batch = service.admit(
+        actor,
+        ns,
+        UploadRequest(
+            request_key="two",
+            items=[
+                UploadDeclaration(
+                    source_key=f"source-{i}",
+                    modality="text",
+                    sha256=hashlib.sha256(b"x").hexdigest(),
+                    size_bytes=1,
+                )
+                for i in range(2)
+            ],
+        ),
+    )
+    operation = batch.operation.id
+    keys = []
+    try:
+        for position, item in enumerate(batch.items):
+            key, _ = owned_upload(sessions, item.id)
+            keys.append(key)
+            service.initiate_upload(actor, ns, operation, item.id, 1)
+            signed = service.sign_upload_part(actor, ns, operation, item.id, 1, 1)
+            with httpx.Client(timeout=10, trust_env=False) as http:
+                http.put(signed.url, content=b"x").raise_for_status()
+            completed = service.complete_upload(actor, ns, operation, item.id, 1)
+            assert completed.operation.status == ("running" if position == 0 else "queued")
+        service.complete_upload(actor, ns, operation, batch.items[0].id, 1)
+        with sessions() as session:
+            assert (
+                session.scalar(
+                    select(func.count())
+                    .select_from(OperationEventRow)
+                    .where(
+                        OperationEventRow.operation_id == operation,
+                        OperationEventRow.event_type == "operation.queued",
+                    )
+                )
+                == 1
+            )
+    finally:
+        for key in keys:
+            cleanup(adapter, key, None)
+
+
+def test_revocation_during_completion_blocks_ready_acceptance(
+    registry, sessions, storage, monkeypatch
+):
+    adapter, _ = storage
+    body = b"revoke before acceptance"
+    service, actor, ns, batch = admit(registry, sessions, adapter, body)
+    operation, item = batch.operation.id, batch.items[0].id
+    key, _ = owned_upload(sessions, item)
+    original = adapter.complete
+
+    def revoke_after_write(*args):
+        original(*args)
+        IdentityService(sessions).revoke_grant(actor.id, ns)
+
+    try:
+        service.initiate_upload(actor, ns, operation, item, 1)
+        signed = service.sign_upload_part(actor, ns, operation, item, 1, 1)
+        with httpx.Client(timeout=10, trust_env=False) as http:
+            http.put(signed.url, content=body).raise_for_status()
+        monkeypatch.setattr(adapter, "complete", revoke_after_write)
+        with pytest.raises(Forbidden):
+            service.complete_upload(actor, ns, operation, item, 1)
+        with sessions() as session:
+            assert session.get(IngestionItemRow, item).state == "uploading"
+        IdentityService(sessions).grant(actor.id, ns, "write")
+        assert service.complete_upload(actor, ns, operation, item, 1).items[0].state == "ready"
+    finally:
+        cleanup(adapter, key, None)
+
+
+def test_unknown_completion_with_incomplete_parts_can_be_repaired(
+    registry, sessions, storage, monkeypatch
+):
+    adapter, _ = storage
+    body = b"repair after provider outage"
+    service, actor, ns, batch = admit(registry, sessions, adapter, body)
+    operation, item = batch.operation.id, batch.items[0].id
+    key, _ = owned_upload(sessions, item)
+    original = adapter.complete
+
+    def unavailable(*args):
+        raise StorageUnavailable("Provider unavailable before part preflight")
+
+    try:
+        service.initiate_upload(actor, ns, operation, item, 1)
+        monkeypatch.setattr(adapter, "complete", unavailable)
+        with pytest.raises(StorageUnavailable):
+            service.complete_upload(actor, ns, operation, item, 1)
+        monkeypatch.setattr(adapter, "complete", original)
+        with pytest.raises(Conflict, match="incomplete or invalid"):
+            service.complete_upload(actor, ns, operation, item, 1)
+        with sessions() as session:
+            receipt = session.scalar(
+                select(EffectReceiptRow).where(
+                    EffectReceiptRow.operation_id == operation,
+                    EffectReceiptRow.identity["kind"].as_string() == "artifact.multipart.complete",
+                )
+            )
+            assert receipt.status == "unknown"
+        signed = service.sign_upload_part(actor, ns, operation, item, 1, 1)
+        with httpx.Client(timeout=10, trust_env=False) as http:
+            http.put(signed.url, content=body).raise_for_status()
+        assert service.complete_upload(actor, ns, operation, item, 1).items[0].state == "ready"
+    finally:
+        cleanup(adapter, key, None)
+
+
+def test_completion_during_signing_prevents_url_disclosure(
+    registry, sessions, storage, monkeypatch
+):
+    adapter, _ = storage
+    body = b"finish while signing"
+    service, actor, ns, batch = admit(registry, sessions, adapter, body)
+    operation, item = batch.operation.id, batch.items[0].id
+    key, _ = owned_upload(sessions, item)
+    original = adapter.sign_part
+    try:
+        service.initiate_upload(actor, ns, operation, item, 1)
+        signed = service.sign_upload_part(actor, ns, operation, item, 1, 1)
+        with httpx.Client(timeout=10, trust_env=False) as http:
+            http.put(signed.url, content=body).raise_for_status()
+
+        def finish_during_sign(*args):
+            url = original(*args)
+            service.complete_upload(actor, ns, operation, item, 1)
+            return url
+
+        monkeypatch.setattr(adapter, "sign_part", finish_during_sign)
+        with pytest.raises(Conflict):
+            service.sign_upload_part(actor, ns, operation, item, 1, 1)
+        assert service.get(actor, ns, operation).items[0].state == "ready"
+    finally:
+        cleanup(adapter, key, None)
+
+
+def test_revocation_during_final_unknown_upload_probe_prevents_url_disclosure(
+    registry, sessions, storage, monkeypatch
+):
+    adapter, _ = storage
+    service, actor, ns, batch = admit(registry, sessions, adapter)
+    operation, item = batch.operation.id, batch.items[0].id
+    key, _ = owned_upload(sessions, item)
+
+    def unavailable(*args):
+        raise StorageUnavailable("Provider unavailable before completion preflight")
+
+    original_parts = adapter.parts
+    probes = []
+
+    def revoke_during_final_probe(*args):
+        result = original_parts(*args)
+        probes.append(args)
+        if len(probes) == 2:
+            IdentityService(sessions).revoke_grant(actor.id, ns)
+        return result
+
+    try:
+        service.initiate_upload(actor, ns, operation, item, 1)
+        monkeypatch.setattr(adapter, "complete", unavailable)
+        with pytest.raises(StorageUnavailable):
+            service.complete_upload(actor, ns, operation, item, 1)
+        monkeypatch.setattr(adapter, "parts", revoke_during_final_probe)
+        with pytest.raises(Forbidden):
+            service.sign_upload_part(actor, ns, operation, item, 1, 1)
+        assert len(probes) == 2
+    finally:
+        cleanup(adapter, key, None)
