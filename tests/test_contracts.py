@@ -83,3 +83,13 @@ def test_interpretation_requires_real_content_and_matching_review_binding():
         )
     with pytest.raises(ValidationError, match="code, configuration and environment"):
         TransformationPin(payload={"code_digest": "f" * 64})
+
+
+
+def test_inline_evidence_rejects_unresolvable_identifiers_and_byte_oversize():
+    from verdant.contracts import InlineEvidence, InterpretationPins
+
+    with pytest.raises(ValidationError):
+        InterpretationPins(annotation_revision={"provider_revision_id": "unresolvable"})
+    with pytest.raises(ValidationError, match="exceeds 64 KiB"):
+        InlineEvidence(format="test.annotation.v1", payload={"text": "é" * 40000})
