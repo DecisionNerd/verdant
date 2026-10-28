@@ -1,6 +1,6 @@
 # Frozen candidate capture progress
 
-This task branch currently starts at accepted workspace main `8c97716`; its provisional migration `0007_candidates` must be renumbered onto the accepted #19 migration head before integration. No #15 completion or runtime deployment is claimed.
+This task branch integrates accepted main `be4a945` through merge `e7d9921`. Candidate migrations are `0012_candidates` and `0013_generations`, after the accepted operations migration chain. No #15 completion or candidate runtime deployment is claimed.
 
 The first implementation captures candidate/source draft revision/generation identity under the existing draft lock and current write authorization, with an idempotent request key/digest and atomic audit. A repeated request resolves its original capture before checking the latest draft revision, so later edits cannot silently recapture different data. Source and latest revisions are returned separately. Database triggers reject capture-identity mutation and deletion.
 
@@ -10,3 +10,6 @@ Four tests ran against isolated real PostgreSQL database `verdant_issue15_test`:
 Bounded preparation now reads each keyset page from the retained captured draft revision. Candidate locking serializes competing preparers; expected-count commands make repeated batch delivery reuse committed progress. Generation rows and cursor/count/state/audit commit together. The final batch seals the candidate. Database insertion guards lock the same candidate row before admitting a member, while member update/delete and post-seal insertion/progress mutation are rejected.
 
 Eight real-PostgreSQL tests passed, including edits between preparation batches, duplicate batch/resume, competing preparers, exact original sample/split membership, rollback on preparation-audit failure, and direct persistence immutability. Interpretation schema `verdant.membership.v1` currently pins explicit absence of annotation/task-schema/review/transformation evidence because those owning domains do not yet exist. Absence never means latest. Future integration must supply real immutable namespace-scoped evidence; no arbitrary provider IDs are accepted here. UI, transport, current-draft conflict, broader interpretation integration, and complete #15 qualification remain unfinished.
+
+
+After integrating accepted #19 main, all 128 backend tests passed against a new isolated `verdant_issue15_integrated_test` database. The earlier capture-only test database was retained, without resets. Ruff/format across 65 Python files passed; model/migration consistency is checked separately.
