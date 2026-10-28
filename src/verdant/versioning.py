@@ -3,6 +3,7 @@
 import hashlib
 import json
 from datetime import datetime
+from typing import Literal
 from uuid import UUID, uuid4
 
 from pydantic import Field
@@ -44,6 +45,28 @@ class Candidate(Contract):
 class CandidatePrepare(Contract):
     expected_count: Revision
     limit: int = Field(default=100, ge=1, le=500, strict=True)
+
+
+class CandidatePage(Contract):
+    items: list[Candidate]
+    next_after: UUID | None = None
+
+
+class GenerationMember(Contract):
+    sample_id: UUID
+    sample_revision_id: UUID
+    split: str
+    interpretation: dict
+
+
+class GenerationPage(Contract):
+    candidate: Candidate
+    items: list[GenerationMember]
+    next_after: UUID | None = None
+
+
+class CandidateSelection(Contract):
+    mode: Literal["selected_candidate", "current_draft"]
 
 
 class VersioningService:
@@ -205,4 +228,139 @@ class VersioningService:
                     },
                 )
             )
+            return self._view(candidate, draft)
+
+    @staticmethod
+    def _candidate_query(namespace_id, dataset_id, candidate_id):
+        return (
+            select(CandidateRow, DraftRow)
+            .join(DraftRow, DraftRow.id == CandidateRow.draft_id)
+            .where(
+                CandidateRow.namespace_id == namespace_id,
+                DraftRow.dataset_id == dataset_id,
+                CandidateRow.id == candidate_id,
+            )
+        )
+
+    @observed("versioning")
+    def get(
+        self, actor: Principal, namespace_id: UUID, dataset_id: UUID, candidate_id: UUID
+    ) -> Candidate:
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id)
+            result = session.execute(
+                self._candidate_query(namespace_id, dataset_id, candidate_id)
+            ).one_or_none()
+            if result is None:
+                raise NotFound("Candidate not found")
+            return self._view(*result)
+
+    @observed("versioning")
+    def list_candidates(
+        self,
+        actor: Principal,
+        namespace_id: UUID,
+        dataset_id: UUID,
+        after: UUID | None = None,
+        limit: int = 25,
+    ) -> CandidatePage:
+        if not 1 <= limit <= 100:
+            raise ValueError("Candidate page must be between 1 and 100")
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id)
+            draft = RegistryRepository(session).draft(namespace_id, dataset_id)
+            if draft is None:
+                raise NotFound("Dataset not found")
+            query = select(CandidateRow).where(
+                CandidateRow.draft_id == draft.id, CandidateRow.namespace_id == namespace_id
+            )
+            if after is not None:
+                query = query.where(CandidateRow.id > after)
+            rows = session.scalars(query.order_by(CandidateRow.id).limit(limit + 1)).all()
+            return CandidatePage(
+                items=[self._view(row, draft) for row in rows[:limit]],
+                next_after=rows[limit - 1].id if len(rows) > limit else None,
+            )
+
+    @observed("versioning")
+    def members(
+        self,
+        actor: Principal,
+        namespace_id: UUID,
+        dataset_id: UUID,
+        candidate_id: UUID,
+        after: UUID | None = None,
+        limit: int = 25,
+    ) -> GenerationPage:
+        if not 1 <= limit <= 100:
+            raise ValueError("Generation page must be between 1 and 100")
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id)
+            result = session.execute(
+                self._candidate_query(namespace_id, dataset_id, candidate_id).with_for_update(
+                    read=True, of=CandidateRow
+                )
+            ).one_or_none()
+            if result is None:
+                raise NotFound("Candidate not found")
+            candidate, draft = result
+            query = select(GenerationMemberRow).where(
+                GenerationMemberRow.namespace_id == namespace_id,
+                GenerationMemberRow.generation_id == candidate.generation_id,
+            )
+            if after is not None:
+                query = query.where(GenerationMemberRow.sample_id > after)
+            rows = session.scalars(
+                query.order_by(GenerationMemberRow.sample_id).limit(limit + 1)
+            ).all()
+            return GenerationPage(
+                candidate=self._view(candidate, draft),
+                items=[
+                    GenerationMember(
+                        **{name: getattr(row, name) for name in GenerationMember.model_fields}
+                    )
+                    for row in rows[:limit]
+                ],
+                next_after=rows[limit - 1].sample_id if len(rows) > limit else None,
+            )
+
+    @staticmethod
+    def require_selection(candidate, draft, mode):
+        if candidate.state != "sealed":
+            raise Conflict("Candidate preparation must finish before selecting it for publication")
+        if mode == "current_draft" and candidate.source_revision != draft.revision:
+            raise Conflict(
+                f"Selected candidate captures draft revision {candidate.source_revision}; "
+                f"latest draft is revision {draft.revision}. Preparation is retained. "
+                "Use the selected candidate or capture the current draft."
+            )
+
+    @observed("versioning")
+    def check_selection(
+        self,
+        actor: Principal,
+        namespace_id: UUID,
+        dataset_id: UUID,
+        candidate_id: UUID,
+        command: CandidateSelection,
+    ) -> Candidate:
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id, write=True)
+            # Lock order matches capture: draft before candidate. This guard can be reused
+            # inside actual short publication finalization when that owning command exists.
+            draft = RegistryRepository(session).draft(namespace_id, dataset_id, lock=True)
+            if draft is None:
+                raise NotFound("Dataset not found")
+            candidate = session.scalar(
+                select(CandidateRow)
+                .where(
+                    CandidateRow.namespace_id == namespace_id,
+                    CandidateRow.draft_id == draft.id,
+                    CandidateRow.id == candidate_id,
+                )
+                .with_for_update()
+            )
+            if candidate is None:
+                raise NotFound("Candidate not found")
+            self.require_selection(candidate, draft, command.mode)
             return self._view(candidate, draft)

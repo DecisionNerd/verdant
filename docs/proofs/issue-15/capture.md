@@ -13,3 +13,7 @@ Eight real-PostgreSQL tests passed, including edits between preparation batches,
 
 
 After integrating accepted #19 main, all 128 backend tests passed against a new isolated `verdant_issue15_integrated_test` database. The earlier capture-only test database was retained, without resets. Ruff/format across 65 Python files passed; model/migration consistency is checked separately.
+
+Candidate list/detail and generation membership reads now enforce current namespace access before disclosing rows/counts and scope identities to their dataset. Membership pages take a bounded shared candidate lock so prepared rows and count/state remain consistent while another preparer runs. Explicit selection checks require sealed preparation. Selected-candidate mode remains usable after draft edits; current-draft mode compares captured/current revisions under the draft lock and returns a useful conflict without altering preparation. Actual publication finalization remains #17's responsibility and must reuse the guard inside its own short transaction.
+
+REST and MCP expose the same capture/prepare/read/selection services with bounded pages. Ten real-PostgreSQL versioning tests pass, including current-read revocation, generation pagination, and a current-draft conflict preserving sealed membership/identity. Existing auth-route composition tests also passed. Candidate UI and real browser proof remain unfinished.

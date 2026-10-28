@@ -300,3 +300,68 @@ def test_preparation_audit_failure_rolls_back_rows_and_progress(registry, sessio
             )
             == 0
         )
+
+
+def test_candidate_and_generation_reads_are_scoped_paginated_and_current_authorized(
+    registry, sessions, principal_factory
+):
+    from sqlalchemy import delete
+
+    from verdant.persistence import NamespaceGrantRow
+    from verdant.versioning import CandidatePrepare
+
+    _, service, actor, ns, dataset, samples, captured = preparation_fixture(registry, sessions)
+    service.prepare(actor, ns, dataset.id, captured.id, CandidatePrepare(expected_count=0))
+    reader = principal_factory(ns, access="read")
+    assert service.list_candidates(reader, ns, dataset.id).items[0].id == captured.id
+    first = service.members(reader, ns, dataset.id, captured.id, limit=2)
+    last = service.members(reader, ns, dataset.id, captured.id, after=first.next_after, limit=2)
+    assert len(first.items) == 2 and last.next_after is None
+    assert {m.sample_id for m in first.items + last.items} == {s.sample_id for s in samples}
+    with pytest.raises(Conflict):
+        service.prepare(actor, ns, dataset.id, captured.id, CandidatePrepare(expected_count=4))
+    with sessions.begin() as session:
+        session.execute(
+            delete(NamespaceGrantRow).where(NamespaceGrantRow.principal_id == reader.id)
+        )
+    for read in (
+        lambda: service.get(reader, ns, dataset.id, captured.id),
+        lambda: service.get(reader, ns, dataset.id, uuid4()),
+        lambda: service.list_candidates(reader, ns, dataset.id),
+        lambda: service.members(reader, ns, dataset.id, captured.id),
+    ):
+        with pytest.raises(Forbidden):
+            read()
+
+
+def test_explicit_current_draft_conflict_preserves_selected_generation(registry, sessions):
+    from verdant.versioning import CandidatePrepare, CandidateSelection
+
+    registry_service, service, actor, ns, dataset, samples, captured = preparation_fixture(
+        registry, sessions
+    )
+    with pytest.raises(Conflict, match="preparation must finish"):
+        service.check_selection(
+            actor, ns, dataset.id, captured.id, CandidateSelection(mode="selected_candidate")
+        )
+    sealed = service.prepare(actor, ns, dataset.id, captured.id, CandidatePrepare(expected_count=0))
+    service.check_selection(
+        actor, ns, dataset.id, captured.id, CandidateSelection(mode="current_draft")
+    )
+    registry_service.set_membership(
+        actor,
+        ns,
+        dataset.id,
+        samples[0].sample_id,
+        MembershipWrite(expected_revision=3, sample_revision_id=samples[0].id, split="test"),
+    )
+    with pytest.raises(Conflict, match="Preparation is retained"):
+        service.check_selection(
+            actor, ns, dataset.id, captured.id, CandidateSelection(mode="current_draft")
+        )
+    selected = service.check_selection(
+        actor, ns, dataset.id, captured.id, CandidateSelection(mode="selected_candidate")
+    )
+    assert selected.generation_id == sealed.generation_id
+    assert selected.source_revision == 3 and selected.latest_draft_revision == 4
+    assert selected.prepared_count == 3 and selected.state == "sealed"
