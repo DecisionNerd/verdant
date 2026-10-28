@@ -48,7 +48,7 @@ function OperationDetail({ namespace, id, csrf, writable }: { namespace: string;
     setBusy(true); setError(""); setMessage("");
     try {
       await request<Operation>(`${path}/${name}`, csrf, { epoch: query.data.operation.epoch });
-      setMessage(name === "reconcile" ? "Reconciliation requested. Waiting for verified recovery." : name === "cancel" ? "Cancellation requested. Waiting for confirmation." : "Retry queued.");
+      setMessage(name === "reconcile" ? "Reconciliation requested. Current status is shown above." : name === "cancel" ? "Cancellation requested. Current status is shown above." : "Retry queued.");
       await cache.invalidateQueries({ queryKey: ["operation", namespace, id] });
       await cache.invalidateQueries({ queryKey: ["operations", namespace] });
     } catch (failure) {
