@@ -91,7 +91,7 @@
     "Initial deployment-name collision repaired before retry; original runs verified terminal"
   ],
   "qualifier_sha256": {
-    "scripts/qualify_ingestion_fault.py": "2b8778df8033e5753423ebddbe1a2749ceb5aba15728e01f64596dd227b82c88",
+    "scripts/qualify_ingestion_fault.py": "9bf4aa67ae337cd1e6a5cf20f1b48dbcbe0c557ed254b42591df1461e0a4be3e",
     "scripts/qualify_ingestion_execution.py": "0a7de54bd35b312bbf4918d903cd562ff83a64ed2374864bae2f437ea9e420b6"
   },
   "owned_workers_stopped": true,
@@ -101,5 +101,10 @@
     "source_revision": 102,
     "latest_draft_revision": 102,
     "generation_id": "467f563d-c1ac-4d5f-8dee-d08bc3591c33"
-  }
+  },
+  "qualifier_before_endpoint_guard_sha256": {
+    "scripts/qualify_ingestion_fault.py": "2b8778df8033e5753423ebddbe1a2749ceb5aba15728e01f64596dd227b82c88",
+    "scripts/qualify_ingestion_execution.py": "0a7de54bd35b312bbf4918d903cd562ff83a64ed2374864bae2f437ea9e420b6"
+  },
+  "post_execution_qualifier_change": "Added closed-port preflight guard; execution already independently verified the port was closed. Guard itself passed lint/format, not a repeated native fault run."
 }
