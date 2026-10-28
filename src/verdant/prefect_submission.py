@@ -19,7 +19,15 @@ class PrefectSubmission:
         self.client = client
         self.deployment_id = deployment_id
 
-    async def submit(self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int):
+    async def submit(
+        self,
+        actor: Principal,
+        namespace_id: UUID,
+        operation_id: UUID,
+        epoch: int,
+        *,
+        reconcile_only: bool = False,
+    ):
         operations = self.operations
         dispatch = await asyncio.to_thread(
             operations.workflow_dispatch, actor, namespace_id, operation_id, epoch
@@ -81,6 +89,8 @@ class PrefectSubmission:
                     evidence="Prefect exact invocation-key lookup returned no run",
                 ),
             )
+        if reconcile_only:
+            return dispatch
         dispatch = await asyncio.to_thread(
             operations.begin_workflow_submission,
             actor,

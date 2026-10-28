@@ -105,3 +105,44 @@ def test_dispatch_revocation_denies_claim_before_provider_call(registry, session
     with pytest.raises(Forbidden):
         asyncio.run(WorkflowDispatcher(sessions, provider, deployment).tick(actor, ns))
     assert provider.creates == provider.lookups == 0
+
+
+@pytest.mark.parametrize(
+    "provider_accepted, lookup_found", [(False, False), (True, True), (True, False)]
+)
+def test_cancelled_verification_never_creates_another_provider_run(
+    registry, sessions, provider_accepted, lookup_found
+):
+    registry_service, actor, ns = registry
+    revision = registry_service.create_sample(
+        actor,
+        ns,
+        SampleCreate(
+            source_key="cancel",
+            modality="text",
+            sha256="b" * 64,
+            object_key="private/cancel",
+            size_bytes=1,
+        ),
+    )
+    operations = OperationService(sessions)
+    op = operations.admit_verification(
+        actor,
+        ns,
+        VerificationRequest(
+            request_key="cancel", sample_id=revision.sample_id, revision_id=revision.id
+        ),
+    )
+    deployment = uuid4()
+    provider = LostResponseProvider(deployment)
+    dispatcher = WorkflowDispatcher(sessions, provider, deployment)
+    if provider_accepted:
+        assert asyncio.run(dispatcher.tick(actor, ns, limit=1)).deferred == 1
+    if provider_accepted and not lookup_found:
+        provider.runs.clear()  # Provider double proves absence; cancellation must not reissue.
+    operations.request_cancel(actor, ns, op.id, 1)
+    batch = asyncio.run(dispatcher.tick(actor, ns, limit=100))
+    assert batch.deferred == 0
+    assert operations.get(actor, ns, op.id).status == "cancelled"
+    assert provider.creates == int(provider_accepted)
+    assert provider.lookups == int(provider_accepted)

@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass
 from uuid import UUID
 
-from verdant.domain import Conflict, Principal
+from verdant.domain import Conflict, NotFound, Principal
 from verdant.operations import OperationService
 from verdant.prefect_submission import PrefectSubmission, WorkflowProviderUnavailable
 
@@ -31,10 +31,23 @@ class WorkflowDispatcher:
                 outcome = await asyncio.to_thread(
                     operations.receive_workflow_event, actor, namespace_id, claim.event_id
                 )
-                if outcome.dispatch is not None:
-                    state = await asyncio.to_thread(
-                        operations.get, actor, namespace_id, claim.operation_id
+                state = await asyncio.to_thread(
+                    operations.get, actor, namespace_id, claim.operation_id
+                )
+                if (
+                    state.status == "cancellation_requested"
+                    and state.kind == "verify_sample_artifact"
+                ):
+                    try:
+                        await self.submission.submit(
+                            actor, namespace_id, state.id, state.epoch, reconcile_only=True
+                        )
+                    except NotFound:
+                        pass  # Cancellation may precede creation of any workflow dispatch.
+                    await asyncio.to_thread(
+                        operations.cancel_verification, actor, namespace_id, state.id, state.epoch
                     )
+                elif outcome.dispatch is not None:
                     if state.kind != "verify_sample_artifact":
                         # Unsupported work stays durable and visible; never run it as verification.
                         deferred += 1

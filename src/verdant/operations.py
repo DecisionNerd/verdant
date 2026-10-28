@@ -396,6 +396,60 @@ class OperationService:
         )
 
     @observed("operations")
+    def cancel_verification(
+        self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int
+    ):
+        """Cancel the read-only verifier; lock also fences concurrent finalization."""
+        with self.sessions.begin() as session:
+            row = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
+            if row.kind != "verify_sample_artifact":
+                raise Conflict("Unsupported verification operation kind")
+            if row.status == "cancelled":
+                return self._view(row)
+            if row.status != "cancellation_requested":
+                raise Conflict("Verification cancellation has not been requested")
+            dispatch = session.get(WorkflowDispatchRow, (operation_id, epoch))
+            if dispatch is not None and dispatch.status == "unknown":
+                raise Conflict("Unknown workflow admission must be reconciled before cancellation")
+            revision_id = UUID(row.inputs["revision_id"])
+            revision = session.get(SampleRevisionRow, revision_id)
+            if revision is None or revision.namespace_id != namespace_id:
+                raise Conflict("Verification revision is unavailable")
+            receipts = session.scalars(
+                select(EffectReceiptRow).where(EffectReceiptRow.operation_id == operation_id)
+            ).all()
+            expected = {
+                "kind": "artifact.read",
+                "item": str(revision_id),
+                "input_revision": revision.sha256,
+            }
+            if len(receipts) > 1 or any(receipt.identity != expected for receipt in receipts):
+                raise Conflict("Verification has unexpected effects")
+            for receipt in receipts:
+                if receipt.status == "unknown":
+                    # This exact operation can only read immutable bytes. No write is replayed.
+                    receipt.status = "prepared"
+                    receipt.revision += 1
+                    receipt.dispatch_id = None
+                    receipt.dispatch_epoch = None
+                    row.revision += 1
+                    self._record_transition(
+                        session,
+                        actor,
+                        row,
+                        "operation.effect_reconciled",
+                        {
+                            "effect_id": str(receipt.id),
+                            "outcome": "absent",
+                            "evidence": "Read-only verification cancelled before result acceptance",
+                        },
+                    )
+            row.status = "cancelled"
+            row.revision += 1
+            self._record_transition(session, actor, row)
+            return self._view(row)
+
+    @observed("operations")
     def fail(self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int):
         return self._transition(
             actor,

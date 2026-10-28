@@ -283,7 +283,7 @@ def test_unknown_effect_blocks_cancellation_until_authorized_reconciliation(regi
     assert service.confirm_cancel(actor, ns, op.id, 1).status == "cancelled"
 
 
-def prepared_verification(registry, sessions, result_digest=None):
+def prepared_verification(registry, sessions, result_digest=None, *, complete=True):
     from verdant.contracts import SampleCreate
     from verdant.operations import EffectRequest, EffectResult
 
@@ -320,17 +320,18 @@ def prepared_verification(registry, sessions, result_digest=None):
         EffectRequest(kind="artifact.read", item=str(revision.id), input_revision=revision.sha256),
     )
     dispatch = service.begin_effect(actor, ns, op.id, 1, receipt.id)
-    service.complete_effect(
-        actor,
-        ns,
-        op.id,
-        1,
-        receipt.id,
-        dispatch.dispatch_id,
-        EffectResult(
-            result_digest=result_digest or revision.sha256, provider_reference=str(revision.id)
-        ),
-    )
+    if complete:
+        service.complete_effect(
+            actor,
+            ns,
+            op.id,
+            1,
+            receipt.id,
+            dispatch.dispatch_id,
+            EffectResult(
+                result_digest=result_digest or revision.sha256, provider_reference=str(revision.id)
+            ),
+        )
     return service, actor, ns, op, revision
 
 
@@ -682,3 +683,16 @@ def test_verification_admission_rejects_missing_revision_atomically(registry, se
             )
             == 0
         )
+
+
+def test_read_only_cancellation_reconciles_abandoned_read_and_fences_finalization(
+    registry, sessions
+):
+    service, actor, ns, op, _ = prepared_verification(registry, sessions, complete=False)
+    service.request_cancel(actor, ns, op.id, 1)
+    cancelled = service.cancel_verification(actor, ns, op.id, 1)
+    assert cancelled.status == "cancelled"
+    assert not service.detail(actor, ns, op.id).needs_reconciliation
+    with pytest.raises(Conflict):
+        service.finalize_verification(actor, ns, op.id, 1)
+    assert service.cancel_verification(actor, ns, op.id, 1) == cancelled
