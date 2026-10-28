@@ -605,3 +605,45 @@ def test_reupload_origin_namespace_and_current_grants_are_required(ready_ingesti
     with sessions() as session:
         assert session.get(IngestionItemRow, original.items[0].id).state == "ready"
         assert count(session, OperationRow, other_namespace) == 0
+
+
+def test_maximum_batch_releases_each_spool_and_bounds_worker_memory(
+    ready_ingestion, sessions, monkeypatch, record_property
+):
+    import tracemalloc
+
+    import verdant.storage as storage_module
+
+    create, actor, ns, adapter = ready_ingestion
+    # Fixture bytes/upload precede measurement; the worker receives only durable IDs.
+    body = b"b" * (2 * 1024 * 1024)
+    _, batch = create([(f"bounded-{index}", body) for index in range(100)])
+    aggregate = sum(item.size_bytes for item in batch.items)
+    assert aggregate == 200 * 1024 * 1024
+    original = storage_module.SpooledTemporaryFile
+    spools = []
+
+    def serial_spool(*args, **kwargs):
+        assert all(spool.closed for spool in spools), "Worker retained a prior item's scratch"
+        spool = original(*args, **kwargs)
+        spools.append(spool)
+        return spool
+
+    monkeypatch.setattr(storage_module, "SpooledTemporaryFile", serial_spool)
+    runner = IngestionRunner(sessions, adapter)
+    tracemalloc.start()
+    try:
+        for expected_count in (25, 50, 75, 100):
+            result = runner.run(actor, ns, batch.operation.id, 1, limit=25)
+            assert sum(item.state == "accepted" for item in result.items) == expected_count
+            assert result.operation.status == ("succeeded" if expected_count == 100 else "running")
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert len(spools) == 100 and all(spool.closed and spool._rolled for spool in spools)
+    record_property("batch_aggregate_artifact_bytes", aggregate)
+    record_property("batch_worker_python_peak_bytes", peak)
+    assert peak < 32 * 1024 * 1024
+    assert runner.run(actor, ns, batch.operation.id, 1) == result
+    with sessions() as session:
+        assert count(session, SampleRow, ns) == count(session, SampleRevisionRow, ns) == 100

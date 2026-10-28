@@ -1,6 +1,6 @@
 # Verified ingestion transport
 
-The backend implements bounded direct uploads, resumable multipart state, immutable verified sample acceptance, re-upload lineage, configured read-only source registration and staging cleanup. REST and MCP call the same domain services. Native Prefect dispatch now routes upload verification and linked staging cleanup through one fixed ingestion deployment. The existing artifact-verification deployment remains separate. Actual host-process execution and a graceful restart are qualified; packaged runtime and browser qualification remain open. The exact-revision inspection UI exposes verified text/image previews and attachment downloads.
+The backend implements bounded direct uploads, resumable multipart state, immutable verified sample acceptance, re-upload lineage, configured read-only source registration and staging cleanup. REST and MCP call the same domain services. Native Prefect dispatch now routes upload verification and linked staging cleanup through one fixed ingestion deployment. The existing artifact-verification deployment remains separate. Actual native execution, packaged rollout, browser workflows and a graceful restart are qualified within the local profile; exact evidence and limits follow. The exact-revision inspection UI exposes verified text/image previews and attachment downloads.
 
 ## Configuration and identity
 
@@ -97,11 +97,11 @@ Early standalone #14 test databases were created while migration 15 still follow
 
 Roll out matching images with platform writers coordinated: stop API, dispatcher and process workers before migration, retain a coordinated registry/object-store/workflow checkpoint and private inputs, apply the migration job once, register deployments, then start matching API/worker/dispatcher images. Old schema-14 writers must not overlap new ingestion acceptance: an old metadata writer does not know verified artifact bindings. After new ingestion history exists, prefer a forward repair; restoring an old application image alone is not a preserving rollback. Restore a qualified coordinated checkpoint when an older schema is required. Automatic downgrade/reset is not part of this rollout.
 
-The actual packaged runtime is now upgraded to18 after a coordinated private checkpoint. All22 old registry table row hashes/counts and the existing partial browser candidate were preserved before writers resumed. Actual Keycloak sign-in/reauthentication, browser text/image upload, configured source registration, native acceptance/cleanup and exact previews are qualified. An isolated coordinated checkpoint restore is qualified below; adverse recovery/resource gates remain separate. See the storage proof for exact image/run receipts and scope.
+The actual packaged runtime is now upgraded to18 after a coordinated private checkpoint. All22 old registry table row hashes/counts and the existing partial browser candidate were preserved before writers resumed. Actual Keycloak sign-in/reauthentication, browser text/image upload, configured source registration, native acceptance/cleanup and exact previews are qualified. Isolated coordinated checkpoint restore, native storage failure/retry, controlled runner SIGKILL, browser denial/revocation and maximum-artifact resource evidence are recorded below. See the storage proof for exact image/run receipts and scope.
 
-## Remaining qualification
+## Qualification scope and limits
 
-Actual browser cancellation before and after partial transfer, linked re-upload after reload, wrong-file rejection, pinned replacement/stale conflict and eight-part resume are now qualified. Denied-user browser paths, process/provider faults and memory/retention bounds remain open. Arbitrary HTTP source ingestion is disabled; no URL-fetch endpoint exists. Backend modality storage remains byte-oriented. Inline rendering supports the bounded text/PNG/JPEG paths above; other modalities retain verified original downloads.
+Actual browser cancellation before and after partial transfer, linked re-upload after reload, wrong-file rejection, pinned replacement/stale conflict and eight-part resume are now qualified. Actual inaccessible-workspace denial, read-only controls, open-view read-grant revocation, native storage failure/retry and controlled runner-process interruption are also qualified. Single maximum-artifact process RSS/scratch is measured. Aggregate worker/browser memory, physical storage reclamation and arbitrary provider/supervisor outages are not claimed by this slice. Arbitrary HTTP source ingestion is disabled; no URL-fetch endpoint exists. Backend modality storage remains byte-oriented. Inline rendering supports the bounded text/PNG/JPEG paths above; other modalities retain verified original downloads.
 
 
 ### Coordinated checkpoint restore qualification
@@ -125,3 +125,6 @@ The maximum256MiB artifact passed actual serial promotion with61603840-byte proc
 
 
 Actual browser read-only access and grant revocation are qualified: read grants expose ingestion limits/history without upload/source controls; revoking the selected namespace grant makes the open view unmount after the namespace poll returns403. The cached workspace choice can remain visible until its list refreshes, but never authorizes access. See [browser-read-revocation.json](../proofs/issue-14/browser-read-revocation.json) for the empty-fixture scope.
+
+
+A100-item/200MiB batch regression measures worker Python allocation after fixture upload. Four25-item passes release each rolled disk spool before the next item; peak traced allocation was4247309 bytes with exactly100 sample/revision outcomes and stable replay. See [batch-resources.json](../proofs/issue-14/batch-resources.json). This proves serial batch allocation, while the maximum-artifact receipt separately measures process RSS.
