@@ -450,6 +450,30 @@ class OperationService:
             return self._view(row)
 
     @observed("operations")
+    def request_reconcile(
+        self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int
+    ):
+        with self.sessions.begin() as session:
+            row = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
+            if row.kind != "verify_sample_artifact" or row.status in {"succeeded", "cancelled"}:
+                raise Conflict("Operation does not permit reconciliation")
+            pending = session.scalar(
+                select(OperationEventRow.id)
+                .join(OutboxRow, OutboxRow.event_id == OperationEventRow.id)
+                .where(
+                    OperationEventRow.operation_id == operation_id,
+                    OperationEventRow.event_type == "operation.reconciliation_requested",
+                    OperationEventRow.payload["epoch"].as_integer() == epoch,
+                    OutboxRow.dispatched.is_(False),
+                )
+                .limit(1)
+            )
+            if pending is None:
+                row.revision += 1
+                self._record_transition(session, actor, row, "operation.reconciliation_requested")
+            return self._view(row)
+
+    @observed("operations")
     def fail(self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int):
         return self._transition(
             actor,
@@ -876,6 +900,7 @@ class OperationService:
                     "workflow_submission_started",
                     "workflow_submitted",
                     "workflow_reconciled",
+                    "reconciliation_requested",
                 )
             }
             error = None

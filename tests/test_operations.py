@@ -696,3 +696,28 @@ def test_read_only_cancellation_reconciles_abandoned_read_and_fences_finalizatio
     with pytest.raises(Conflict):
         service.finalize_verification(actor, ns, op.id, 1)
     assert service.cancel_verification(actor, ns, op.id, 1) == cancelled
+
+
+def test_reconciliation_requests_are_durable_deduplicated_authorized_and_epoch_fenced(
+    registry, principal_factory, sessions
+):
+    service, actor, ns, op, _ = prepared_verification(registry, sessions)
+    requested = service.request_reconcile(actor, ns, op.id, 1)
+    assert service.request_reconcile(actor, ns, op.id, 1) == requested
+    reader = principal_factory(ns, access="read")
+    with pytest.raises(Forbidden):
+        service.request_reconcile(reader, ns, op.id, 1)
+    with pytest.raises(Conflict, match="stale"):
+        service.request_reconcile(actor, ns, op.id, 2)
+    with sessions() as session:
+        events = session.scalars(
+            select(OperationEventRow).where(
+                OperationEventRow.operation_id == op.id,
+                OperationEventRow.event_type == "operation.reconciliation_requested",
+            )
+        ).all()
+        assert len(events) == 1
+        assert session.get(OutboxRow, events[0].id).dispatched is False
+    service.finalize_verification(actor, ns, op.id, 1)
+    with pytest.raises(Conflict):
+        service.request_reconcile(actor, ns, op.id, 1)

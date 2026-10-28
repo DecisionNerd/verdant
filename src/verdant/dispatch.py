@@ -31,9 +31,37 @@ class WorkflowDispatcher:
                 outcome = await asyncio.to_thread(
                     operations.receive_workflow_event, actor, namespace_id, claim.event_id
                 )
+                if outcome.outcome == "quarantined":
+                    await asyncio.to_thread(
+                        operations.acknowledge_delivery,
+                        actor,
+                        namespace_id,
+                        claim.event_id,
+                        claim.claim_id,
+                    )
+                    acknowledged += 1
+                    quarantined += 1
+                    continue
                 state = await asyncio.to_thread(
                     operations.get, actor, namespace_id, claim.operation_id
                 )
+                if claim.event_type == "operation.reconciliation_requested":
+                    if claim.payload["epoch"] == state.epoch:
+                        try:
+                            await self.submission.reconcile_run(
+                                actor, namespace_id, state.id, state.epoch
+                            )
+                        except NotFound:
+                            pass  # No provider admission exists; queued event still owns admission.
+                    await asyncio.to_thread(
+                        operations.acknowledge_delivery,
+                        actor,
+                        namespace_id,
+                        claim.event_id,
+                        claim.claim_id,
+                    )
+                    acknowledged += 1
+                    continue
                 if (
                     state.status == "cancellation_requested"
                     and state.kind == "verify_sample_artifact"

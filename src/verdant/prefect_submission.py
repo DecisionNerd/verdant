@@ -118,3 +118,41 @@ class PrefectSubmission:
             epoch,
             run.id,
         )
+
+    async def reconcile_run(
+        self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int
+    ):
+        dispatch = await self.submit(actor, namespace_id, operation_id, epoch, reconcile_only=True)
+        if dispatch.status != "submitted":
+            return dispatch
+        try:
+            run = await self.client.read_flow_run(UUID(dispatch.provider_reference))
+        except Exception:
+            raise WorkflowProviderUnavailable("Workflow observation unavailable") from None
+        if (
+            run.id != UUID(dispatch.provider_reference)
+            or run.deployment_id != dispatch.deployment_id
+            or run.idempotency_key != dispatch.invocation_key
+            or run.parameters
+            != {
+                "namespace_id": str(namespace_id),
+                "operation_id": str(operation_id),
+                "epoch": epoch,
+            }
+        ):
+            raise Conflict("Provider workflow identity does not match persisted dispatch")
+        state = await asyncio.to_thread(self.operations.get, actor, namespace_id, operation_id)
+        if state.epoch != epoch:
+            raise Conflict("Operation attempt is stale")
+        if run.state is not None and run.state.is_final():
+            if state.status == "cancellation_requested":
+                await asyncio.to_thread(
+                    self.operations.cancel_verification, actor, namespace_id, operation_id, epoch
+                )
+            elif state.status in {"queued", "running"}:
+                # Provider completion cannot establish a logical result. Missing acceptance fails
+                # safely, allowing an explicit retry to reconcile the read-only receipt.
+                await asyncio.to_thread(
+                    self.operations.fail, actor, namespace_id, operation_id, epoch
+                )
+        return dispatch

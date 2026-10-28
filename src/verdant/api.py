@@ -121,6 +121,14 @@ def create_app(
     ):
         return operations.request_cancel(actor, namespace_id, operation_id, command.epoch)
 
+    @app.post(
+        prefix + "/operations/{operation_id}/reconcile", response_model=Operation, status_code=202
+    )
+    def reconcile_operation(
+        namespace_id: UUID, operation_id: UUID, command: OperationAction, actor: Actor
+    ):
+        return operations.request_reconcile(actor, namespace_id, operation_id, command.epoch)
+
     @app.get(prefix + "/datasets", response_model=c.DatasetPage)
     def list_datasets(
         namespace_id: UUID,

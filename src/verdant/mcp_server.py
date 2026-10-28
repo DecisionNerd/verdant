@@ -81,6 +81,10 @@ def create_mcp_app(runtime):
         return await invoke(operations.request_cancel, namespace_id, operation_id, epoch)
 
     @mcp.tool()
+    async def operation_reconcile(namespace_id: UUID, operation_id: UUID, epoch: int):
+        return await invoke(operations.request_reconcile, namespace_id, operation_id, epoch)
+
+    @mcp.tool()
     async def sample_revision_inspect(namespace_id: UUID, sample_id: UUID, revision_id: UUID):
         return (
             await invoke(service.inspect_sample_revision, namespace_id, sample_id, revision_id)

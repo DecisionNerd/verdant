@@ -146,3 +146,46 @@ def test_cancelled_verification_never_creates_another_provider_run(
     assert operations.get(actor, ns, op.id).status == "cancelled"
     assert provider.creates == int(provider_accepted)
     assert provider.lookups == int(provider_accepted)
+
+
+def test_reconciliation_of_provider_completion_requires_domain_acceptance(registry, sessions):
+    from prefect.states import Completed
+
+    registry_service, actor, ns = registry
+    revision = registry_service.create_sample(
+        actor,
+        ns,
+        SampleCreate(
+            source_key="observe",
+            modality="text",
+            sha256="c" * 64,
+            object_key="private/observe",
+            size_bytes=1,
+        ),
+    )
+    operations = OperationService(sessions)
+    op = operations.admit_verification(
+        actor,
+        ns,
+        VerificationRequest(
+            request_key="observe", sample_id=revision.sample_id, revision_id=revision.id
+        ),
+    )
+    deployment = uuid4()
+    provider = LostResponseProvider(deployment)
+    dispatcher = WorkflowDispatcher(sessions, provider, deployment)
+    asyncio.run(dispatcher.tick(actor, ns, limit=1))
+    operations.start(actor, ns, op.id, 1)
+    provider.runs[0].state = Completed()
+
+    async def read_run(run_id):
+        assert run_id == provider.runs[0].id
+        return provider.runs[0]
+
+    provider.read_flow_run = read_run
+    operations.request_reconcile(actor, ns, op.id, 1)
+    result = asyncio.run(dispatcher.tick(actor, ns, limit=100))
+    assert result.deferred == 0
+    assert operations.get(actor, ns, op.id).status == "failed"
+    assert operations.detail(actor, ns, op.id).accepted_digest is None
+    assert provider.creates == 1
