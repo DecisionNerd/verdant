@@ -16,6 +16,7 @@ from verdant.contracts import DatasetCreate, DatasetUpdate
 from verdant.domain import DomainError, Forbidden, Principal
 from verdant.ingestion import IngestionService, ReuploadRequest, UploadPartRequest, UploadRequest
 from verdant.operations import OperationService, VerificationRequest
+from verdant.preview import PreviewService
 from verdant.storage import StorageError
 
 OperationLimit = Annotated[int, Field(ge=1, le=100)]
@@ -52,6 +53,7 @@ def create_mcp_app(runtime, *, storage=None):
     mcp = FastMCP("Verdant", auth=RegistryTokenVerifier(runtime))
     service = RegistryService(runtime.sessions)
     operations = OperationService(runtime.sessions)
+    previews = PreviewService(runtime.sessions, storage)
     ingestion = IngestionService(
         runtime.sessions,
         bucket=storage.settings.bucket if storage else "unconfigured",
@@ -69,6 +71,10 @@ def create_mcp_app(runtime, *, storage=None):
             return await run_in_threadpool(method, actor(), *args, **kwargs)
         except (DomainError, StorageError) as exc:
             raise ToolError(str(exc)) from None
+
+    @mcp.tool()
+    async def sample_revision_preview(namespace_id: UUID, sample_id: UUID, revision_id: UUID):
+        return await invoke(previews.get, namespace_id, sample_id, revision_id)
 
     @mcp.tool()
     async def ingestion_limits(namespace_id: UUID):

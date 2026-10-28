@@ -1,6 +1,6 @@
 # Verified ingestion transport
 
-The backend implements bounded direct uploads, resumable multipart state, immutable verified sample acceptance, re-upload lineage and staging cleanup. REST and MCP call the same domain services. Native Prefect dispatch now routes upload verification and linked staging cleanup through one fixed ingestion deployment. The existing artifact-verification deployment remains separate. Actual host-process execution and a graceful restart are qualified; packaged runtime and upload/preview UI qualification remain open.
+The backend implements bounded direct uploads, resumable multipart state, immutable verified sample acceptance, re-upload lineage and staging cleanup. REST and MCP call the same domain services. Native Prefect dispatch now routes upload verification and linked staging cleanup through one fixed ingestion deployment. The existing artifact-verification deployment remains separate. Actual host-process execution and a graceful restart are qualified; packaged runtime and browser qualification remain open. The exact-revision inspection UI exposes verified text/image previews and attachment downloads.
 
 ## Configuration and identity
 
@@ -49,6 +49,14 @@ Re-upload requires failed/cancelled origins and exact pinned inputs. Changed inp
 
 Cancellation remains requested while provider writes or native admission are uncertain. Cleanup removes only exact owned staging and retains final artifacts. A bounded position cursor lets later items progress past unresolved facts. A pending cleanup requires further observation or qualified reconciliation, not blind write replay. See the [storage proof](../proofs/issue-14/storage.md) for actual and fixture-only evidence.
 
+## Exact-revision content inspection
+
+`GET /samples/{sample_id}/revisions/{revision_id}/preview` and MCP `sample_revision_preview` resolve the same verified artifact binding. A legacy caller-declared object key never authorizes reads. The namespace, sample, revision, artifact digest/size and configured store/bucket must match. Every byte is independently verified into bounded scratch before returning content or a signed attachment link. Current grants and placement are checked again after provider I/O and signing. The response is no-store; the browser keeps it only in the mounted inspection component.
+
+Text/document/transcription content supports a valid UTF-8 excerpt of at most 64 KiB, rendered as escaped plain text. Truncation is explicit and does not split a UTF-8 code point. PNG/JPEG sources up to eight MiB and 20 million pixels become metadata-free PNG thumbnails with a maximum edge of 1024 pixels. Pillow is an OSS runtime dependency for bounded image decoding and reencoding. WebP stays download-only: its native animation decoder may allocate before Pillow exposes dimensions. PDF, other documents, unsupported binary content and larger images use attachment downloads rather than inline execution. No OCR, PDF renderer, markup interpreter, audio or video decoder runs in this preview service.
+
+The browser requests the exact selected revision on demand. Refresh clears previous content before a new authorization result; inspection changes discard late responses. Signed original-download links force `application/octet-stream` and attachment disposition, expire after 120 seconds and disappear from the component at expiry. A link remains a bearer capability until provider expiry; grant revocation prevents newly requested capabilities and response disclosure, not previously received bytes. The UI shows preview/read failures without claiming unverified content is usable.
+
 ## Native execution
 
 The runtime registers `verdant-ingestion/local-ingestion` alongside the existing verification deployment in the same process pool. Deployment parameters contain only namespace ID, operation ID and integer epoch. Workers validate the exact deployment, operation kind, invocation identity and parameters before recording submission, then check current service grants. Known ingestion work remains deferred if its deployment is unconfigured and becomes dispatchable after configuration.
@@ -57,4 +65,4 @@ Upload verification uses bounded batches. Cleanup uses a separate `ingest_cleanu
 
 ## Remaining qualification
 
-Packaged Prefect ingestion/cleanup execution, UI controls and file reselection, browser upload/preview/retry/cancel, configured S3 source registration, safe exact-revision preview, process interruptions and retention/fault qualification remain open. Arbitrary HTTP source ingestion is disabled; no URL-fetch endpoint exists. Backend modality storage is byte-oriented; rendering/native modality dependencies will be documented with the actual preview implementation.
+Packaged Prefect ingestion/cleanup execution, UI controls and file reselection, browser upload/preview/retry/cancel, configured S3 source registration, browser preview validation, process interruptions and retention/fault qualification remain open. Arbitrary HTTP source ingestion is disabled; no URL-fetch endpoint exists. Backend modality storage remains byte-oriented. Inline rendering supports the bounded text/PNG/JPEG paths above; other modalities retain verified original downloads.

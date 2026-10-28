@@ -34,6 +34,7 @@ from verdant.operations import (
     VerificationRequest,
 )
 from verdant.persistence import make_sessions
+from verdant.preview import PreviewService, SamplePreview
 from verdant.storage import ObjectCorrupt, ObjectMissing, S3Storage, StorageError
 
 
@@ -62,6 +63,7 @@ def create_app(
     )
     app = FastAPI(title="Verdant platform", version=str(c.CONTRACT_VERSION))
     app.state.storage = storage
+    previews = PreviewService(sessions, storage)
     identity_settings = identity_settings or IdentitySettings.from_env()
     if identity_settings is not None:
         IdentityRuntime(sessions, identity_settings).install(app, verified_principal)
@@ -119,6 +121,14 @@ def create_app(
         return service.get_namespace(actor, namespace_id)
 
     prefix = "/api/v1/namespaces/{namespace_id}"
+
+    @app.get(
+        prefix + "/samples/{sample_id}/revisions/{revision_id}/preview",
+        response_model=SamplePreview,
+    )
+    def preview_sample(namespace_id: UUID, sample_id: UUID, revision_id: UUID, actor: Actor):
+        result = previews.get(actor, namespace_id, sample_id, revision_id)
+        return JSONResponse(result.model_dump(mode="json"), headers={"Cache-Control": "no-store"})
 
     @app.get(prefix + "/ingestions/limits", response_model=UploadLimits)
     def upload_limits(namespace_id: UUID, actor: Actor):

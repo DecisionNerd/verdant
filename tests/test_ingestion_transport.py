@@ -202,6 +202,29 @@ def test_rest_mcp_share_real_upload_progress_and_verified_result(upload_client, 
     mcp = call_tool(client, headers, "ingestion_get", namespace_id=str(ns), operation_id=operation)
     assert rest == mcp == done.model_dump(mode="json")
     assert rest["items"][0]["state"] == "accepted"
+    item = done.items[0]
+    preview_path = (
+        f"/api/v1/namespaces/{ns}/samples/{item.sample_id}"
+        f"/revisions/{item.accepted_revision_id}/preview"
+    )
+    preview = client.get(preview_path, headers=headers)
+    assert preview.status_code == 200 and preview.headers["cache-control"] == "no-store"
+    mcp_preview = call_tool(
+        client,
+        headers,
+        "sample_revision_preview",
+        namespace_id=str(ns),
+        sample_id=str(item.sample_id),
+        revision_id=str(item.accepted_revision_id),
+    )
+    # Signatures can differ by clock second; neither response persists the capability.
+    assert preview.json()["download_url"].startswith(adapter.settings.browser_endpoint)
+    assert mcp_preview.pop("download_url").startswith(adapter.settings.browser_endpoint)
+    rest_preview = preview.json()
+    rest_preview.pop("download_url")
+    assert rest_preview == mcp_preview
+    assert rest_preview["text"] == body.decode()
+
     listing = client.get(prefix, headers=headers).json()
     assert [row["id"] for row in listing["items"]] == [operation]
     assert listing == call_tool(client, headers, "ingestions_list", namespace_id=str(ns))
