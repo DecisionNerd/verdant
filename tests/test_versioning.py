@@ -134,3 +134,169 @@ def test_database_rejects_capture_identity_changes_and_deletion(registry, sessio
         ).id
         == candidate.id
     )
+
+
+def preparation_fixture(registry, sessions):
+    registry_service, actor, ns = registry
+    dataset = registry_service.create_dataset(
+        actor, ns, DatasetCreate(name="Preparation", slug="preparation", modality="text")
+    )
+    samples = []
+    for i in range(3):
+        sample = registry_service.create_sample(
+            actor,
+            ns,
+            SampleCreate(
+                source_key=f"prepare-{i}",
+                modality="text",
+                object_key=f"private/prepare/{i}",
+                sha256="b" * 64,
+                size_bytes=1,
+            ),
+        )
+        registry_service.set_membership(
+            actor,
+            ns,
+            dataset.id,
+            sample.sample_id,
+            MembershipWrite(expected_revision=i, sample_revision_id=sample.id, split="train"),
+        )
+        samples.append(sample)
+    service = VersioningService(sessions)
+    captured = service.capture(
+        actor, ns, dataset.id, CandidateCapture(request_key="prepare", expected_revision=3)
+    )
+    return registry_service, service, actor, ns, dataset, samples, captured
+
+
+def test_bounded_preparation_resumes_original_revision_while_draft_advances(registry, sessions):
+    from verdant.persistence import GenerationMemberRow
+    from verdant.versioning import CandidatePrepare
+
+    registry_service, service, actor, ns, dataset, samples, captured = preparation_fixture(
+        registry, sessions
+    )
+    first = service.prepare(
+        actor, ns, dataset.id, captured.id, CandidatePrepare(expected_count=0, limit=1)
+    )
+    assert first.prepared_count == 1 and first.state == "preparing"
+    registry_service.set_membership(
+        actor,
+        ns,
+        dataset.id,
+        samples[0].sample_id,
+        MembershipWrite(expected_revision=3, sample_revision_id=samples[0].id, split="validation"),
+    )
+    second = service.prepare(
+        actor, ns, dataset.id, captured.id, CandidatePrepare(expected_count=1, limit=1)
+    )
+    assert second.prepared_count == 2 and second.latest_draft_revision == 4
+    repeated = service.prepare(
+        actor, ns, dataset.id, captured.id, CandidatePrepare(expected_count=1, limit=1)
+    )
+    assert repeated == second
+    sealed = service.prepare(
+        actor, ns, dataset.id, captured.id, CandidatePrepare(expected_count=2, limit=1)
+    )
+    assert sealed.prepared_count == 3 and sealed.state == "sealed"
+    assert sealed.source_revision == 3 and sealed.latest_draft_revision == 4
+    with sessions() as session:
+        rows = session.scalars(
+            select(GenerationMemberRow).where(
+                GenerationMemberRow.generation_id == captured.generation_id
+            )
+        ).all()
+        assert {(r.sample_id, r.sample_revision_id, r.split) for r in rows} == {
+            (s.sample_id, s.id, "train") for s in samples
+        }
+        assert all(
+            r.interpretation
+            == {
+                "schema": "verdant.membership.v1",
+                "annotation_revision": None,
+                "task_schema_revision": None,
+                "review_evidence": None,
+                "transformation": None,
+            }
+            for r in rows
+        )
+
+
+def test_generation_rows_and_sealed_progress_are_database_immutable(registry, sessions):
+    from sqlalchemy.exc import DBAPIError
+
+    from verdant.persistence import GenerationMemberRow
+    from verdant.versioning import CandidatePrepare
+
+    _, service, actor, ns, dataset, samples, captured = preparation_fixture(registry, sessions)
+    sealed = service.prepare(actor, ns, dataset.id, captured.id, CandidatePrepare(expected_count=0))
+    assert sealed.state == "sealed"
+    with pytest.raises(DBAPIError, match="membership is immutable"):
+        with sessions.begin() as session:
+            session.get(
+                GenerationMemberRow, (captured.generation_id, samples[0].sample_id)
+            ).split = "test"
+    with pytest.raises(DBAPIError, match="membership is immutable"):
+        with sessions.begin() as session:
+            session.delete(
+                session.get(GenerationMemberRow, (captured.generation_id, samples[0].sample_id))
+            )
+    with pytest.raises(DBAPIError, match="no longer accepts"):
+        with sessions.begin() as session:
+            session.add(
+                GenerationMemberRow(
+                    generation_id=captured.generation_id,
+                    namespace_id=ns,
+                    sample_id=samples[0].sample_id,
+                    sample_revision_id=samples[0].id,
+                    split="train",
+                    interpretation={},
+                )
+            )
+    with pytest.raises(DBAPIError, match="sealed candidate is immutable"):
+        with sessions.begin() as session:
+            session.get(CandidateRow, captured.id).state = "preparing"
+
+
+def test_competing_preparers_commit_only_one_expected_batch(registry, sessions):
+    from verdant.versioning import CandidatePrepare
+
+    _, service, actor, ns, dataset, _, captured = preparation_fixture(registry, sessions)
+    barrier = Barrier(2)
+
+    def prepare(_):
+        barrier.wait(timeout=5)
+        return service.prepare(
+            actor, ns, dataset.id, captured.id, CandidatePrepare(expected_count=0, limit=1)
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first, second = pool.map(prepare, range(2))
+    assert first == second and first.prepared_count == 1
+
+
+def test_preparation_audit_failure_rolls_back_rows_and_progress(registry, sessions):
+    from verdant.persistence import GenerationMemberRow
+    from verdant.versioning import CandidatePrepare
+
+    _, service, actor, ns, dataset, _, captured = preparation_fixture(registry, sessions)
+
+    def fail(*_):
+        raise RuntimeError("preparation audit failed")
+
+    event.listen(AuditRow, "before_insert", fail)
+    try:
+        with pytest.raises(RuntimeError, match="preparation audit failed"):
+            service.prepare(actor, ns, dataset.id, captured.id, CandidatePrepare(expected_count=0))
+    finally:
+        event.remove(AuditRow, "before_insert", fail)
+    with sessions() as session:
+        assert session.get(CandidateRow, captured.id).prepared_count == 0
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(GenerationMemberRow)
+                .where(GenerationMemberRow.generation_id == captured.generation_id)
+            )
+            == 0
+        )

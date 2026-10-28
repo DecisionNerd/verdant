@@ -150,6 +150,30 @@ class CandidateRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class GenerationMemberRow(Base):
+    __tablename__ = "generation_members"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "generation_id"],
+            ["publication_candidates.namespace_id", "publication_candidates.generation_id"],
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "sample_id", "sample_revision_id"],
+            ["sample_revisions.namespace_id", "sample_revisions.sample_id", "sample_revisions.id"],
+        ),
+        CheckConstraint("split ~ '^[a-z][a-z0-9_-]*$'", name="ck_generation_split"),
+        CheckConstraint(
+            "jsonb_typeof(interpretation) = 'object'", name="ck_generation_interpretation"
+        ),
+    )
+    generation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    sample_id: Mapped[UUID] = mapped_column(primary_key=True)
+    namespace_id: Mapped[UUID]
+    sample_revision_id: Mapped[UUID]
+    split: Mapped[str] = mapped_column(String(50))
+    interpretation: Mapped[dict] = mapped_column(JSONB)
+
+
 class SampleRow(Base):
     __tablename__ = "samples"
     __table_args__ = (
