@@ -1,6 +1,6 @@
 # Verified ingestion: storage transport checkpoint
 
-Issue #14 remains incomplete. Current evidence covers authorized ingestion, immutable verified artifacts, native execution, actual packaged text/image upload, configured-source registration, exact previews and a preserving live schema14→18 rollout. Adverse browser recovery/denial, process interruption, checkpoint restore and total resource/retention bounds remain open. The sections below are chronological checkpoints; early transport-only limits describe those earlier stages.
+Issue #14 remains incomplete. Current evidence covers authorized ingestion, immutable verified artifacts, native execution, actual packaged text/image upload, configured-source registration, exact previews and a preserving live schema14→18 rollout. Browser cancellation/re-upload/replacement/multipart resume and isolated coordinated checkpoint restore are also qualified. Denied-user browser paths, process/provider interruption and total resource/retention bounds remain open. The sections below are chronological checkpoints; early transport-only limits describe those earlier stages.
 
 ## Tested source and backend
 
@@ -202,7 +202,7 @@ Final combined full backend run passed254 tests after adding the cross-capabilit
 
 ## Live packaged rollout and real browser normal paths
 
-The matching API/workflow/web images were built from integrated source `b9cf094`, preserving the original image IDs under checkpoint tags. No logical or native runs were active before a coordinated platform write pause. API/web, dispatcher/worker, Prefect, Keycloak and objects were stopped without deleting volumes. A private checkpoint retained custom-format registry, Keycloak and Prefect database archives, database roles, private inputs, original container definitions and the full quiescent object `/data` archive. Database archive catalogs and object archive integrity were validated; this checkpoint has **not** been restored as an integrated recovery test.
+The matching API/workflow/web images were built from integrated source `b9cf094`, preserving the original image IDs under checkpoint tags. No logical or native runs were active before a coordinated platform write pause. API/web, dispatcher/worker, Prefect, Keycloak and objects were stopped without deleting volumes. A private checkpoint retained custom-format registry, Keycloak and Prefect database archives, database roles, private inputs, original container definitions and the full quiescent object `/data` archive. Database archive catalogs and object archive integrity were validated; isolated restore qualification is recorded below, including a tracked-configuration backup omission and supplementation.
 
 One migration job upgraded the actual registry14→18 while writers remained stopped. Every old row hash/count in all22 preexisting registry tables matched before restarting writers; the pending #15 candidate stayed preparing100 at source/latest102 with the same generation. Matching images then started, both fixed deployments were registered, source registration was enabled consistently with `VERDANT_S3_SOURCE_PREFIX=ingestion-sources`, and API/worker/web plus required dependencies became healthy. LS-oidc containers stayed running unchanged. The [safe rollout receipt](packaged-rollout.json) records image IDs, checkpoint identity, schema and preservation facts without credentials or backup contents.
 
@@ -212,7 +212,7 @@ An independent observer inside the packaged worker verified both initial parent 
 
 Browser qualification found a stale transfer notice still saying awaiting verification after authoritative success. The notice now follows terminal operation status. Its focused regression and all40 workspace tests, TypeScript and production build passed. Read-only review found no blocker. A web-only rollout followed; another actual browser upload reached accepted status with the corrected notice, shown in [the deployed outcome](browser/accepted-status-notice.png). This UI patch changes no backend/schema behavior.
 
-Remaining #14 gates include actual multi-part interruption/reselection and re-upload/cancel/denied-user browser paths, pinned content replacement browser proof, worker fault/process/retention and memory bounds, coordinated checkpoint restore, final review/CI/PR/merge and issue/epic evidence. #15's independent Chrome proof still awaits the user's dismissal reply; Chrome was not retried. The roadmap remains open.
+Current #14 gates include denied-user browser paths, worker/provider/process faults, resource/retention bounds, final review/CI/PR/merge and issue/epic evidence. Subsequent sections record completed browser recovery and isolated checkpoint restore. #15's independent Chrome proof still awaits the user's dismissal reply; Chrome was not retried. The roadmap remains open.
 
 
 ## Actual browser cancellation, reload recovery, replacement and multipart resume
@@ -227,4 +227,11 @@ This test found a second transient-notice defect: a stopped local transfer retai
 
 Independent packaged observation verified all5 operation outcomes, exact source-origin linkage, stable replacement identity/metadata, absent staging and active multipart uploads, and8 Completed native provider runs with exact deployment/three-parameter/idempotency identities and one provider run each. The two pre-verification cancelled parents never acquired their own verification invocation; their linked cleanup operations own execution. All7 accepted artifact versions in this qualification namespace, including original/replacement and the64MiB final, still verify; the configured source original is intact. This proves logical object/provider outcomes, not physical storage reclamation or memory bounds.
 
-Remaining gates include actual denied-user browser behavior, worker/provider/process faults, resource/retention bounds, integrated checkpoint restore and final delivery. The original #15 partial candidate and independent Chrome-session gate remain separate; Chrome was not retried.
+Remaining gates include actual denied-user browser behavior, worker/provider/process faults, resource/retention bounds and final delivery. The original #15 partial candidate and independent Chrome-session gate remain separate; Chrome was not retried.
+
+
+## Isolated coordinated checkpoint restore
+
+The [restore receipt](checkpoint-restore.json) records actual native registry/Keycloak/Prefect database restoration with owners and privileges retained, SeaweedFS data restoration, restored service identity/JWKS and original object digest checks. All 22 old registry table counts/hashes matched before and after clone migration14→18. Six native Prefect references retained exact deployment/idempotency/parameter identity. The cloned preparing100 candidate resumed to sealed101 with the original complete membership/interpretation digest. A separate live read confirmed the original candidate remained preparing100, source/latest102 and its original generation.
+
+The original private-input backup omitted the tracked Keycloak `quarkus.properties` bind mount. Qualification supplemented it from verified pinned Git configuration; this limits the original backup's self-containment. Future capture must inventory all bind mounts. An extra bootstrap role exists only in the isolated restored clusters. No host ports were published. Five owned clone containers stopped after proof; three clone volumes and private checkpoint/diagnostics remain. Live platform and Label Studio services stayed running. This proof covers restored service/data compatibility and cloned candidate recovery, not a restored browser deployment or the pending independent Chrome session gate.
