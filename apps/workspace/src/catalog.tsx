@@ -37,6 +37,7 @@ function CatalogView({ csrf, principal }: { csrf: string; principal: string }) {
     history.pushState(null, "", `/?${query}`); setRoute({ namespace, dataset, operations }); setCursors([null]); setError("");
   }
   const namespace = useQuery({ queryKey: ["namespace", route.namespace], enabled: !!route.namespace,
+    refetchInterval: route.operations ? 3000 : false, refetchOnReconnect: true,
     queryFn: () => request<Namespace>(`/api/v1/namespaces/${route.namespace}`, csrf) });
   const selected = namespace.isError && namespace.error instanceof ApiError && [401,403].includes(namespace.error.status) ? undefined : namespace.data;
   const params = new URLSearchParams({ limit: "25", search });
