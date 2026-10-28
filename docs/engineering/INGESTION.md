@@ -116,3 +116,6 @@ Future checkpoints must inventory every bind mount and retain its bytes or an ex
 
 
 Runner process recovery has two real SIGKILL regression cases in `tests/test_ingestion_process.py`: before promotion and after final creation but before acceptance. Both preserve the durable unknown receipt and recover exactly once, including final-only recovery after owned staging removal. These controlled runner boundaries do not establish native Prefect worker supervision or arbitrary transfer-fault recovery.
+
+
+Native storage failure/retry is qualified by `scripts/qualify_ingestion_fault.py` against fixed local test targets. Modes are `prepare`, `worker-failing`, `failed`, `retry`, `worker` and `observe`. Observe actual terminal failure before stopping the owned failing worker; then retry and start the healthy worker. Continue observation until ingestion and linked cleanup succeed, then stop only that owned worker. The qualifier uses distinct deployment names/pool and refuses existing receipt overwrite. A closed loopback S3 endpoint induces actual native failure without stopping shared services. Safe evidence is [native-storage-fault.json](../proofs/issue-14/native-storage-fault.json). This does not qualify Prefect server outage or supervisor restart.

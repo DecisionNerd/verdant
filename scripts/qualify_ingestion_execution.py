@@ -92,16 +92,22 @@ async def tick(sessions, actor, ns, receipt):
     return result
 
 
-def prepare(sessions, storage):
+def prepare(
+    sessions,
+    storage,
+    *,
+    verification_name="issue14-integrated-regression",
+    ingestion_name="issue14-integrated-local",
+):
     actor, ns = actor_and_namespace(sessions)
     asyncio.run(ensure_pool())
     verification = verify_artifact.to_deployment(
-        name="issue14-integrated-regression",
+        name=verification_name,
         work_pool_name=POOL,
         job_variables={"working_dir": str(ROOT)},
     ).apply()
     ingestion = ingest_operations.to_deployment(
-        name="issue14-integrated-local",
+        name=ingestion_name,
         work_pool_name=POOL,
         job_variables={"working_dir": str(ROOT)},
     ).apply()
