@@ -587,3 +587,98 @@ def test_workflow_deployment_cannot_change_under_same_dispatch(registry, session
     assert dispatch.deployment_id == deployment
     with pytest.raises(Conflict, match="deployment differs"):
         service.begin_workflow_submission(actor, ns, op.id, 1, uuid4())
+
+
+def test_operation_pages_and_details_require_current_access(registry, principal_factory, sessions):
+    from sqlalchemy import delete
+
+    from verdant.persistence import NamespaceGrantRow
+
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    operations = [
+        service.admit(actor, ns, OperationRequest(request_key=str(i), kind="qualification"))
+        for i in range(3)
+    ]
+    first = service.list_operations(actor, ns, limit=2)
+    last = service.list_operations(actor, ns, after=first.next_after, limit=2)
+    assert len(first.items) == 2 and last.next_after is None
+    assert {op.id for op in first.items + last.items} == {op.id for op in operations}
+    reader = principal_factory(ns, access="read")
+    assert service.detail(reader, ns, operations[0].id).operation == operations[0]
+    with pytest.raises(Forbidden):
+        service.request_cancel(reader, ns, operations[0].id, 1)
+    with sessions.begin() as session:
+        session.execute(
+            delete(NamespaceGrantRow).where(NamespaceGrantRow.principal_id == reader.id)
+        )
+    for read in (
+        lambda: service.list_operations(reader, ns),
+        lambda: service.detail(reader, ns, operations[0].id),
+        lambda: service.detail(reader, ns, uuid4()),
+    ):
+        with pytest.raises(Forbidden):
+            read()
+    for invalid in (0, 101):
+        with pytest.raises(ValueError):
+            service.list_operations(actor, ns, limit=invalid)
+        with pytest.raises(ValueError):
+            service.detail(actor, ns, operations[0].id, limit=invalid)
+
+
+def test_operation_detail_pages_effects_without_private_payloads(registry, sessions):
+    from verdant.operations import EffectRequest
+
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    op = service.admit(actor, ns, OperationRequest(request_key="private", kind="qualification"))
+    service.start(actor, ns, op.id, 1)
+    receipts = [
+        service.prepare_effect(
+            actor,
+            ns,
+            op.id,
+            1,
+            EffectRequest(
+                kind="artifact.read",
+                item=str(i),
+                input_revision="1",
+                request={"private_key": "never-disclose-this"},
+            ),
+        )
+        for i in range(3)
+    ]
+    service.begin_effect(actor, ns, op.id, 1, receipts[0].id)
+    first = service.detail(actor, ns, op.id, limit=2)
+    last = service.detail(actor, ns, op.id, after=first.next_effect_after, limit=2)
+    assert first.needs_reconciliation and last.needs_reconciliation
+    assert last.next_effect_after is None
+    assert {e.id for e in first.effects + last.effects} == {r.id for r in receipts}
+    assert "never-disclose-this" not in first.model_dump_json() + last.model_dump_json()
+    assert all(
+        set(e.model_dump()) == {"id", "kind", "status", "revision", "result_digest"}
+        for e in first.effects + last.effects
+    )
+
+
+def test_verification_admission_rejects_missing_revision_atomically(registry, sessions):
+    from verdant.domain import NotFound
+    from verdant.operations import VerificationRequest
+
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    with pytest.raises(NotFound):
+        service.admit_verification(
+            actor,
+            ns,
+            VerificationRequest(request_key="missing", sample_id=uuid4(), revision_id=uuid4()),
+        )
+    with sessions() as session:
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(OperationRow)
+                .where(OperationRow.namespace_id == ns)
+            )
+            == 0
+        )

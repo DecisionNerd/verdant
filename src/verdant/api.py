@@ -14,6 +14,14 @@ from verdant.application import RegistryService
 from verdant.auth import IdentityRuntime, IdentitySettings
 from verdant.domain import Conflict, DomainError, Forbidden, NotFound, Principal
 from verdant.logging import configure_access_logging
+from verdant.operations import (
+    Operation,
+    OperationAction,
+    OperationDetail,
+    OperationPage,
+    OperationService,
+    VerificationRequest,
+)
 from verdant.persistence import make_sessions
 
 
@@ -31,6 +39,7 @@ def create_app(
     configure_access_logging()
     sessions = sessions or make_sessions(os.environ["VERDANT_DATABASE_URL"])
     service = RegistryService(sessions)
+    operations = OperationService(sessions)
     app = FastAPI(title="Verdant platform", version=str(c.CONTRACT_VERSION))
     identity_settings = identity_settings or IdentitySettings.from_env()
     if identity_settings is not None:
@@ -76,6 +85,41 @@ def create_app(
         return service.get_namespace(actor, namespace_id)
 
     prefix = "/api/v1/namespaces/{namespace_id}"
+
+    @app.post(prefix + "/operations/verify-artifact", response_model=Operation, status_code=202)
+    def verify_artifact(namespace_id: UUID, command: VerificationRequest, actor: Actor):
+        return operations.admit_verification(actor, namespace_id, command)
+
+    @app.get(prefix + "/operations", response_model=OperationPage)
+    def list_operations(
+        namespace_id: UUID,
+        actor: Actor,
+        after: UUID | None = None,
+        limit: int = Query(default=25, ge=1, le=100),
+    ):
+        return operations.list_operations(actor, namespace_id, after, limit)
+
+    @app.get(prefix + "/operations/{operation_id}", response_model=OperationDetail)
+    def operation_detail(
+        namespace_id: UUID,
+        operation_id: UUID,
+        actor: Actor,
+        after: UUID | None = None,
+        limit: int = Query(default=25, ge=1, le=100),
+    ):
+        return operations.detail(actor, namespace_id, operation_id, after, limit)
+
+    @app.post(prefix + "/operations/{operation_id}/retry", response_model=Operation)
+    def retry_operation(
+        namespace_id: UUID, operation_id: UUID, command: OperationAction, actor: Actor
+    ):
+        return operations.retry(actor, namespace_id, operation_id, command.epoch)
+
+    @app.post(prefix + "/operations/{operation_id}/cancel", response_model=Operation)
+    def cancel_operation(
+        namespace_id: UUID, operation_id: UUID, command: OperationAction, actor: Actor
+    ):
+        return operations.request_cancel(actor, namespace_id, operation_id, command.epoch)
 
     @app.get(prefix + "/datasets", response_model=c.DatasetPage)
     def list_datasets(

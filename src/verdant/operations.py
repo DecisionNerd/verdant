@@ -150,6 +150,38 @@ class WorkflowReconciliation(Contract):
     evidence: str = Field(min_length=1, max_length=2000)
 
 
+class VerificationRequest(Contract):
+    request_key: str = Field(min_length=1, max_length=200)
+    sample_id: UUID
+    revision_id: UUID
+
+
+class OperationAction(Contract):
+    epoch: int = Field(ge=1, le=9223372036854775807, strict=True)
+
+
+class OperationPage(Contract):
+    items: list[Operation]
+    next_after: UUID | None = None
+
+
+class EffectSummary(Contract):
+    id: UUID
+    kind: str
+    status: str
+    revision: int
+    result_digest: str | None
+
+
+class OperationDetail(Contract):
+    operation: Operation
+    needs_reconciliation: bool
+    provider_run_id: UUID | None = None
+    accepted_digest: str | None = None
+    effects: list[EffectSummary]
+    next_effect_after: UUID | None = None
+
+
 class OperationService:
     def __init__(self, sessions):
         self.sessions = sessions
@@ -165,6 +197,23 @@ class OperationService:
             current_principal(session, actor.id).require(namespace_id, write=True)
             if session.get(NamespaceRow, namespace_id) is None:
                 raise NotFound("Namespace not found")
+            if command.kind == "verify_sample_artifact":
+                try:
+                    sample_id, revision_id = (
+                        UUID(command.inputs["sample_id"]),
+                        UUID(command.inputs["revision_id"]),
+                    )
+                except (KeyError, TypeError, ValueError):
+                    raise Conflict("Verification request has invalid sample identity") from None
+                source = session.scalar(
+                    select(SampleRevisionRow.id).where(
+                        SampleRevisionRow.namespace_id == namespace_id,
+                        SampleRevisionRow.sample_id == sample_id,
+                        SampleRevisionRow.id == revision_id,
+                    )
+                )
+                if source is None:
+                    raise NotFound("Verification sample revision not found")
             operation_id = session.scalar(
                 insert(OperationRow)
                 .values(
@@ -961,3 +1010,96 @@ class OperationService:
                 },
             )
             return self._dispatch_view(row)
+
+    @observed("operations")
+    def admit_verification(
+        self, actor: Principal, namespace_id: UUID, command: VerificationRequest
+    ) -> Operation:
+        return self.admit(
+            actor,
+            namespace_id,
+            OperationRequest(
+                request_key=command.request_key,
+                kind="verify_sample_artifact",
+                inputs={
+                    "sample_id": str(command.sample_id),
+                    "revision_id": str(command.revision_id),
+                },
+            ),
+        )
+
+    @observed("operations")
+    def list_operations(
+        self, actor: Principal, namespace_id: UUID, after: UUID | None = None, limit: int = 25
+    ) -> OperationPage:
+        if not 1 <= limit <= 100:
+            raise ValueError("Operation page must be between 1 and 100")
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id)
+            query = select(OperationRow).where(OperationRow.namespace_id == namespace_id)
+            if after is not None:
+                query = query.where(OperationRow.id > after)
+            rows = session.scalars(query.order_by(OperationRow.id).limit(limit + 1)).all()
+            return OperationPage(
+                items=[self._view(row) for row in rows[:limit]],
+                next_after=rows[limit - 1].id if len(rows) > limit else None,
+            )
+
+    @observed("operations")
+    def detail(
+        self,
+        actor: Principal,
+        namespace_id: UUID,
+        operation_id: UUID,
+        after: UUID | None = None,
+        limit: int = 25,
+    ) -> OperationDetail:
+        if not 1 <= limit <= 100:
+            raise ValueError("Effect page must be between 1 and 100")
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id)
+            row = session.scalar(
+                select(OperationRow).where(
+                    OperationRow.namespace_id == namespace_id, OperationRow.id == operation_id
+                )
+            )
+            if row is None:
+                raise NotFound("Operation not found")
+            effects_query = select(EffectReceiptRow).where(
+                EffectReceiptRow.operation_id == operation_id
+            )
+            if after is not None:
+                effects_query = effects_query.where(EffectReceiptRow.id > after)
+            effects = session.scalars(
+                effects_query.order_by(EffectReceiptRow.id).limit(limit + 1)
+            ).all()
+            unknown = session.scalar(
+                select(EffectReceiptRow.id)
+                .where(
+                    EffectReceiptRow.operation_id == operation_id,
+                    EffectReceiptRow.status == "unknown",
+                )
+                .limit(1)
+            )
+            dispatch = session.get(WorkflowDispatchRow, (operation_id, row.epoch))
+            accepted = session.get(VerificationResultRow, operation_id)
+            return OperationDetail(
+                operation=self._view(row),
+                needs_reconciliation=unknown is not None
+                or (dispatch is not None and dispatch.status == "unknown"),
+                provider_run_id=UUID(dispatch.provider_reference)
+                if dispatch and dispatch.provider_reference
+                else None,
+                accepted_digest=accepted.sha256 if accepted else None,
+                effects=[
+                    EffectSummary(
+                        id=effect.id,
+                        kind=effect.identity["kind"],
+                        status=effect.status,
+                        revision=effect.revision,
+                        result_digest=effect.result_digest,
+                    )
+                    for effect in effects[:limit]
+                ],
+                next_effect_after=effects[limit - 1].id if len(effects) > limit else None,
+            )
