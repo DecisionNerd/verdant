@@ -102,3 +102,35 @@ def test_capture_current_write_access_and_audit_rollback(registry, principal_fac
             )
             == 0
         )
+
+
+def test_database_rejects_capture_identity_changes_and_deletion(registry, sessions):
+    from sqlalchemy.exc import DBAPIError
+
+    registry_service, actor, ns = registry
+    dataset = registry_service.create_dataset(
+        actor,
+        ns,
+        DatasetCreate(name="Immutable capture", slug="immutable-capture", modality="text"),
+    )
+    service = VersioningService(sessions)
+    candidate = service.capture(
+        actor, ns, dataset.id, CandidateCapture(request_key="immutable", expected_revision=0)
+    )
+    for field, value in (
+        ("source_revision", 1),
+        ("generation_id", uuid4()),
+        ("request_key", "replacement"),
+    ):
+        with pytest.raises(DBAPIError, match="identity is immutable"):
+            with sessions.begin() as session:
+                setattr(session.get(CandidateRow, candidate.id), field, value)
+    with pytest.raises(DBAPIError, match="cannot be deleted"):
+        with sessions.begin() as session:
+            session.delete(session.get(CandidateRow, candidate.id))
+    assert (
+        service.capture(
+            actor, ns, dataset.id, CandidateCapture(request_key="immutable", expected_revision=0)
+        ).id
+        == candidate.id
+    )
