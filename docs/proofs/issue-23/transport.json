@@ -1,0 +1,21 @@
+{
+  "scope": "transport-contract checkpoint, issue23 incomplete",
+  "base_commit": "0c2960123437485cdf5f93cceafc5cf613ceb6c6",
+  "external_image_verified_running": "localhost:5001/label-studio-oidc@sha256:d7f8aac5ddee20155a967d91927d7278d0ed5f0f99ccbf9fdb4818cf653a1cea",
+  "external_pilot_source": "cc81a17bb2a077664083979dbdbb6e685228e08f",
+  "external_checkout_head_observed": "a0740c6e9ddb8bb394764f7ec1877fd15de88096",
+  "test_result": "32 mocked transport tests passed in0.06s; no live integration request",
+  "independent_review": "No remaining transport-layer blocker after native-author and model-side-effect fixes",
+  "source_sha256": {
+    "src/verdant/label_studio.py": "d3f2545b1976ee24bb84175653725c17e5170156755a9c2aceb04bab6d457e65",
+    "tests/test_label_studio.py": "31317bc1b8b8037044db6653768506d0729aa9c6275b615410999dab904573f0"
+  },
+  "limits": [
+    "No durable assignment or contributor binding yet",
+    "No immutable canonical import or UI handoff yet",
+    "Existing platformHTTPissuer differs from qualifiedforkHTTPSissuer",
+    "No existing service or fork source modified",
+    "Cancelled rows absent from native list must not delete canonical history",
+    "Task/project/data pins need assignment-layer verification"
+  ]
+}
