@@ -754,22 +754,28 @@ class OperationService:
         command: EffectReconciliation,
     ) -> EffectReceipt:
         with self.sessions.begin() as session:
-            # A current authorized reconciler may record provider facts from an old epoch.
-            operation = self._locked_operation(session, actor, namespace_id, operation_id)
-            row = self._locked_effect(session, namespace_id, operation_id, receipt_id)
-            if row.status != "unknown" or row.revision != command.expected_revision:
-                raise Conflict("Effect reconciliation is stale")
-            if command.outcome == "found":
-                row.status = "succeeded"
-                row.result_digest = command.result.result_digest
-                row.provider_reference = command.result.provider_reference
-            else:
-                row.status = "prepared"
-                row.dispatch_id = row.dispatch_epoch = None
-            row.reconciliation_evidence = command.evidence
-            row.revision += 1
-            self._effect_event(session, actor, operation, row, "reconciled")
-            return self._effect_view(row)
+            return self._reconcile_effect(
+                session, actor, namespace_id, operation_id, receipt_id, command
+            )
+
+    def _reconcile_effect(self, session, actor, namespace_id, operation_id, receipt_id, command):
+        """Compose verified provider facts with an owning domain's atomic acceptance."""
+        # A current authorized reconciler may record provider facts from an old epoch.
+        operation = self._locked_operation(session, actor, namespace_id, operation_id)
+        row = self._locked_effect(session, namespace_id, operation_id, receipt_id)
+        if row.status != "unknown" or row.revision != command.expected_revision:
+            raise Conflict("Effect reconciliation is stale")
+        if command.outcome == "found":
+            row.status = "succeeded"
+            row.result_digest = command.result.result_digest
+            row.provider_reference = command.result.provider_reference
+        else:
+            row.status = "prepared"
+            row.dispatch_id = row.dispatch_epoch = None
+        row.reconciliation_evidence = command.evidence
+        row.revision += 1
+        self._effect_event(session, actor, operation, row, "reconciled")
+        return self._effect_view(row)
 
     @observed("operations")
     def verification_source(
@@ -918,6 +924,7 @@ class OperationService:
                     "reconciliation_requested",
                     "upload_ready",
                     "upload_failed",
+                    "ingestion_item_accepted",
                 )
             }
             error = None

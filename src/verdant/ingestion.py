@@ -6,8 +6,10 @@ from uuid import UUID, uuid4
 
 from pydantic import Field, JsonValue, model_validator
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 
-from verdant.contracts import Contract, Digest, Revision
+from verdant.application import RegistryService
+from verdant.contracts import Contract, Digest, Revision, SampleContent
 from verdant.domain import Conflict, NotFound, Principal
 from verdant.identity import current_principal
 from verdant.operations import (
@@ -24,6 +26,8 @@ from verdant.persistence import (
     EffectReceiptRow,
     IngestionItemRow,
     OperationRow,
+    RegistryRepository,
+    SampleArtifactRow,
     SampleRow,
 )
 from verdant.storage import (
@@ -114,6 +118,34 @@ class UploadedPart(Contract):
 class UploadProgress(Contract):
     parts: list[UploadedPart]
     part_bytes: int = PART_BYTES
+
+
+class IngestionSource(Contract):
+    item_id: UUID
+    artifact_id: UUID
+    staging_key: str
+    final_key: str
+    sha256: str
+    size_bytes: int
+
+    def promotion(self, bucket: str, store_id: str):
+        return EffectRequest(
+            kind="artifact.promote",
+            item=str(self.item_id),
+            input_revision=self.sha256,
+            request={
+                "store_id": store_id,
+                "bucket": bucket,
+                "staging_key": self.staging_key,
+                "final_key": self.final_key,
+                "sha256": self.sha256,
+                "size_bytes": self.size_bytes,
+            },
+        )
+
+
+class RegistrationConflict(Conflict):
+    """Explicit source/revision conflict requiring a new registration decision."""
 
 
 class IngestionService:
@@ -558,5 +590,293 @@ class IngestionService:
                 )
             self.operations._record_transition(
                 session, actor, operation, event, {"item_id": str(item_id)}
+            )
+            return self._view(session, operation)
+
+    @observed("ingestion")
+    def verification_items(self, actor, namespace_id, operation_id, epoch, limit: int = 25):
+        if type(limit) is not int or not 1 <= limit <= 25:
+            raise ValueError("Verification batch must contain between 1 and 25 items")
+        with self.sessions.begin() as session:
+            operation = self.operations._locked_operation(
+                session, actor, namespace_id, operation_id, epoch
+            )
+            if operation.kind != "ingest_upload" or operation.status not in {"queued", "running"}:
+                raise Conflict("Operation does not permit ingestion verification")
+            pending = session.scalar(
+                select(IngestionItemRow.id)
+                .where(
+                    IngestionItemRow.operation_id == operation_id,
+                    IngestionItemRow.state.not_in(["ready", "accepted"]),
+                )
+                .limit(1)
+            )
+            if pending is not None:
+                raise Conflict("All uploads must be ready before worker verification")
+            return list(
+                session.scalars(
+                    select(IngestionItemRow.id)
+                    .where(
+                        IngestionItemRow.operation_id == operation_id,
+                        IngestionItemRow.state == "ready",
+                    )
+                    .order_by(IngestionItemRow.position)
+                    .limit(limit)
+                )
+            )
+
+    def _verification_source(self, session, actor, namespace_id, operation_id, item_id, epoch):
+        operation = self.operations._locked_operation(
+            session, actor, namespace_id, operation_id, epoch
+        )
+        if operation.kind != "ingest_upload" or operation.status not in {"running", "succeeded"}:
+            raise Conflict("Operation does not permit sample acceptance")
+        item = session.scalar(
+            select(IngestionItemRow)
+            .where(
+                IngestionItemRow.namespace_id == namespace_id,
+                IngestionItemRow.operation_id == operation_id,
+                IngestionItemRow.id == item_id,
+            )
+            .with_for_update()
+        )
+        if item is None:
+            raise NotFound("Ingestion item not found")
+        if item.state not in {"ready", "accepted"}:
+            raise Conflict("Item is not ready for verification")
+        artifact = session.scalar(
+            select(ArtifactRow)
+            .where(
+                ArtifactRow.namespace_id == namespace_id,
+                ArtifactRow.id == item.artifact_id,
+            )
+            .with_for_update()
+        )
+        location = session.scalar(
+            select(ArtifactLocationRow).where(
+                ArtifactLocationRow.namespace_id == namespace_id,
+                ArtifactLocationRow.artifact_id == artifact.id,
+                ArtifactLocationRow.store_id == self.store_id,
+                ArtifactLocationRow.bucket == self.bucket,
+            )
+        )
+        if location is None:
+            raise StorageUnavailable(
+                "Stored artifact location is unavailable in this configuration"
+            )
+        source = IngestionSource(
+            item_id=item.id,
+            artifact_id=artifact.id,
+            staging_key=item.staging_key,
+            final_key=location.object_key,
+            sha256=artifact.sha256,
+            size_bytes=artifact.size_bytes,
+        )
+        return operation, item, artifact, source
+
+    @observed("ingestion")
+    def verification_source(self, actor, namespace_id, operation_id, item_id, epoch):
+        with self.sessions.begin() as session:
+            return self._verification_source(
+                session, actor, namespace_id, operation_id, item_id, epoch
+            )[3]
+
+    @observed("ingestion")
+    def accept_verified_item(self, actor, namespace_id, operation_id, item_id, epoch, receipt_id):
+        """Worker-only boundary, called after independently verifying final object bytes.
+
+        No HTTP/MCP endpoint may turn caller-declared digests into verification evidence.
+        """
+        with self.sessions.begin() as session:
+            operation, item, artifact, source = self._verification_source(
+                session, actor, namespace_id, operation_id, item_id, epoch
+            )
+            if item.state == "accepted":
+                return self._view(session, operation)
+            if operation.status != "running":
+                raise Conflict("Operation does not permit sample acceptance")
+            if operation.revision > 9223372036854775805:
+                raise Conflict("Operation revision limit reached")
+            receipt = self.operations._locked_effect(
+                session, namespace_id, operation_id, receipt_id
+            )
+            expected = source.promotion(self.bucket, self.store_id)
+            if receipt.identity != expected.identity() or receipt.request != expected.request:
+                raise Conflict("Acceptance requires its exact artifact promotion receipt")
+            result = EffectResult(
+                result_digest=artifact.sha256, provider_reference=str(artifact.id)
+            )
+            if receipt.status == "unknown":
+                self.operations._reconcile_effect(
+                    session,
+                    actor,
+                    namespace_id,
+                    operation_id,
+                    receipt_id,
+                    EffectReconciliation(
+                        expected_revision=receipt.revision,
+                        outcome="found",
+                        result=result,
+                        evidence="Verified final bytes precede atomic sample acceptance",
+                    ),
+                )
+            elif receipt.status != "succeeded" or (
+                receipt.result_digest != result.result_digest
+                or receipt.provider_reference != result.provider_reference
+            ):
+                raise Conflict("Artifact promotion has no matching verified result")
+            if item.target_sample_id is None:
+                sample_id = session.scalar(
+                    insert(SampleRow)
+                    .values(
+                        id=uuid4(),
+                        namespace_id=namespace_id,
+                        source_key=item.source_key,
+                        modality=item.modality,
+                        revision=1,
+                    )
+                    .on_conflict_do_nothing(constraint="uq_sample_source")
+                    .returning(SampleRow.id)
+                )
+                if sample_id is None:
+                    raise RegistrationConflict(
+                        "Source identity now exists; select explicit sample replacement"
+                    )
+                sample = session.get(SampleRow, sample_id)
+                action = "sample.created"
+            else:
+                sample = session.scalar(
+                    select(SampleRow)
+                    .where(
+                        SampleRow.namespace_id == namespace_id,
+                        SampleRow.id == item.target_sample_id,
+                    )
+                    .with_for_update()
+                )
+                if sample is None:
+                    raise NotFound("Replacement sample not found")
+                if sample.revision != item.expected_revision:
+                    raise RegistrationConflict(
+                        "Replacement sample revision changed before acceptance"
+                    )
+                if sample.source_key != item.source_key or sample.modality != item.modality:
+                    raise RegistrationConflict("Replacement sample identity changed")
+                if sample.revision == 9223372036854775807:
+                    raise Conflict("Sample revision limit reached")
+                sample.revision += 1
+                action = "sample.revised"
+            if artifact.verified_at is None:
+                artifact.verified_at = session.scalar(select(func.clock_timestamp()))
+            repo = RegistryRepository(session)
+            revision = RegistryService._add_revision(
+                repo,
+                sample,
+                SampleContent(
+                    sha256=artifact.sha256,
+                    size_bytes=artifact.size_bytes,
+                    object_key=source.final_key,
+                    metadata=item.metadata_json,
+                ),
+            )
+            session.add(
+                SampleArtifactRow(
+                    namespace_id=namespace_id,
+                    sample_id=sample.id,
+                    revision_id=revision.id,
+                    artifact_id=artifact.id,
+                )
+            )
+            session.flush()
+            RegistryService._audit(
+                repo,
+                actor,
+                namespace_id,
+                sample.id,
+                action,
+                {
+                    "revision_id": str(revision.id),
+                    "revision": revision.revision,
+                    "operation_id": str(operation_id),
+                    "item_id": str(item_id),
+                    "artifact_id": str(artifact.id),
+                },
+            )
+            item.state, item.error = "accepted", None
+            item.sample_id, item.accepted_revision_id = sample.id, revision.id
+            session.flush()
+            remaining = session.scalar(
+                select(IngestionItemRow.id)
+                .where(
+                    IngestionItemRow.operation_id == operation_id,
+                    IngestionItemRow.state != "accepted",
+                )
+                .limit(1)
+            )
+            if remaining is None:
+                unknown = session.scalar(
+                    select(EffectReceiptRow.id)
+                    .where(
+                        EffectReceiptRow.operation_id == operation_id,
+                        EffectReceiptRow.status == "unknown",
+                    )
+                    .limit(1)
+                )
+                if unknown is not None:
+                    raise Conflict(
+                        "Unknown effects require reconciliation before ingestion finishes"
+                    )
+                operation.status = "succeeded"
+            operation.revision += 1
+            self.operations._record_transition(
+                session,
+                actor,
+                operation,
+                "operation.succeeded" if remaining is None else "operation.ingestion_item_accepted",
+                {"item_id": str(item_id), "sample_revision_id": str(revision.id)},
+            )
+            return self._view(session, operation)
+
+    @observed("ingestion")
+    def fail_verification(self, actor, namespace_id, operation_id, item_id, epoch, error: str):
+        if error not in {
+            "artifact_missing",
+            "artifact_corrupt",
+            "storage_unavailable",
+            "registration_conflict",
+        }:
+            raise ValueError("Unsupported safe ingestion failure code")
+        with self.sessions.begin() as session:
+            operation = self.operations._locked_operation(
+                session, actor, namespace_id, operation_id, epoch
+            )
+            item = session.scalar(
+                select(IngestionItemRow)
+                .where(
+                    IngestionItemRow.namespace_id == namespace_id,
+                    IngestionItemRow.operation_id == operation_id,
+                    IngestionItemRow.id == item_id,
+                )
+                .with_for_update()
+            )
+            if (
+                operation.kind != "ingest_upload"
+                or operation.status != "running"
+                or item is None
+                or item.state != "ready"
+            ):
+                raise Conflict("Ingestion failure is stale")
+            if operation.revision == 9223372036854775807:
+                raise Conflict("Operation revision limit reached")
+            item.error = error
+            operation.status = "failed"
+            operation.revision += 1
+            self.operations._record_transition(
+                session,
+                actor,
+                operation,
+                extra={
+                    "item_id": str(item_id),
+                    "error": error,
+                },
             )
             return self._view(session, operation)
