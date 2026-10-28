@@ -1,0 +1,86 @@
+# Optional native execution services. Combine with compose.yaml, using both private env files.
+x-workflow-image: &workflow-image
+  image: verdant-platform-workflows:local
+x-worker-env: &worker-env
+  PREFECT_API_URL: http://prefect:4200/api
+  PREFECT_API_AUTH_STRING: ${WORKFLOW_API_AUTH:?Run bootstrap-workflows.py}
+  PREFECT_SERVER_ANALYTICS_ENABLED: 'false'
+  VERDANT_DATABASE_URL: postgresql+psycopg://registry:${REGISTRY_PASSWORD:?}@database:5432/registry
+  VERDANT_OIDC_ISSUER: ${VERDANT_OIDC_ISSUER:?}
+  VERDANT_WORKER_CLIENT_ID: verdant-worker
+  VERDANT_WORKER_CLIENT_SECRET: ${WORKER_SECRET:?}
+  VERDANT_API_AUDIENCE: verdant-api
+  VERDANT_INSECURE_LOCAL_HTTP: '1'
+  VERDANT_S3_ENDPOINT: http://objects:8333
+  VERDANT_S3_BUCKET: verdant-artifacts
+  VERDANT_S3_ACCESS_KEY: verdant-local-registry
+  VERDANT_S3_SECRET_KEY: ${OBJECT_REGISTRY_SECRET:?}
+services:
+  workflow-database:
+    image: postgres:17.6@sha256:00bc86618629af00d2937fdc5a5d63db3ff8450acf52f0636ec813c7f4902929
+    environment:
+      POSTGRES_USER: prefect
+      POSTGRES_DB: prefect
+      POSTGRES_PASSWORD: ${WORKFLOW_DB_PASSWORD:?}
+    volumes: [workflow-database:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, prefect]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+  prefect:
+    <<: *workflow-image
+    build:
+      context: ../..
+      dockerfile: infrastructure/compose/Dockerfile.workflows
+    command: [prefect, server, start, --host, 0.0.0.0, --port, '4200', --workers, '1', --no-ui, --analytics-off]
+    environment:
+      PREFECT_SERVER_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:${WORKFLOW_DB_PASSWORD:?}@workflow-database:5432/prefect
+      PREFECT_SERVER_API_AUTH_STRING: ${WORKFLOW_API_AUTH:?}
+      PREFECT_SERVER_ANALYTICS_ENABLED: 'false'
+    depends_on:
+      workflow-database: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4200/api/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 30s
+    restart: unless-stopped
+  workflow-register:
+    <<: *workflow-image
+    command: [python, -m, verdant.workflow_runtime, register]
+    environment: *worker-env
+    depends_on:
+      prefect: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+  worker:
+    <<: *workflow-image
+    command: [prefect, worker, start, --pool, verdant-local, --type, process, --limit, '2', --with-healthcheck]
+    environment:
+      <<: *worker-env
+      PREFECT_WORKER_WEBSERVER_HOST: 0.0.0.0
+      PREFECT_WORKER_WEBSERVER_PORT: '8081'
+    depends_on:
+      workflow-register: {condition: service_completed_successfully}
+      auth: {condition: service_healthy}
+      objects: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 30s
+    restart: unless-stopped
+  dispatcher:
+    <<: *workflow-image
+    command: [python, -m, verdant.workflow_runtime, dispatch]
+    environment: *worker-env
+    depends_on:
+      workflow-register: {condition: service_completed_successfully}
+      auth: {condition: service_healthy}
+    stop_grace_period: 30s
+    restart: unless-stopped
+volumes:
+  workflow-database:

@@ -1,6 +1,6 @@
-# Local platform bootstrap candidate
+# Local platform bootstrap
 
-This candidate starts the implemented registry and identity slice. It has not yet passed full issue #12 acceptance. Root Compose selects this stack; legacy composition is isolated in `docker-compose.legacy.yml`. Do not mix the two compositions or their data volumes.
+This composition starts the implemented registry, workspace, and identity services. Root Compose selects this stack; legacy composition is isolated in `docker-compose.legacy.yml`. Do not mix the two compositions or their data volumes.
 
 From the repository root:
 
@@ -25,7 +25,7 @@ docker compose --env-file infrastructure/compose/.local/compose.env -f infrastru
 
 Do not add `--volumes` during routine shutdown or recovery. No reset is performed by bootstrap.
 
-Recorded qualification covers browser login/logout, service authorization, host/container signing, clean database initialization, and dependency restart recovery. Review and final lifecycle qualification are tracked in the issue #12 evidence. Coordinated platform backup is separate from the qualified quiescent object-store restore. Execution services remain absent from this registry-only slice until a real workflow is implemented. No worker or Prefect execution behavior is claimed.
+Recorded qualification covers browser login/logout, service authorization, host/container signing, clean database initialization, and dependency restart recovery. Review and final lifecycle qualification are tracked in the issue #12 evidence. Coordinated platform backup is separate from the qualified quiescent object-store restore. The base composition remains registry-only. Native execution is available through the optional workflow overlay below; its qualification evidence is tracked separately.
 
 Run the bounded local smoke after startup:
 
@@ -37,3 +37,21 @@ uv run --locked python scripts/qualify_compose.py --verify-only
 The first command provisions the configured service identity through the trusted operator CLI and creates one synthetic probe object conditionally. Repeated runs preserve its bytes. Use `--verify-only` after restart; it cannot recreate a lost object. The smoke grants its service identity write access only to a synthetic qualification namespace. A separate namespace remains inaccessible. The probe creates and reads a synthetic dataset, checks a valid service token is denied access without a grant, and checks anonymous versus presigned storage access. It does not replace browser or lifecycle acceptance.
 
 Keycloak uses native Quarkus JDBC validation on borrow through `quarkus.properties`. This adds a database validation round trip when borrowing a connection and prevents stale pooled connections from breaking token issuance after PostgreSQL restarts. Retest this runtime property on Keycloak upgrades.
+
+## Optional workflow execution
+
+The native Prefect execution overlay uses a separate persistent PostgreSQL database and generated machine credentials. It publishes no additional host ports and disables the Prefect dashboard. The worker executes the fixed artifact-verification flow; PostgreSQL registry Operations remains the logical authority.
+
+```sh
+python3 infrastructure/compose/bootstrap-workflows.py
+docker compose --env-file infrastructure/compose/.local/compose.env --env-file infrastructure/compose/.local/workflows.env -f infrastructure/compose/compose.yaml -f infrastructure/compose/workflows.yaml config --quiet
+docker compose --env-file infrastructure/compose/.local/compose.env --env-file infrastructure/compose/.local/workflows.env -f infrastructure/compose/compose.yaml -f infrastructure/compose/workflows.yaml up -d --build
+```
+
+Preserve `.local/workflows.env` with the `workflow-database` volume. Repeated bootstrap retains credentials; it does not change existing platform inputs or reset any database. Native Prefect starts its own metadata migrations before becoming healthy. One registration job creates/updates the fixed process pool/deployment before worker and dispatcher startup. One workflow image build supplies all execution services.
+
+The service identity still requires explicit operator provisioning and namespace write grants. The dispatcher discovers only currently authorized namespaces, at most 100 per discovery page, and cycles pages. Each namespace delivery batch is bounded. New grants become eligible without restarting the dispatcher; revoked grants are rechecked before claims and commands. The worker independently verifies Keycloak service identity and current grants for execution.
+
+Stop the overlay using the same two `-f` files and private env files with `down`, without `--volumes`. Keep private inputs and both PostgreSQL volumes together for recovery. Native process workers inherit service credentials from container environment; deployment parameters contain only namespace ID, operation ID, and epoch. No cloud account or model access is configured.
+
+Packaged-runtime qualification is tracked in `docs/proofs/issue-19/verification.md`; configuration validity and container health alone do not prove operation execution or browser recovery.

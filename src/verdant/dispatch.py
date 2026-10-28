@@ -104,7 +104,7 @@ class WorkflowDispatcher:
         return DispatchBatch(len(claims), acknowledged, deferred, quarantined)
 
 
-async def serve(namespace_ids: list[UUID], deployment_id: UUID):
+async def serve(namespace_ids: list[UUID] | None, deployment_id: UUID):
     """Run a single bounded dispatcher, with graceful native process shutdown."""
     import logging
     import os
@@ -112,11 +112,14 @@ async def serve(namespace_ids: list[UUID], deployment_id: UUID):
 
     from prefect.client.orchestration import get_client
 
+    from verdant.application import RegistryService
     from verdant.flows import WorkerIdentityUnavailable, service_principal
     from verdant.persistence import make_sessions
 
     logger = logging.getLogger("verdant.dispatch")
     sessions = make_sessions(os.environ["VERDANT_DATABASE_URL"])
+    registry = RegistryService(sessions)
+    namespace_cursor = None
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -127,7 +130,16 @@ async def serve(namespace_ids: list[UUID], deployment_id: UUID):
             while not stop.is_set():
                 try:
                     actor = await asyncio.to_thread(service_principal, sessions)
-                    for namespace_id in namespace_ids:
+                    batch_namespaces = namespace_ids
+                    if batch_namespaces is None:
+                        page = await asyncio.to_thread(
+                            registry.list_namespaces, actor, namespace_cursor, 100
+                        )
+                        namespace_cursor = page.next_after
+                        batch_namespaces = [
+                            item.id for item in page.items if item.access == "write"
+                        ]
+                    for namespace_id in batch_namespaces:
                         if stop.is_set():
                             break
                         result = await dispatcher.tick(actor, namespace_id)
