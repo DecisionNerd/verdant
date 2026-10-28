@@ -937,17 +937,53 @@ def test_expiry_while_finalization_waits_for_dataset_lock_uses_fresh_database_cl
 
 
 def test_finalization_query_envelope_is_independent_of_generation_size(
-    publication_fixture, sessions, monkeypatch
+    publication_fixture, sessions, monkeypatch, record_property
 ):
     captures = []
+    measurements = []
     engine = sessions.kw["bind"]
+    with sessions() as observer:
+        postgres_version = int(observer.scalar(text("SHOW server_version_num")))
     for count in [1, 100]:
         fixture = publication_fixture(count=count)
         group = prepare(fixture, start(fixture)[0])
         statements = []
+        lock_snapshots = []
+        observing = False
 
         def capture(connection, cursor, statement, parameters, context, executemany):
-            statements.append(" ".join(statement.lower().split()))
+            if not observing:
+                statements.append(" ".join(statement.lower().split()))
+
+        def capture_locks(connection, cursor, statement, parameters, context, executemany):
+            nonlocal observing
+            if observing or not statement.lower().startswith("insert into operation_outbox"):
+                return
+            # Observe the finalizer's still-uncommitted transaction from a separate
+            # connection. Never capture observer SQL or private parameter values.
+            backend = connection.connection.driver_connection.info.backend_pid
+            observing = True
+            try:
+                with engine.connect() as observer:
+                    locks = observer.execute(
+                        text(
+                            "SELECT c.relname, c.relkind, l.mode FROM pg_locks l "
+                            "JOIN pg_class c ON c.oid=l.relation "
+                            "JOIN pg_namespace n ON n.oid=c.relnamespace "
+                            "WHERE l.pid=:backend AND l.locktype='relation' "
+                            "AND l.granted AND n.nspname='public' "
+                            "ORDER BY c.relname, l.mode"
+                        ),
+                        {"backend": backend},
+                    ).all()
+                lock_snapshots.append(
+                    [
+                        {"relation": relation, "relation_kind": kind, "mode": mode}
+                        for relation, kind, mode in locks
+                    ]
+                )
+            finally:
+                observing = False
 
         def no_storage(*args, **kwargs):
             raise AssertionError("finalization performed remote storage I/O")
@@ -956,15 +992,19 @@ def test_finalization_query_envelope_is_independent_of_generation_size(
             for name in ["verify", "write_immutable", "size", "delete_one", "list_page"]:
                 patch.setattr(fixture.storage, name, no_storage)
             event.listen(engine, "before_cursor_execute", capture)
+            event.listen(engine, "after_cursor_execute", capture_locks)
             try:
+                began = monotonic()
                 assert (
                     fixture.service.finalize(
                         fixture.actor, fixture.ns, fixture.dataset.id, group.id
                     ).state
                     == "published"
                 )
+                elapsed_ms = (monotonic() - began) * 1000
             finally:
                 event.remove(engine, "before_cursor_execute", capture)
+                event.remove(engine, "after_cursor_execute", capture_locks)
         assert not any(
             table in statement
             for statement in statements
@@ -975,8 +1015,53 @@ def test_finalization_query_envelope_is_independent_of_generation_size(
                 "artifact_locations",
             ]
         )
+        assert len(lock_snapshots) == 1
+        table_locks = [lock for lock in lock_snapshots[0] if lock["relation_kind"] in {"r", "p"}]
+        index_locks = [lock for lock in lock_snapshots[0] if lock["relation_kind"] in {"i", "I"}]
+        measurements.append(
+            {
+                "member_count": count,
+                "application_statement_count": len(statements),
+                "relation_lock_count_at_outbox_flush": len(lock_snapshots[0]),
+                "relation_locks_at_outbox_flush": lock_snapshots[0],
+                "table_lock_count_at_outbox_flush": len(table_locks),
+                "table_locks_at_outbox_flush": table_locks,
+                "index_lock_count_at_outbox_flush": len(index_locks),
+                "index_locks_at_outbox_flush": index_locks,
+                "elapsed_finalization_ms_including_observation": round(elapsed_ms, 3),
+            }
+        )
         captures.append(statements)
     assert captures[0] == captures[1]
+    assert (
+        measurements[0]["table_locks_at_outbox_flush"]
+        == measurements[1]["table_locks_at_outbox_flush"]
+    )
+    record_property(
+        "finalization_measurement",
+        json.dumps(
+            {
+                "schema_version": 1,
+                "postgresql_version_num": postgres_version,
+                "cases": measurements,
+                "all_relation_lock_footprints_equal": int(
+                    measurements[0]["relation_locks_at_outbox_flush"]
+                    == measurements[1]["relation_locks_at_outbox_flush"]
+                ),
+                "limits": {
+                    "samples_per_size": 1,
+                    "observer_time_included": 1,
+                    "transaction_protocol_statements_counted": 0,
+                    "trigger_internal_statements_counted": 0,
+                    "row_lock_identity_measured": 0,
+                    "contended_latency_measured": 0,
+                    "production_capacity_measured": 0,
+                    "index_lock_variation_cause_identified": 0,
+                },
+            },
+            sort_keys=True,
+        ),
+    )
 
 
 def unbound_artifact(fixture, sessions):

@@ -41,7 +41,7 @@ pnpm --filter @verdant/docs dev
 pnpm --filter @verdant/docs build
 ```
 
-These commands serve or build documentation only. See [Python foundation setup and proof](docs/engineering/PLATFORM-FOUNDATION.md) for the bounded registry backend. Root Compose now starts the registry/identity slice described below; full execution and publication remain under implementation.
+These commands serve or build documentation only. See [Python foundation setup and proof](docs/engineering/PLATFORM-FOUNDATION.md) for the bounded registry backend. Root Compose starts the registry/identity slice described below; protected publication is implemented on the development dependency stack. The complete execution platform remains under implementation.
 
 
 ## Local registry and identity
@@ -65,4 +65,6 @@ The [registry workspace guide](docs/engineering/REGISTRY-WORKSPACE.md) covers ca
 
 The [quality guide](docs/engineering/QUALITY-RULES.md) covers versioned policies,
 sealed-candidate validation, resumable reports and exact offending-revision evidence.
-Publication and artifact-retention enforcement remain under implementation.
+The [publication guide](docs/engineering/IMMUTABLE-PUBLICATION.md) covers protected
+artifact preparation and atomic immutable publication on the development stack.
+Version consumption and archive controls remain under implementation.
