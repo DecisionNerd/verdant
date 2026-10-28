@@ -63,6 +63,19 @@ class WorkflowDispatcher:
                     acknowledged += 1
                     continue
                 if (
+                    outcome.dispatch is not None
+                    and outcome.dispatch.status == "unknown"
+                    and outcome.dispatch.epoch != state.epoch
+                ):
+                    reconciled = await self.submission.submit(
+                        actor,
+                        namespace_id,
+                        claim.operation_id,
+                        outcome.dispatch.epoch,
+                        reconcile_only=True,
+                    )
+                    outcome = outcome.model_copy(update={"dispatch": reconciled})
+                if (
                     state.status == "cancellation_requested"
                     and state.kind == "verify_sample_artifact"
                 ):
@@ -77,17 +90,36 @@ class WorkflowDispatcher:
                     )
                 elif outcome.dispatch is not None:
                     if state.kind != "verify_sample_artifact":
-                        # Unsupported work stays durable and visible; never run it as verification.
-                        deferred += 1
+                        # Preserve unsupported work as durable quarantine without a hot claim loop.
+                        await asyncio.to_thread(
+                            operations.quarantine_workflow_kind, actor, namespace_id, claim.event_id
+                        )
+                        await asyncio.to_thread(
+                            operations.acknowledge_delivery,
+                            actor,
+                            namespace_id,
+                            claim.event_id,
+                            claim.claim_id,
+                        )
+                        acknowledged += 1
+                        quarantined += 1
                         continue
                     if state.epoch == outcome.dispatch.epoch and state.status == "queued":
                         await self.submission.submit(
                             actor, namespace_id, claim.operation_id, outcome.dispatch.epoch
                         )
                     elif outcome.dispatch.status == "unknown":
-                        # An old or cancelled attempt may still have a provider write to reconcile.
-                        deferred += 1
-                        continue
+                        # Record old provider facts without reissuing work for a stale attempt.
+                        reconciled = await self.submission.submit(
+                            actor,
+                            namespace_id,
+                            claim.operation_id,
+                            outcome.dispatch.epoch,
+                            reconcile_only=True,
+                        )
+                        if reconciled.status == "unknown":
+                            deferred += 1
+                            continue
                 await asyncio.to_thread(
                     operations.acknowledge_delivery,
                     actor,
@@ -142,7 +174,15 @@ async def serve(namespace_ids: list[UUID] | None, deployment_id: UUID):
                     for namespace_id in batch_namespaces:
                         if stop.is_set():
                             break
-                        result = await dispatcher.tick(actor, namespace_id)
+                        try:
+                            result = await dispatcher.tick(actor, namespace_id)
+                        except Exception as exc:
+                            logger.warning(
+                                "workflow delivery failed namespace=%s error=%s",
+                                namespace_id,
+                                type(exc).__name__,
+                            )
+                            continue
                         if result.claimed:
                             logger.info(
                                 "workflow delivery namespace=%s claimed=%s acknowledged=%s "
@@ -155,6 +195,8 @@ async def serve(namespace_ids: list[UUID] | None, deployment_id: UUID):
                             )
                 except WorkerIdentityUnavailable:
                     logger.warning("Dispatcher identity unavailable; no work admitted")
+                except Exception as exc:
+                    logger.warning("Dispatcher discovery unavailable error=%s", type(exc).__name__)
                 try:
                     await asyncio.wait_for(stop.wait(), timeout=2)
                 except TimeoutError:

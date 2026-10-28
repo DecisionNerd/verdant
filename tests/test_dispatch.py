@@ -189,3 +189,118 @@ def test_reconciliation_of_provider_completion_requires_domain_acceptance(regist
     assert operations.get(actor, ns, op.id).status == "failed"
     assert operations.detail(actor, ns, op.id).accepted_digest is None
     assert provider.creates == 1
+
+
+@pytest.mark.parametrize("cancel_new_attempt", [False, True])
+def test_old_unknown_submission_is_reconciled_and_acknowledged_after_retry(
+    registry, sessions, cancel_new_attempt
+):
+    registry_service, actor, ns = registry
+    revision = registry_service.create_sample(
+        actor,
+        ns,
+        SampleCreate(
+            source_key="old-epoch",
+            modality="text",
+            sha256="d" * 64,
+            object_key="private/old-epoch",
+            size_bytes=1,
+        ),
+    )
+    operations = OperationService(sessions)
+    op = operations.admit_verification(
+        actor,
+        ns,
+        VerificationRequest(
+            request_key="old-epoch", sample_id=revision.sample_id, revision_id=revision.id
+        ),
+    )
+    deployment = uuid4()
+    provider = LostResponseProvider(deployment)
+    dispatcher = WorkflowDispatcher(sessions, provider, deployment)
+    assert asyncio.run(dispatcher.tick(actor, ns, limit=1)).deferred == 1
+    old = operations.workflow_dispatch(actor, ns, op.id, 1)
+    operations.fail(actor, ns, op.id, 1)
+    operations.retry(actor, ns, op.id, 1)
+    if cancel_new_attempt:
+        operations.request_cancel(actor, ns, op.id, 2)
+    with sessions.begin() as session:
+        session.get(OutboxRow, old.event_id).lease_until = session.scalar(
+            select(func.clock_timestamp())
+        ) - timedelta(seconds=1)
+    result = asyncio.run(dispatcher.tick(actor, ns, limit=1))
+    assert result.acknowledged == 1 and result.deferred == 0
+    assert provider.lookups == provider.creates == 1
+    assert operations.workflow_dispatch(actor, ns, op.id, 1).status == "submitted"
+    current = operations.get(actor, ns, op.id)
+    assert current.epoch == 2
+    assert current.status == ("cancelled" if cancel_new_attempt else "queued")
+    with sessions() as session:
+        assert session.get(OutboxRow, old.event_id).dispatched
+
+
+def test_namespace_failure_does_not_stop_other_namespace_delivery(monkeypatch):
+    import logging
+    from contextlib import asynccontextmanager
+    from unittest.mock import Mock
+
+    import verdant.flows
+    import verdant.persistence
+    from verdant.dispatch import DispatchBatch, serve
+    from verdant.domain import Forbidden
+
+    warning = Mock()
+    monkeypatch.setattr(logging.getLogger("verdant.dispatch"), "warning", warning)
+    first, second = uuid4(), uuid4()
+    seen = []
+    stop = asyncio.Event()
+    monkeypatch.setattr(asyncio, "Event", lambda: stop)
+    monkeypatch.setenv("VERDANT_DATABASE_URL", "unused-in-controller-double")
+    factory = SimpleNamespace(kw={"bind": Mock()})
+    monkeypatch.setattr(verdant.persistence, "make_sessions", lambda _: factory)
+    monkeypatch.setattr(verdant.flows, "service_principal", lambda _: object())
+
+    @asynccontextmanager
+    async def client():
+        yield object()
+
+    monkeypatch.setattr("prefect.client.orchestration.get_client", client)
+
+    async def tick(self, actor, namespace_id, limit=25):
+        seen.append(namespace_id)
+        if namespace_id == first:
+            raise Forbidden("private provider payload must never be logged")
+        stop.set()
+        return DispatchBatch(0, 0, 0, 0)
+
+    monkeypatch.setattr(WorkflowDispatcher, "tick", tick)
+    asyncio.run(serve([first, second], uuid4()))
+    assert seen == [first, second]
+    warning.assert_called_once_with(
+        "workflow delivery failed namespace=%s error=%s", first, "Forbidden"
+    )
+    factory.kw["bind"].dispose.assert_called_once()
+
+
+def test_unsupported_work_is_durably_quarantined_without_repeated_claims(registry, sessions):
+    from verdant.operations import OperationRequest
+    from verdant.persistence import ConsumerInboxRow
+
+    _, actor, ns = registry
+    operations = OperationService(sessions)
+    op = operations.admit(actor, ns, OperationRequest(request_key="unsupported", kind="other-work"))
+    deployment = uuid4()
+    provider = LostResponseProvider(deployment)
+    dispatcher = WorkflowDispatcher(sessions, provider, deployment)
+    first = asyncio.run(dispatcher.tick(actor, ns))
+    assert first.quarantined == first.acknowledged == 1
+    assert first.deferred == 0 and provider.creates == 0
+    assert asyncio.run(dispatcher.tick(actor, ns)).claimed == 0
+    assert operations.get(actor, ns, op.id).status == "queued"
+    with sessions() as session:
+        inbox = session.scalars(
+            select(ConsumerInboxRow)
+            .join(OperationEventRow, OperationEventRow.id == ConsumerInboxRow.event_id)
+            .where(OperationEventRow.operation_id == op.id)
+        ).one()
+        assert inbox.outcome == "quarantined" and "Unsupported" in inbox.error

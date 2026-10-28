@@ -969,6 +969,38 @@ class OperationService:
                 outcome=outcome, error=error, dispatch=self._dispatch_view(dispatch)
             )
 
+    @observed("operations")
+    def quarantine_workflow_kind(self, actor: Principal, namespace_id: UUID, event_id: UUID):
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id, write=True)
+            event = session.get(OperationEventRow, event_id)
+            if event is None or event.namespace_id != namespace_id:
+                raise NotFound("Event not found")
+            operation = self._locked_operation(session, actor, namespace_id, event.operation_id)
+            if operation.kind == "verify_sample_artifact":
+                raise Conflict("Supported verification kind cannot be quarantined")
+            inbox = session.get(ConsumerInboxRow, ("workflow-dispatch", event_id))
+            if inbox is None:
+                raise Conflict("Event has not been consumed")
+            dispatch = session.scalar(
+                select(WorkflowDispatchRow).where(WorkflowDispatchRow.event_id == event_id)
+            )
+            if dispatch is not None and dispatch.status != "pending":
+                raise Conflict("Started provider admission must be reconciled")
+            if inbox.outcome != "quarantined":
+                inbox.outcome = "quarantined"
+                inbox.error = "Unsupported operation kind for artifact verification deployment"
+                session.add(
+                    AuditRow(
+                        namespace_id=namespace_id,
+                        actor_id=actor.id,
+                        aggregate_id=operation.id,
+                        action="operation.workflow_quarantined",
+                        schema_version=1,
+                        payload={"transport": actor.transport, "event_id": str(event_id)},
+                    )
+                )
+
     @staticmethod
     def _locked_dispatch(session, operation_id, epoch):
         row = session.scalar(
