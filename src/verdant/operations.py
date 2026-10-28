@@ -666,6 +666,20 @@ class OperationService:
         epoch: int,
         command: EffectRequest,
     ) -> EffectReceipt:
+        with self.sessions.begin() as session:
+            return self._prepare_effect(session, actor, namespace_id, operation_id, epoch, command)
+
+    def _prepare_effect(
+        self,
+        session,
+        actor,
+        namespace_id,
+        operation_id,
+        epoch,
+        command,
+        *,
+        allowed_statuses=frozenset({"running"}),
+    ):
         def digest(value):
             return hashlib.sha256(
                 json.dumps(
@@ -678,49 +692,61 @@ class OperationService:
             ).hexdigest()
 
         key, request_digest = digest(command.identity()), digest(command.request)
-        with self.sessions.begin() as session:
-            operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
-            if operation.status != "running":
-                raise Conflict("Effects require a running operation")
-            row = session.scalar(
-                select(EffectReceiptRow).where(
-                    EffectReceiptRow.operation_id == operation_id,
-                    EffectReceiptRow.effect_key == key,
-                )
+        operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
+        if operation.status not in allowed_statuses:
+            raise Conflict("Operation does not permit this effect phase")
+        row = session.scalar(
+            select(EffectReceiptRow).where(
+                EffectReceiptRow.operation_id == operation_id,
+                EffectReceiptRow.effect_key == key,
             )
-            if row is not None:
-                if row.request_digest != request_digest:
-                    raise Conflict("Logical effect was already bound to different inputs")
-                return self._effect_view(row)
-            row = EffectReceiptRow(
-                namespace_id=namespace_id,
-                operation_id=operation_id,
-                effect_key=key,
-                identity=command.identity(),
-                request_digest=request_digest,
-                request=command.request,
-            )
-            session.add(row)
-            session.flush()
-            self._effect_event(session, actor, operation, row, "prepared")
+        )
+        if row is not None:
+            if row.request_digest != request_digest:
+                raise Conflict("Logical effect was already bound to different inputs")
             return self._effect_view(row)
+        row = EffectReceiptRow(
+            namespace_id=namespace_id,
+            operation_id=operation_id,
+            effect_key=key,
+            identity=command.identity(),
+            request_digest=request_digest,
+            request=command.request,
+        )
+        session.add(row)
+        session.flush()
+        self._effect_event(session, actor, operation, row, "prepared")
+        return self._effect_view(row)
 
     @observed("operations")
     def begin_effect(
         self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int, receipt_id: UUID
     ) -> EffectReceipt:
         with self.sessions.begin() as session:
-            operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
-            if operation.status != "running":
-                raise Conflict("Effects require a running operation")
-            row = self._locked_effect(session, namespace_id, operation_id, receipt_id)
-            if row.status != "prepared":
-                raise Conflict("Effect already dispatched; reuse success or reconcile uncertainty")
-            # Persist uncertainty before external I/O. A crash must never allow blind replay.
-            row.status, row.dispatch_id, row.dispatch_epoch = "unknown", uuid4(), epoch
-            row.revision += 1
-            self._effect_event(session, actor, operation, row, "dispatched")
-            return self._effect_view(row)
+            return self._begin_effect(session, actor, namespace_id, operation_id, epoch, receipt_id)
+
+    def _begin_effect(
+        self,
+        session,
+        actor,
+        namespace_id,
+        operation_id,
+        epoch,
+        receipt_id,
+        *,
+        allowed_statuses=frozenset({"running"}),
+    ):
+        operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
+        if operation.status not in allowed_statuses:
+            raise Conflict("Operation does not permit this effect phase")
+        row = self._locked_effect(session, namespace_id, operation_id, receipt_id)
+        if row.status != "prepared":
+            raise Conflict("Effect already dispatched; reuse success or reconcile uncertainty")
+        # Persist uncertainty before external I/O. A crash must never allow blind replay.
+        row.status, row.dispatch_id, row.dispatch_epoch = "unknown", uuid4(), epoch
+        row.revision += 1
+        self._effect_event(session, actor, operation, row, "dispatched")
+        return self._effect_view(row)
 
     @observed("operations")
     def complete_effect(
