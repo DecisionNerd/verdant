@@ -37,3 +37,8 @@ The owned API container restarted. After ordinary sign-in renewal and candidate 
 The attempted independent Chrome session was paused by its extension because another extension UI was open during normal sign-in. The second-session edit/resume/seal scenario remains unqualified and is not counted as complete. Candidate preparation remains at 100 members for that test. No browser security warning was bypassed or authentication protection weakened.
 
 A transport regression now captures via REST, prepares via authenticated MCP, and compares complete generation responses, including actual non-null evidence and the schema alias, across both transports. Invalid MCP page size is denied. OIDC protocol/JWKS are labeled fixtures in that regression; PostgreSQL and transport composition are actual. All 133 backend tests passed; 18 auth-route tests also passed separately. Twenty workspace component tests/typecheck/build passed. Final independent-session browser qualification and lifecycle review remain open.
+
+
+## Overlapping seal and insert
+
+A real PostgreSQL regression now holds an uncommitted candidate seal while a second connection attempts generation insertion. A third connection observes `pg_blocking_pids` before the seal commits; the insert then rechecks the committed state and fails with `generation no longer accepts members`. The sealed generation contains no inserted row. This proves the trigger serializes insertion against sealing, beyond sequential post-seal rejection. All 12 candidate tests passed against retained isolated `verdant_issue15_evidence_test`; Ruff passed. No production code or runtime state changed. The independent-session browser gate remains open.

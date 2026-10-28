@@ -1,9 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
+from threading import Barrier, Event
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import event, func, select
+from sqlalchemy import event, func, select, text
 
 from verdant.contracts import DatasetCreate, MembershipWrite, SampleCreate
 from verdant.domain import Conflict, Forbidden
@@ -256,6 +256,69 @@ def test_generation_rows_and_sealed_progress_are_database_immutable(registry, se
     with pytest.raises(DBAPIError, match="sealed candidate is immutable"):
         with sessions.begin() as session:
             session.get(CandidateRow, captured.id).state = "preparing"
+
+
+def test_insert_waiting_on_seal_rechecks_generation_state(registry, sessions):
+    from time import monotonic, sleep
+
+    from sqlalchemy.exc import DBAPIError
+
+    from verdant.persistence import GenerationMemberRow
+
+    _, _, _, ns, _, samples, captured = preparation_fixture(registry, sessions)
+    started = Event()
+    backend = []
+
+    def insert_member():
+        with sessions.begin() as session:
+            session.execute(text("SET LOCAL statement_timeout = '10s'"))
+            backend.append(session.scalar(text("SELECT pg_backend_pid()")))
+            started.set()
+            session.add(
+                GenerationMemberRow(
+                    generation_id=captured.generation_id,
+                    namespace_id=ns,
+                    sample_id=samples[0].sample_id,
+                    sample_revision_id=samples[0].id,
+                    split="train",
+                    interpretation={},
+                )
+            )
+            session.flush()
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with sessions.begin() as sealing:
+            candidate = sealing.scalar(
+                select(CandidateRow).where(CandidateRow.id == captured.id).with_for_update()
+            )
+            candidate.state = "sealed"
+            sealing.flush()
+            future = pool.submit(insert_member)
+            assert started.wait(timeout=5)
+            deadline = monotonic() + 5
+            while True:
+                with sessions() as observer:
+                    blocked = observer.scalar(
+                        text("SELECT cardinality(pg_blocking_pids(:pid)) > 0"),
+                        {"pid": backend[0]},
+                    )
+                if blocked:
+                    break
+                assert monotonic() < deadline, "insert did not wait on the sealing transaction"
+                sleep(0.01)
+            assert not future.done()
+        with pytest.raises(DBAPIError, match="generation no longer accepts members"):
+            future.result(timeout=10)
+    with sessions() as session:
+        assert session.get(CandidateRow, captured.id).state == "sealed"
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(GenerationMemberRow)
+                .where(GenerationMemberRow.generation_id == captured.generation_id)
+            )
+            == 0
+        )
 
 
 def test_competing_preparers_commit_only_one_expected_batch(registry, sessions):
