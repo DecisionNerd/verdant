@@ -506,3 +506,73 @@ def test_inbox_dispatch_and_checkpoint_roll_back_together_on_audit_failure(regis
         assert session.get(ConsumerCheckpointRow, ("workflow-dispatch", op.id)) is None
         assert session.get(WorkflowDispatchRow, (op.id, 1)) is None
     assert service.receive_workflow_event(actor, ns, event_id).outcome == "applied"
+
+
+def dispatch_fixture(registry, sessions):
+    _, actor, ns = registry
+    service = OperationService(sessions)
+    op = service.admit(
+        actor, ns, OperationRequest(request_key="workflow-submit", kind="qualification")
+    )
+    with sessions() as session:
+        event_id = session.scalar(
+            select(OperationEventRow.id).where(OperationEventRow.operation_id == op.id)
+        )
+    dispatch = service.receive_workflow_event(actor, ns, event_id).dispatch
+    return service, actor, ns, op, dispatch
+
+
+def test_workflow_unknown_admission_requires_reconciliation_before_cancel(registry, sessions):
+    from verdant.operations import WorkflowReconciliation
+
+    service, actor, ns, op, pending = dispatch_fixture(registry, sessions)
+    unknown = service.begin_workflow_submission(actor, ns, op.id, 1)
+    assert unknown.status == "unknown"
+    assert unknown.invocation_key == pending.invocation_key
+    with pytest.raises(Conflict):
+        service.begin_workflow_submission(actor, ns, op.id, 1)
+    service.request_cancel(actor, ns, op.id, 1)
+    with pytest.raises(Conflict, match="workflow admission"):
+        service.confirm_cancel(actor, ns, op.id, 1)
+    provider_id = uuid4()
+    reconciled = service.reconcile_workflow_submission(
+        actor,
+        ns,
+        op.id,
+        1,
+        WorkflowReconciliation(
+            request_digest=unknown.request_digest,
+            provider_run_id=provider_id,
+            evidence="Provider lookup matched stable idempotency key",
+        ),
+    )
+    assert reconciled.status == "submitted"
+    assert reconciled.provider_reference == str(provider_id)
+    assert service.confirm_cancel(actor, ns, op.id, 1).status == "cancelled"
+
+
+def test_workflow_submission_result_is_idempotent_and_epoch_fenced(registry, sessions):
+    from verdant.operations import WorkflowReconciliation
+
+    service, actor, ns, op, _ = dispatch_fixture(registry, sessions)
+    unknown = service.begin_workflow_submission(actor, ns, op.id, 1)
+    provider_id = uuid4()
+    service.fail(actor, ns, op.id, 1)
+    service.retry(actor, ns, op.id, 1)
+    with pytest.raises(Conflict, match="stale"):
+        service.complete_workflow_submission(actor, ns, op.id, 1, provider_id)
+    # Authorized reconciliation records the old provider fact without changing the new attempt.
+    reconciled = service.reconcile_workflow_submission(
+        actor,
+        ns,
+        op.id,
+        1,
+        WorkflowReconciliation(
+            request_digest=unknown.request_digest,
+            provider_run_id=provider_id,
+            evidence="Late provider lookup",
+        ),
+    )
+    assert reconciled.provider_reference == str(provider_id)
+    assert service.get(actor, ns, op.id).epoch == 2
+    assert service.get(actor, ns, op.id).status == "queued"

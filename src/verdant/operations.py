@@ -143,6 +143,12 @@ class VerificationSource(Contract):
     size_bytes: int
 
 
+class WorkflowReconciliation(Contract):
+    request_digest: Digest
+    provider_run_id: UUID | None = None
+    evidence: str = Field(min_length=1, max_length=2000)
+
+
 class OperationService:
     def __init__(self, sessions):
         self.sessions = sessions
@@ -297,6 +303,20 @@ class OperationService:
                 is not None
             ):
                 raise Conflict("Unknown effects must be reconciled before cancellation completes")
+            if (
+                target == "cancelled"
+                and session.scalar(
+                    select(WorkflowDispatchRow.operation_id)
+                    .where(
+                        WorkflowDispatchRow.operation_id == operation_id,
+                        WorkflowDispatchRow.epoch == epoch,
+                        WorkflowDispatchRow.status == "unknown",
+                    )
+                    .limit(1)
+                )
+                is not None
+            ):
+                raise Conflict("Unknown workflow admission must be reconciled before cancellation")
             row.status = target
             row.revision += 1
             if new_attempt:
@@ -749,6 +769,9 @@ class OperationService:
                     "effect_dispatched",
                     "effect_completed",
                     "effect_reconciled",
+                    "workflow_submission_started",
+                    "workflow_submitted",
+                    "workflow_reconciled",
                 )
             }
             error = None
@@ -816,3 +839,108 @@ class OperationService:
             return InboxOutcome(
                 outcome=outcome, error=error, dispatch=self._dispatch_view(dispatch)
             )
+
+    @staticmethod
+    def _locked_dispatch(session, operation_id, epoch):
+        row = session.scalar(
+            select(WorkflowDispatchRow)
+            .where(
+                WorkflowDispatchRow.operation_id == operation_id, WorkflowDispatchRow.epoch == epoch
+            )
+            .with_for_update()
+        )
+        if row is None:
+            raise NotFound("Workflow dispatch not found")
+        return row
+
+    @observed("operations")
+    def workflow_dispatch(
+        self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int
+    ) -> WorkflowDispatch:
+        with self.sessions.begin() as session:
+            self._locked_operation(session, actor, namespace_id, operation_id)
+            return self._dispatch_view(self._locked_dispatch(session, operation_id, epoch))
+
+    @observed("operations")
+    def begin_workflow_submission(
+        self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int
+    ) -> WorkflowDispatch:
+        with self.sessions.begin() as session:
+            operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
+            row = self._locked_dispatch(session, operation_id, epoch)
+            if row.status == "submitted":
+                return self._dispatch_view(row)
+            if row.status != "pending" or operation.status != "queued":
+                raise Conflict("Workflow dispatch must reconcile before submission")
+            row.status = "unknown"
+            operation.revision += 1
+            self._record_transition(
+                session,
+                actor,
+                operation,
+                "operation.workflow_submission_started",
+                {"dispatch_epoch": epoch, "invocation_key": row.invocation_key},
+            )
+            return self._dispatch_view(row)
+
+    @observed("operations")
+    def complete_workflow_submission(
+        self,
+        actor: Principal,
+        namespace_id: UUID,
+        operation_id: UUID,
+        epoch: int,
+        provider_run_id: UUID,
+    ) -> WorkflowDispatch:
+        with self.sessions.begin() as session:
+            operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
+            row = self._locked_dispatch(session, operation_id, epoch)
+            reference = str(provider_run_id)
+            if row.status == "submitted":
+                if row.provider_reference != reference:
+                    raise Conflict("Workflow result conflicts with committed dispatch")
+                return self._dispatch_view(row)
+            if row.status != "unknown":
+                raise Conflict("Workflow dispatch has not started")
+            row.status, row.provider_reference = "submitted", reference
+            operation.revision += 1
+            self._record_transition(
+                session,
+                actor,
+                operation,
+                "operation.workflow_submitted",
+                {"dispatch_epoch": epoch, "provider_run_id": reference},
+            )
+            return self._dispatch_view(row)
+
+    @observed("operations")
+    def reconcile_workflow_submission(
+        self,
+        actor: Principal,
+        namespace_id: UUID,
+        operation_id: UUID,
+        epoch: int,
+        command: WorkflowReconciliation,
+    ) -> WorkflowDispatch:
+        with self.sessions.begin() as session:
+            operation = self._locked_operation(session, actor, namespace_id, operation_id)
+            row = self._locked_dispatch(session, operation_id, epoch)
+            if row.request_digest != command.request_digest or row.status != "unknown":
+                raise Conflict("Workflow reconciliation is stale or mismatched")
+            row.provider_reference = (
+                str(command.provider_run_id) if command.provider_run_id else None
+            )
+            row.status = "submitted" if command.provider_run_id else "pending"
+            operation.revision += 1
+            self._record_transition(
+                session,
+                actor,
+                operation,
+                "operation.workflow_reconciled",
+                {
+                    "dispatch_epoch": epoch,
+                    "provider_run_id": row.provider_reference,
+                    "evidence": command.evidence,
+                },
+            )
+            return self._dispatch_view(row)

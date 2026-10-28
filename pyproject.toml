@@ -25,6 +25,9 @@ dev = [
     "pytest>=8.3,<10",
     "ruff>=0.11,<1",
 ]
+workflows = [
+    "prefect==3.9.0",
+]
 
 [build-system]
 requires = ["hatchling"]
