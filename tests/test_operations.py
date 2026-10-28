@@ -526,11 +526,12 @@ def test_workflow_unknown_admission_requires_reconciliation_before_cancel(regist
     from verdant.operations import WorkflowReconciliation
 
     service, actor, ns, op, pending = dispatch_fixture(registry, sessions)
-    unknown = service.begin_workflow_submission(actor, ns, op.id, 1)
+    deployment = uuid4()
+    unknown = service.begin_workflow_submission(actor, ns, op.id, 1, deployment)
     assert unknown.status == "unknown"
     assert unknown.invocation_key == pending.invocation_key
     with pytest.raises(Conflict):
-        service.begin_workflow_submission(actor, ns, op.id, 1)
+        service.begin_workflow_submission(actor, ns, op.id, 1, deployment)
     service.request_cancel(actor, ns, op.id, 1)
     with pytest.raises(Conflict, match="workflow admission"):
         service.confirm_cancel(actor, ns, op.id, 1)
@@ -555,7 +556,8 @@ def test_workflow_submission_result_is_idempotent_and_epoch_fenced(registry, ses
     from verdant.operations import WorkflowReconciliation
 
     service, actor, ns, op, _ = dispatch_fixture(registry, sessions)
-    unknown = service.begin_workflow_submission(actor, ns, op.id, 1)
+    deployment = uuid4()
+    unknown = service.begin_workflow_submission(actor, ns, op.id, 1, deployment)
     provider_id = uuid4()
     service.fail(actor, ns, op.id, 1)
     service.retry(actor, ns, op.id, 1)
@@ -576,3 +578,12 @@ def test_workflow_submission_result_is_idempotent_and_epoch_fenced(registry, ses
     assert reconciled.provider_reference == str(provider_id)
     assert service.get(actor, ns, op.id).epoch == 2
     assert service.get(actor, ns, op.id).status == "queued"
+
+
+def test_workflow_deployment_cannot_change_under_same_dispatch(registry, sessions):
+    service, actor, ns, op, _ = dispatch_fixture(registry, sessions)
+    deployment = uuid4()
+    dispatch = service.begin_workflow_submission(actor, ns, op.id, 1, deployment)
+    assert dispatch.deployment_id == deployment
+    with pytest.raises(Conflict, match="deployment differs"):
+        service.begin_workflow_submission(actor, ns, op.id, 1, uuid4())

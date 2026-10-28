@@ -126,6 +126,7 @@ class WorkflowDispatch(Contract):
     invocation_key: str
     request_digest: str
     status: str
+    deployment_id: UUID | None
     provider_reference: str | None
 
 
@@ -863,15 +864,31 @@ class OperationService:
 
     @observed("operations")
     def begin_workflow_submission(
-        self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int
+        self,
+        actor: Principal,
+        namespace_id: UUID,
+        operation_id: UUID,
+        epoch: int,
+        deployment_id: UUID,
     ) -> WorkflowDispatch:
         with self.sessions.begin() as session:
             operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
             row = self._locked_dispatch(session, operation_id, epoch)
+            if row.deployment_id is not None and row.deployment_id != deployment_id:
+                raise Conflict("Workflow deployment differs from the persisted dispatch")
             if row.status == "submitted":
                 return self._dispatch_view(row)
             if row.status != "pending" or operation.status != "queued":
                 raise Conflict("Workflow dispatch must reconcile before submission")
+            if row.deployment_id is None:
+                row.deployment_id = deployment_id
+                row.request_digest = hashlib.sha256(
+                    json.dumps(
+                        {"request_digest": row.request_digest, "deployment_id": str(deployment_id)},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode()
+                ).hexdigest()
             row.status = "unknown"
             operation.revision += 1
             self._record_transition(

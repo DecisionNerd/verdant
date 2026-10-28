@@ -374,6 +374,7 @@ class WorkflowDispatchRow(Base):
     invocation_key: Mapped[str] = mapped_column(String(200))
     request_digest: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(20), server_default="pending")
+    deployment_id: Mapped[UUID | None]
     provider_reference: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
