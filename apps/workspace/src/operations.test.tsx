@@ -64,3 +64,23 @@ it("reuses verification request identity after a lost admission response", async
   expect(calls[0][2]).toEqual(calls[1][2]);
   expect(calls[0][2]).toMatchObject({ sample_id: "sample", revision_id: "revision" });
 });
+
+it("pages prior effects without losing the selected operation or reconciliation status", async () => {
+  history.replaceState(null, "", "/?namespace=ns&view=operations&operation=op");
+  const operation = { id: "op", kind: "verify_sample_artifact", status: "failed", epoch: 1, revision: 2 };
+  vi.mocked(request).mockImplementation(async path => {
+    if (!path.includes("/operations/op")) return { items: [operation], next_after: null };
+    const second = path.includes("after=effect-cursor");
+    return { operation, needs_reconciliation: true, effects: [{ id: second ? "second" : "first", kind: second ? "second-effect" : "first-effect", status: "unknown", revision: 1, result_digest: null }], next_effect_after: second ? null : "effect-cursor" };
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><Operations namespace="ns" csrf="csrf" writable /></QueryClientProvider>);
+  await screen.findByText(/first-effect/);
+  fireEvent.click(screen.getByRole("button", { name: "Next effects" }));
+  await screen.findByText(/second-effect/);
+  expect(screen.getByText(/reconciliation needed/)).toBeTruthy();
+  expect(screen.queryByText(/first-effect/)).toBeNull();
+  expect((screen.getByRole("button", { name: "Next effects" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Previous effects" }));
+  await screen.findByText(/first-effect/);
+});
