@@ -1,3 +1,4 @@
+import { Candidates } from "./candidates";
 import { DraftEditor } from "./draft";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -46,6 +47,7 @@ function MetadataEditor({ dataset, csrf, writable }: { dataset: Dataset; csrf: s
       {writable && <button>Save metadata</button>}</fieldset>
       <button type="button" disabled={busy} onClick={() => void reload()}>Load current revision</button>
     </form>{error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
+    <Candidates key={dataset.id} namespace={dataset.namespace_id} dataset={dataset.id} csrf={csrf} writable={writable} />
     <DraftEditor namespace={dataset.namespace_id} dataset={dataset.id} csrf={csrf} writable={writable} />
   </article>;
 }

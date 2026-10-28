@@ -89,6 +89,16 @@ The runtime registers `verdant-ingestion/local-ingestion` alongside the existing
 
 Upload verification uses bounded batches. Cleanup uses a separate `ingest_cleanup` operation with an immutable namespace-owned parent/epoch pointer. Parent artifact and cleanup receipts remain authoritative; the child owns execution admission and can retry pending observations. Cancelling a cleanup invocation does not finish or cancel its parent. This permits cleanup after the parent native run is already final, without reusing that completed invocation.
 
+## Combined schema and rollout boundary
+
+The released target migration chain is `0011_workflow_deployment` → candidate capture/generations/interpretation (`0012`–`0014`) → ingestion ownership/recovery/execution/sources (`0015`–`0018`). Migration 15 follows 14. Fresh installation and an actual schema-14 writer fixture upgraded to 18 are qualified separately; the latter preserves every preexisting row hash and resumes partial candidate preparation with its original interpretation pins.
+
+Early standalone #14 test databases were created while migration 15 still followed 11. They are historical proof stores: a revision label of 18 does not make them combined-schema databases. Preserve them and use fresh combined proof databases or the verified 14→18 upgrade path. Do not stamp missing candidate migrations as applied. The native qualifier now accepts only its explicit integrated test database.
+
+Roll out matching images with platform writers coordinated: stop API, dispatcher and process workers before migration, retain a coordinated registry/object-store/workflow checkpoint and private inputs, apply the migration job once, register deployments, then start matching API/worker/dispatcher images. Old schema-14 writers must not overlap new ingestion acceptance: an old metadata writer does not know verified artifact bindings. After new ingestion history exists, prefer a forward repair; restoring an old application image alone is not a preserving rollback. Restore a qualified coordinated checkpoint when an older schema is required. Automatic downgrade/reset is not part of this rollout.
+
+The verified test upgrade does not change the deployed platform. Runtime rollout still requires checking the existing partial browser candidate, session persistence and actual upload/source/recovery behavior after the coordinated upgrade.
+
 ## Remaining qualification
 
 Packaged Prefect ingestion/cleanup/source execution, browser upload/source/preview/retry/cancel, process interruptions and retention/fault qualification remain open. Arbitrary HTTP source ingestion is disabled; no URL-fetch endpoint exists. Backend modality storage remains byte-oriented. Inline rendering supports the bounded text/PNG/JPEG paths above; other modalities retain verified original downloads.

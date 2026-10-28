@@ -35,8 +35,8 @@ from verdant.persistence import NamespaceRow, make_sessions
 from verdant.storage import ObjectDigest, ObjectMissing, S3Storage, configured_source_key
 
 ROOT = Path(__file__).resolve().parents[1]
-RECEIPT = Path("/tmp/verdant-issue14-execution-receipt.json")
-POOL = "verdant-issue14-qualification"
+RECEIPT = Path("/tmp/verdant-issue14-integrated-upload-receipt.json")
+POOL = "verdant-issue14-integrated"
 SOURCE_MODE = False
 
 
@@ -96,12 +96,12 @@ def prepare(sessions, storage):
     actor, ns = actor_and_namespace(sessions)
     asyncio.run(ensure_pool())
     verification = verify_artifact.to_deployment(
-        name="issue14-source-regression" if SOURCE_MODE else "issue14-regression",
+        name="issue14-integrated-regression",
         work_pool_name=POOL,
         job_variables={"working_dir": str(ROOT)},
     ).apply()
     ingestion = ingest_operations.to_deployment(
-        name="issue14-source-local" if SOURCE_MODE else "issue14-local",
+        name="issue14-integrated-local",
         work_pool_name=POOL,
         job_variables={"working_dir": str(ROOT)},
     ).apply()
@@ -152,15 +152,7 @@ def prepare(sessions, storage):
         with httpx.Client(timeout=10, trust_env=False) as client:
             client.put(part.url, content=body).raise_for_status()
         service.complete_upload(actor, ns, batch.operation.id, item.id, 1)
-    sources = [
-        "flows.py",
-        "dispatch.py",
-        "ingestion.py",
-        "ingestion_cleanup.py",
-        "ingestion_maintenance.py",
-    ]
-    if SOURCE_MODE:
-        sources = sorted(path.name for path in (ROOT / "src/verdant").glob("*.py"))
+    sources = sorted(path.name for path in (ROOT / "src/verdant").glob("*.py"))
     receipt = {
         "namespace_id": str(ns),
         "principal_id": str(actor.id),
@@ -171,9 +163,7 @@ def prepare(sessions, storage):
         "verification_deployment_id": str(verification),
         "ingestion_deployment_id": str(ingestion),
         "pool": POOL,
-        "database": "verdant_issue14_sources_test"
-        if SOURCE_MODE
-        else "verdant_issue14_reupload_test",
+        "database": "verdant_issue14_integrated_test",
         "mode": "source" if SOURCE_MODE else "upload",
         "source_sha256": {
             name: hashlib.sha256((ROOT / "src/verdant" / name).read_bytes()).hexdigest()
@@ -270,7 +260,7 @@ def observe(sessions, storage):
 
 
 def main():
-    global SOURCE_MODE, POOL, RECEIPT
+    global SOURCE_MODE, RECEIPT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sources", action="store_true")
     parser.add_argument("--worker", action="store_true")
@@ -278,14 +268,13 @@ def main():
     args = parser.parse_args()
     SOURCE_MODE = args.sources
     if SOURCE_MODE:
-        POOL = "verdant-issue14-source-qualification"
-        RECEIPT = Path("/tmp/verdant-issue14-source-execution-receipt.json")
-        os.environ["VERDANT_S3_SOURCE_PREFIX"] = "qualification/issue14-native-sources"
+        RECEIPT = Path("/tmp/verdant-issue14-integrated-source-receipt.json")
+    os.environ["VERDANT_S3_SOURCE_PREFIX"] = "qualification/issue14-integrated-sources"
     url = configure()
-    database = "verdant_issue14_sources_test" if SOURCE_MODE else "verdant_issue14_reupload_test"
+    database = "verdant_issue14_integrated_test"
     if not url.endswith("/" + database):
         raise RuntimeError("This qualifier requires its explicit isolated ingestion proof database")
-    os.environ["PREFECT_WORKER_WEBSERVER_PORT"] = "18423" if SOURCE_MODE else "18422"
+    os.environ["PREFECT_WORKER_WEBSERVER_PORT"] = "18424"
     os.environ["PREFECT_SERVER_ANALYTICS_ENABLED"] = "false"
     if args.worker:
         executable = ROOT / ".venv/bin/prefect"

@@ -438,8 +438,31 @@ class RegistryService:
                     MembershipRow.valid_to.is_(None),
                 )
             )
+            if command.interpretation is not None:
+                interpretation = command.interpretation.model_dump(by_alias=True)
+            elif current is not None:
+                if current.sample_revision_id != revision.id and any(
+                    current.interpretation.get(name) is not None
+                    for name in (
+                        "annotation_revision",
+                        "task_schema_revision",
+                        "review_evidence",
+                        "transformation",
+                    )
+                ):
+                    raise Conflict(
+                        "Changing the sample revision requires explicit replacement "
+                        "or clearing of interpretation evidence"
+                    )
+                interpretation = current.interpretation
+            else:
+                interpretation = c.InterpretationPins().model_dump(by_alias=True)
             if current is not None:
-                if (current.sample_revision_id, current.split) == (revision.id, command.split):
+                if (current.sample_revision_id, current.split, current.interpretation) == (
+                    revision.id,
+                    command.split,
+                    interpretation,
+                ):
                     return c.DraftChange(draft_id=draft.id, revision=draft.revision)
                 current.valid_to = draft.revision + 1
                 # Close the current interval before inserting a new current row.
@@ -452,6 +475,7 @@ class RegistryService:
                     sample_id=sample_id,
                     sample_revision_id=revision.id,
                     split=command.split,
+                    interpretation=interpretation,
                     valid_from=draft.revision,
                 )
             )
@@ -461,7 +485,11 @@ class RegistryService:
                 namespace_id,
                 dataset_id,
                 "draft.membership_set",
-                {"sample_id": str(sample_id), "revision": draft.revision},
+                {
+                    "sample_id": str(sample_id),
+                    "revision": draft.revision,
+                    "interpretation_schema": interpretation["schema"],
+                },
             )
             result = c.DraftChange(draft_id=draft.id, revision=draft.revision)
         return result
@@ -536,6 +564,7 @@ class RegistryService:
                     sample_id=row.sample_id,
                     sample_revision_id=row.sample_revision_id,
                     split=row.split,
+                    interpretation=c.InterpretationPins.model_validate(row.interpretation),
                 )
                 for row in rows[:limit]
             ]

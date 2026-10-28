@@ -24,6 +24,12 @@ from verdant.ingestion import (
 from verdant.operations import OperationService, VerificationRequest
 from verdant.preview import PreviewService
 from verdant.storage import StorageError
+from verdant.versioning import (
+    CandidateCapture,
+    CandidatePrepare,
+    CandidateSelection,
+    VersioningService,
+)
 
 OperationLimit = Annotated[int, Field(ge=1, le=100)]
 OperationEpoch = Annotated[int, Field(ge=1, le=9223372036854775807, strict=True)]
@@ -65,6 +71,7 @@ def create_mcp_app(runtime, *, storage=None):
         bucket=storage.settings.bucket if storage else "unconfigured",
         storage=storage,
     )
+    versioning = VersioningService(runtime.sessions)
 
     def actor() -> Principal:
         token = get_access_token()
@@ -146,6 +153,49 @@ def create_mcp_app(runtime, *, storage=None):
     @mcp.tool()
     async def ingestion_cancel(namespace_id: UUID, operation_id: UUID, epoch: OperationEpoch):
         return await invoke(ingestion.request_cancel, namespace_id, operation_id, epoch)
+
+    @mcp.tool()
+    async def candidate_capture(namespace_id: UUID, dataset_id: UUID, command: CandidateCapture):
+        return await invoke(versioning.capture, namespace_id, dataset_id, command)
+
+    @mcp.tool()
+    async def candidates_list(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        after: UUID | None = None,
+        limit: Annotated[int, Field(ge=1, le=100)] = 25,
+    ):
+        return await invoke(versioning.list_candidates, namespace_id, dataset_id, after, limit)
+
+    @mcp.tool()
+    async def candidate_get(namespace_id: UUID, dataset_id: UUID, candidate_id: UUID):
+        return await invoke(versioning.get, namespace_id, dataset_id, candidate_id)
+
+    @mcp.tool()
+    async def candidate_members(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        candidate_id: UUID,
+        after: UUID | None = None,
+        limit: Annotated[int, Field(ge=1, le=100)] = 25,
+    ):
+        return await invoke(
+            versioning.members, namespace_id, dataset_id, candidate_id, after, limit
+        )
+
+    @mcp.tool()
+    async def candidate_prepare(
+        namespace_id: UUID, dataset_id: UUID, candidate_id: UUID, command: CandidatePrepare
+    ):
+        return await invoke(versioning.prepare, namespace_id, dataset_id, candidate_id, command)
+
+    @mcp.tool()
+    async def candidate_check_selection(
+        namespace_id: UUID, dataset_id: UUID, candidate_id: UUID, command: CandidateSelection
+    ):
+        return await invoke(
+            versioning.check_selection, namespace_id, dataset_id, candidate_id, command
+        )
 
     @mcp.tool()
     async def operation_verify_artifact(namespace_id: UUID, command: VerificationRequest):

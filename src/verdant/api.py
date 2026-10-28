@@ -38,6 +38,15 @@ from verdant.operations import (
 from verdant.persistence import make_sessions
 from verdant.preview import PreviewService, SamplePreview
 from verdant.storage import ObjectCorrupt, ObjectMissing, S3Storage, StorageError
+from verdant.versioning import (
+    Candidate,
+    CandidateCapture,
+    CandidatePage,
+    CandidatePrepare,
+    CandidateSelection,
+    GenerationPage,
+    VersioningService,
+)
 
 
 def verified_principal() -> Principal:
@@ -63,6 +72,7 @@ def create_app(
     ingestion = IngestionService(
         sessions, bucket=storage.settings.bucket if storage else "unconfigured", storage=storage
     )
+    versioning = VersioningService(sessions)
     app = FastAPI(title="Verdant platform", version=str(c.CONTRACT_VERSION))
     app.state.storage = storage
     previews = PreviewService(sessions, storage)
@@ -269,6 +279,59 @@ def create_app(
         namespace_id: UUID, operation_id: UUID, command: OperationAction, actor: Actor
     ):
         return operations.request_reconcile(actor, namespace_id, operation_id, command.epoch)
+
+    candidates = prefix + "/datasets/{dataset_id}/candidates"
+
+    @app.post(candidates, response_model=Candidate, status_code=201)
+    def capture_candidate(
+        namespace_id: UUID, dataset_id: UUID, command: CandidateCapture, actor: Actor
+    ):
+        return versioning.capture(actor, namespace_id, dataset_id, command)
+
+    @app.get(candidates, response_model=CandidatePage)
+    def list_candidates(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        actor: Actor,
+        after: UUID | None = None,
+        limit: int = Query(default=25, ge=1, le=100),
+    ):
+        return versioning.list_candidates(actor, namespace_id, dataset_id, after, limit)
+
+    @app.get(candidates + "/{candidate_id}", response_model=Candidate)
+    def get_candidate(namespace_id: UUID, dataset_id: UUID, candidate_id: UUID, actor: Actor):
+        return versioning.get(actor, namespace_id, dataset_id, candidate_id)
+
+    @app.get(candidates + "/{candidate_id}/members", response_model=GenerationPage)
+    def candidate_members(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        candidate_id: UUID,
+        actor: Actor,
+        after: UUID | None = None,
+        limit: int = Query(default=25, ge=1, le=100),
+    ):
+        return versioning.members(actor, namespace_id, dataset_id, candidate_id, after, limit)
+
+    @app.post(candidates + "/{candidate_id}/prepare", response_model=Candidate)
+    def prepare_candidate(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        candidate_id: UUID,
+        command: CandidatePrepare,
+        actor: Actor,
+    ):
+        return versioning.prepare(actor, namespace_id, dataset_id, candidate_id, command)
+
+    @app.post(candidates + "/{candidate_id}/check-selection", response_model=Candidate)
+    def check_candidate_selection(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        candidate_id: UUID,
+        command: CandidateSelection,
+        actor: Actor,
+    ):
+        return versioning.check_selection(actor, namespace_id, dataset_id, candidate_id, command)
 
     @app.get(prefix + "/datasets", response_model=c.DatasetPage)
     def list_datasets(

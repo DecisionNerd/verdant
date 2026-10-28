@@ -1,9 +1,10 @@
 """Versioned, bounded API and shared-service contracts."""
 
+import hashlib
 import json
 import math
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
@@ -131,13 +132,96 @@ class SamplePage(Contract):
     next_after: UUID | None = None
 
 
+class InlineEvidence(Contract):
+    """Actual bounded immutable content, rather than an unresolvable external identifier."""
+
+    format: str = Field(min_length=1, max_length=200)
+    payload: dict[str, JsonValue]
+    sha256: Digest | None = None
+
+    @model_validator(mode="after")
+    def content_identity(self):
+        encoded = json.dumps(
+            {"format": self.format, "payload": self.payload},
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode()
+        if len(encoded) > 65536:
+            raise ValueError("Inline evidence exceeds 64 KiB")
+        digest = hashlib.sha256(encoded).hexdigest()
+        if self.sha256 is not None and self.sha256 != digest:
+            raise ValueError("Inline evidence digest does not match content")
+        self.sha256 = digest
+        return self
+
+
+class ReviewPin(Contract):
+    """An attributed input record, not a quality-gate approval or reviewer-role assertion."""
+
+    annotation_digest: Digest
+    decision: Literal["accepted", "rejected", "abstained"]
+    rationale: str = Field(min_length=1, max_length=2000)
+
+
+class TransformationPin(InlineEvidence):
+    format: Literal["verdant.transformation.v1"] = "verdant.transformation.v1"
+
+    @model_validator(mode="after")
+    def reproducible_definition(self):
+        if set(self.payload) != {"code", "configuration", "environment"}:
+            raise ValueError("Transformation pins require code, configuration and environment")
+        if not isinstance(self.payload["code"], str) or not self.payload["code"]:
+            raise ValueError("Transformation code must be nonempty text")
+        if not all(
+            isinstance(self.payload[name], dict) for name in ("configuration", "environment")
+        ):
+            raise ValueError("Transformation configuration/environment must be objects")
+        return self
+
+
+class InterpretationPins(Contract):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, serialize_by_alias=True)
+
+    schema_name: Literal["verdant.membership.v1"] = Field(
+        default="verdant.membership.v1", alias="schema"
+    )
+    annotation_revision: InlineEvidence | None = None
+    task_schema_revision: InlineEvidence | None = None
+    review_evidence: ReviewPin | None = None
+    transformation: TransformationPin | None = None
+
+    @model_validator(mode="after")
+    def coherent_pins(self):
+        if self.annotation_revision is not None and self.task_schema_revision is None:
+            raise ValueError("Annotation evidence requires its exact task schema")
+        if self.review_evidence is not None and (
+            self.annotation_revision is None
+            or self.review_evidence.annotation_digest != self.annotation_revision.sha256
+        ):
+            raise ValueError("Review evidence must bind the pinned annotation digest")
+        if (
+            len(
+                json.dumps(
+                    self.model_dump(by_alias=True), ensure_ascii=False, allow_nan=False
+                ).encode()
+            )
+            > 65536
+        ):
+            raise ValueError("Membership interpretation exceeds 64 KiB")
+        return self
+
+
 class MembershipWrite(Contract):
+    interpretation: InterpretationPins | None = None
     expected_revision: Revision
     sample_revision_id: UUID
     split: str = Field(min_length=1, max_length=50, pattern=r"^[a-z][a-z0-9_-]*$")
 
 
 class Membership(Contract):
+    interpretation: InterpretationPins = Field(default_factory=InterpretationPins)
     sample_id: UUID
     sample_revision_id: UUID
     split: str

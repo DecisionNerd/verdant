@@ -1,7 +1,7 @@
 """namespace owned artifact and upload declarations
 
 Revision ID: 0015_ingestion
-Revises: 0011_workflow_deployment
+Revises: 0014_interpretation
 """
 
 import sqlalchemy as sa
@@ -9,7 +9,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0015_ingestion"
-down_revision = "0011_workflow_deployment"
+down_revision = "0014_interpretation"
 branch_labels = None
 depends_on = None
 

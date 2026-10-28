@@ -121,6 +121,59 @@ class DraftRow(Base):
     revision: Mapped[int] = mapped_column(BigInteger, default=0)
 
 
+class CandidateRow(Base):
+    __tablename__ = "publication_candidates"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "draft_id"], ["dataset_drafts.namespace_id", "dataset_drafts.id"]
+        ),
+        ForeignKeyConstraint(["creator_id"], ["principals.id"]),
+        UniqueConstraint("namespace_id", "creator_id", "request_key", name="uq_candidate_request"),
+        UniqueConstraint("namespace_id", "generation_id", name="uq_candidate_generation"),
+        CheckConstraint(
+            "source_revision >= 0 AND prepared_count >= 0", name="ck_candidate_progress"
+        ),
+        CheckConstraint("state IN ('preparing', 'sealed')", name="ck_candidate_state"),
+        CheckConstraint("request_digest ~ '^[0-9a-f]{64}$'", name="ck_candidate_request_digest"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    draft_id: Mapped[UUID]
+    source_revision: Mapped[int] = mapped_column(BigInteger)
+    generation_id: Mapped[UUID]
+    creator_id: Mapped[UUID]
+    request_key: Mapped[str] = mapped_column(String(200))
+    request_digest: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(20), server_default="preparing")
+    prepared_count: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    cursor: Mapped[UUID | None]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class GenerationMemberRow(Base):
+    __tablename__ = "generation_members"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "generation_id"],
+            ["publication_candidates.namespace_id", "publication_candidates.generation_id"],
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "sample_id", "sample_revision_id"],
+            ["sample_revisions.namespace_id", "sample_revisions.sample_id", "sample_revisions.id"],
+        ),
+        CheckConstraint("split ~ '^[a-z][a-z0-9_-]*$'", name="ck_generation_split"),
+        CheckConstraint(
+            "jsonb_typeof(interpretation) = 'object'", name="ck_generation_interpretation"
+        ),
+    )
+    generation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    sample_id: Mapped[UUID] = mapped_column(primary_key=True)
+    namespace_id: Mapped[UUID]
+    sample_revision_id: Mapped[UUID]
+    split: Mapped[str] = mapped_column(String(50))
+    interpretation: Mapped[dict] = mapped_column(JSONB)
+
+
 class SampleRow(Base):
     __tablename__ = "samples"
     __table_args__ = (
@@ -176,6 +229,9 @@ class MembershipRow(Base):
             name="ck_membership_interval",
         ),
         CheckConstraint("split ~ '^[a-z][a-z0-9_-]*$'", name="ck_membership_split"),
+        CheckConstraint(
+            "jsonb_typeof(interpretation) = 'object'", name="ck_membership_interpretation"
+        ),
         ExcludeConstraint(
             ("draft_id", "="),
             ("sample_id", "="),
@@ -198,6 +254,14 @@ class MembershipRow(Base):
     sample_revision_id: Mapped[UUID]
     split: Mapped[str] = mapped_column(String(50))
     valid_to: Mapped[int | None] = mapped_column(BigInteger)
+    interpretation: Mapped[dict] = mapped_column(
+        JSONB,
+        server_default=text(
+            """jsonb_build_object('schema', 'verdant.membership.v1',
+            'annotation_revision', NULL, 'task_schema_revision', NULL,
+            'review_evidence', NULL, 'transformation', NULL)"""
+        ),
+    )
 
 
 class AuditRow(Base):
