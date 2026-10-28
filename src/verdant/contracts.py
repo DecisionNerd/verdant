@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 CONTRACT_VERSION = 1
 EVENT_VERSION = 1
 MANIFEST_VERSION = 1  # Reserved encoding version; publication is not implemented yet.
-SCHEMA_REVISION = "0008_generations"
+SCHEMA_REVISION = "0013_generations"
 
 Slug = Annotated[str, Field(min_length=1, max_length=100, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")]
 Digest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]

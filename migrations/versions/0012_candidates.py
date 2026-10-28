@@ -1,14 +1,13 @@
 """Durable frozen candidate capture.
 
-This task branch starts from accepted main before the operations migration chain.
-Renumber onto the accepted operations head before integration.
+Capture extends the accepted durable operations migration chain.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0007_candidates"
-down_revision = "0006_dataset_metadata"
+revision = "0012_candidates"
+down_revision = "0011_workflow_deployment"
 branch_labels = None
 depends_on = None
 

@@ -1,11 +1,11 @@
-"""Bounded immutable generation preparation; provisional numbering before #19 integration."""
+"""Bounded immutable generation preparation."""
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0008_generations"
-down_revision = "0007_candidates"
+revision = "0013_generations"
+down_revision = "0012_candidates"
 branch_labels = None
 depends_on = None
 
