@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
 from verdant import contracts as c
+from verdant import quality_service as q
 from verdant.application import RegistryService
 from verdant.auth import IdentityRuntime, IdentitySettings
 from verdant.contracts import SAMPLE_INGESTION_KINDS
@@ -67,6 +68,7 @@ def create_app(
     sessions = sessions or make_sessions(os.environ["VERDANT_DATABASE_URL"])
     service = RegistryService(sessions)
     operations = OperationService(sessions)
+    quality = q.QualityService(sessions)
     owns_storage = storage is None
     storage = storage or S3Storage.from_env()
     ingestion = IngestionService(
@@ -133,6 +135,64 @@ def create_app(
         return service.get_namespace(actor, namespace_id)
 
     prefix = "/api/v1/namespaces/{namespace_id}"
+    quality_prefix = prefix + "/datasets/{dataset_id}/quality"
+
+    @app.post(quality_prefix + "/policies", response_model=q.Policy, status_code=201)
+    def create_quality_policy(
+        namespace_id: UUID, dataset_id: UUID, command: q.PolicyCreate, actor: Actor
+    ):
+        return quality.create_policy(actor, namespace_id, dataset_id, command)
+
+    @app.get(quality_prefix + "/policies", response_model=q.PolicyPage)
+    def list_quality_policies(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        actor: Actor,
+        after: UUID | None = None,
+        limit: int = Query(default=25, ge=1, le=100),
+    ):
+        return quality.list_policies(actor, namespace_id, dataset_id, after, limit)
+
+    @app.get(quality_prefix + "/policies/{policy_id}", response_model=q.Policy)
+    def get_quality_policy(namespace_id: UUID, dataset_id: UUID, policy_id: UUID, actor: Actor):
+        return quality.get_policy(actor, namespace_id, dataset_id, policy_id)
+
+    report_prefix = prefix + "/datasets/{dataset_id}/candidates/{candidate_id}/quality/reports"
+
+    @app.post(report_prefix, response_model=q.Report, status_code=202)
+    def start_quality_validation(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        candidate_id: UUID,
+        command: q.ValidationStart,
+        actor: Actor,
+    ):
+        return quality.start(actor, namespace_id, dataset_id, candidate_id, command)
+
+    @app.get(report_prefix, response_model=q.ReportPage)
+    def list_quality_reports(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        candidate_id: UUID,
+        actor: Actor,
+        after: UUID | None = None,
+        limit: int = Query(default=25, ge=1, le=100),
+    ):
+        return quality.list_reports(actor, namespace_id, dataset_id, candidate_id, after, limit)
+
+    @app.get(quality_prefix + "/reports/{report_id}", response_model=q.Report)
+    def get_quality_report(namespace_id: UUID, dataset_id: UUID, report_id: UUID, actor: Actor):
+        return quality.get_report(actor, namespace_id, dataset_id, report_id)
+
+    @app.post(quality_prefix + "/reports/{report_id}/evaluate", response_model=q.Report)
+    def advance_quality_validation(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        report_id: UUID,
+        command: q.ValidationBatch,
+        actor: Actor,
+    ):
+        return quality.advance(actor, namespace_id, dataset_id, report_id, command)
 
     @app.get(
         prefix + "/samples/{sample_id}/revisions/{revision_id}/preview",

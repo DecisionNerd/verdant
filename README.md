@@ -62,3 +62,7 @@ Stop with `docker compose down`; named volumes persist. Do not delete `.local/` 
 The old digestion composition remains in `docker-compose.legacy.yml`, with its original relative paths. It is not started by the root command. Existing legacy volumes and bind-mounted data are untouched. If operating a prior installation, use its original explicit project name with `docker compose -p ORIGINAL_PROJECT -f docker-compose.legacy.yml ...`; do not point the new stack at legacy data or run a reset as a migration.
 
 The [registry workspace guide](docs/engineering/REGISTRY-WORKSPACE.md) covers catalog filters, metadata conflicts, exact sample/draft inspection and session behavior.
+
+The [quality guide](docs/engineering/QUALITY-RULES.md) covers versioned policies,
+sealed-candidate validation, resumable reports and exact offending-revision evidence.
+Publication and artifact-retention enforcement remain under implementation.

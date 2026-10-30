@@ -150,6 +150,84 @@ class CandidateRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class QualityPolicyRow(Base):
+    __tablename__ = "quality_policies"
+    __table_args__ = (
+        UniqueConstraint("namespace_id", "id", name="uq_quality_policy_namespace"),
+        UniqueConstraint(
+            "namespace_id", "dataset_id", "name", "revision", name="uq_quality_policy_revision"
+        ),
+        UniqueConstraint(
+            "namespace_id", "creator_id", "request_key", name="uq_quality_policy_request"
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "dataset_id"], ["datasets.namespace_id", "datasets.id"]
+        ),
+        ForeignKeyConstraint(["creator_id"], ["principals.id"]),
+        CheckConstraint("revision >= 1 AND length(name) > 0", name="ck_quality_policy_revision"),
+        CheckConstraint("jsonb_typeof(definition) = 'object'", name="ck_quality_policy_definition"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    dataset_id: Mapped[UUID]
+    name: Mapped[str] = mapped_column(String(100))
+    revision: Mapped[int] = mapped_column(BigInteger)
+    definition: Mapped[dict] = mapped_column(JSONB)
+    creator_id: Mapped[UUID]
+    request_key: Mapped[str] = mapped_column(String(200))
+    request_digest: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class QualityReportRow(Base):
+    __tablename__ = "quality_reports"
+    __table_args__ = (
+        UniqueConstraint(
+            "namespace_id", "creator_id", "request_key", name="uq_quality_report_request"
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "dataset_id"], ["datasets.namespace_id", "datasets.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "generation_id"],
+            ["publication_candidates.namespace_id", "publication_candidates.generation_id"],
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "policy_id"], ["quality_policies.namespace_id", "quality_policies.id"]
+        ),
+        ForeignKeyConstraint(["candidate_id"], ["publication_candidates.id"]),
+        ForeignKeyConstraint(["creator_id"], ["principals.id"]),
+        CheckConstraint("state IN ('running', 'complete')", name="ck_quality_report_state"),
+        CheckConstraint(
+            "0 <= processed_count AND processed_count <= expected_count",
+            name="ck_quality_report_progress",
+        ),
+        CheckConstraint(
+            "state <> 'complete' OR processed_count = expected_count",
+            name="ck_quality_report_complete",
+        ),
+        CheckConstraint("jsonb_typeof(results) = 'array'", name="ck_quality_report_results"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    dataset_id: Mapped[UUID]
+    candidate_id: Mapped[UUID]
+    generation_id: Mapped[UUID]
+    source_revision: Mapped[int] = mapped_column(BigInteger)
+    policy_id: Mapped[UUID]
+    policy_revision: Mapped[int] = mapped_column(BigInteger)
+    evaluator_version: Mapped[str] = mapped_column(String(100))
+    state: Mapped[str] = mapped_column(String(20), server_default="running")
+    expected_count: Mapped[int] = mapped_column(BigInteger)
+    processed_count: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    cursor: Mapped[UUID | None]
+    results: Mapped[list] = mapped_column(JSONB)
+    creator_id: Mapped[UUID]
+    request_key: Mapped[str] = mapped_column(String(200))
+    request_digest: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class GenerationMemberRow(Base):
     __tablename__ = "generation_members"
     __table_args__ = (

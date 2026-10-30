@@ -380,6 +380,62 @@ def test_api_mcp_share_service_identity_and_namespace_denial(login_app, registry
             },
         )
         assert invalid_page.json()["result"]["isError"]
+        # Quality REST/MCP parity pins an immutable policy/report to this exact generation.
+        quality_args = {"namespace_id": str(ns), "dataset_id": d["id"]}
+
+        def quality_tool(name, arguments):
+            response = client.post(
+                "/mcp/",
+                headers=headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 23,
+                    "method": "tools/call",
+                    "params": {"name": name, "arguments": quality_args | arguments},
+                },
+            )
+            assert response.status_code == 200
+            result = response.json()["result"]
+            assert not result.get("isError"), result
+            return result["structuredContent"]
+
+        policy = quality_tool(
+            "quality_policy_create",
+            {
+                "command": {
+                    "request_key": "transport-policy",
+                    "name": "transport",
+                    "expected_revision": 0,
+                    "definition": {
+                        "rules": [{"id": "size", "kind": "minimum_samples", "minimum": 1}]
+                    },
+                }
+            },
+        )
+        assert (
+            policy == client.get(base + f"/quality/policies/{policy['id']}", headers=headers).json()
+        )
+        quality_report = quality_tool(
+            "quality_validation_start",
+            {
+                "candidate_id": candidate_id,
+                "command": {"request_key": "transport-report", "policy_id": policy["id"]},
+            },
+        )
+        completed = quality_tool(
+            "quality_validation_advance",
+            {
+                "report_id": quality_report["id"],
+                "command": {"expected_count": 0, "limit": 1},
+            },
+        )
+        assert completed["required_rules_pass"] is True
+        assert completed["generation_id"] == members["candidate"]["generation_id"]
+        assert (
+            completed
+            == client.get(base + f"/quality/reports/{completed['id']}", headers=headers).json()
+        )
+        assert quality_tool("quality_report_get", {"report_id": completed["id"]}) == completed
         denied = str(uuid4())
         assert (
             client.get(
