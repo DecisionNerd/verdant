@@ -1,5 +1,6 @@
 """FastMCP transport over the same current-authorization registry use cases."""
 
+import os
 from typing import Annotated
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from fastmcp.server.dependencies import get_access_token
 from pydantic import Field
 from starlette.concurrency import run_in_threadpool
 
+from verdant import publication as p
 from verdant import quality_service as q
 from verdant.access_tokens import InvalidAccessToken
 from verdant.application import RegistryService
@@ -24,7 +26,8 @@ from verdant.ingestion import (
 )
 from verdant.operations import OperationService, VerificationRequest
 from verdant.preview import PreviewService
-from verdant.storage import StorageError
+from verdant.publication_runner import PublicationRunner
+from verdant.storage import StorageError, configured_storage
 from verdant.versioning import (
     CandidateCapture,
     CandidatePrepare,
@@ -74,6 +77,12 @@ def create_mcp_app(runtime, *, storage=None):
     )
     versioning = VersioningService(runtime.sessions)
     quality = q.QualityService(runtime.sessions)
+    publications = p.PublicationService(
+        runtime.sessions,
+        bucket=storage.settings.bucket
+        if storage
+        else os.environ.get("VERDANT_S3_BUCKET", "verdant-artifacts"),
+    )
 
     def actor() -> Principal:
         token = get_access_token()
@@ -86,6 +95,50 @@ def create_mcp_app(runtime, *, storage=None):
             return await run_in_threadpool(method, actor(), *args, **kwargs)
         except (DomainError, StorageError) as exc:
             raise ToolError(str(exc)) from None
+
+    @mcp.tool()
+    async def publication_start(
+        namespace_id: UUID, dataset_id: UUID, candidate_id: UUID, command: p.PublicationStart
+    ):
+        return await invoke(publications.start, namespace_id, dataset_id, candidate_id, command)
+
+    @mcp.tool()
+    async def publications_list(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        candidate_id: UUID,
+        after: UUID | None = None,
+        limit: OperationLimit = 25,
+    ):
+        return await invoke(publications.list, namespace_id, dataset_id, candidate_id, after, limit)
+
+    @mcp.tool()
+    async def publication_get(namespace_id: UUID, dataset_id: UUID, publication_id: UUID):
+        return await invoke(publications.get, namespace_id, dataset_id, publication_id)
+
+    @mcp.tool()
+    async def publication_prepare(
+        namespace_id: UUID, dataset_id: UUID, publication_id: UUID, command: p.PublicationBatch
+    ):
+        try:
+            runner = PublicationRunner(runtime.sessions, storage or configured_storage())
+        except StorageError:
+            raise ToolError("Required artifact storage is unavailable") from None
+        return await invoke(runner.prepare, namespace_id, dataset_id, publication_id, command)
+
+    @mcp.tool()
+    async def publication_finalize(namespace_id: UUID, dataset_id: UUID, publication_id: UUID):
+        return await invoke(publications.finalize, namespace_id, dataset_id, publication_id)
+
+    @mcp.tool()
+    async def publication_renew(namespace_id: UUID, dataset_id: UUID, publication_id: UUID):
+        return await invoke(publications.renew, namespace_id, dataset_id, publication_id)
+
+    @mcp.tool()
+    async def publication_release(
+        namespace_id: UUID, dataset_id: UUID, publication_id: UUID, command: p.PublicationRelease
+    ):
+        return await invoke(publications.release, namespace_id, dataset_id, publication_id, command)
 
     @mcp.tool()
     async def quality_policy_create(namespace_id: UUID, dataset_id: UUID, command: q.PolicyCreate):

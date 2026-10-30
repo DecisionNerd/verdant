@@ -94,6 +94,7 @@ class DatasetRow(Base):
         ForeignKeyConstraint(["namespace_id"], ["namespaces.id"]),
         CheckConstraint("length(name) > 0 AND length(modality) > 0", name="ck_dataset_values"),
         CheckConstraint("revision >= 0", name="ck_dataset_revision"),
+        CheckConstraint("availability IN ('active', 'archived')", name="ck_dataset_availability"),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     namespace_id: Mapped[UUID]
@@ -102,6 +103,7 @@ class DatasetRow(Base):
     name: Mapped[str] = mapped_column(String(200))
     modality: Mapped[str] = mapped_column(String(50))
     revision: Mapped[int] = mapped_column(BigInteger, server_default="0", nullable=False)
+    availability: Mapped[str] = mapped_column(String(20), server_default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -565,12 +567,16 @@ class ArtifactRow(Base):
         ForeignKeyConstraint(["namespace_id"], ["namespaces.id"]),
         CheckConstraint("sha256 ~ '^[0-9a-f]{64}$'", name="ck_artifact_digest"),
         CheckConstraint("size_bytes BETWEEN 0 AND 268435456", name="ck_artifact_size"),
+        CheckConstraint(
+            "collection_state IN ('active', 'deleting', 'deleted')", name="ck_artifact_collection"
+        ),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     namespace_id: Mapped[UUID]
     sha256: Mapped[str] = mapped_column(String(64))
     size_bytes: Mapped[int] = mapped_column(BigInteger)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    collection_state: Mapped[str] = mapped_column(String(20), server_default="active")
 
 
 class ArtifactLocationRow(Base):
@@ -614,6 +620,7 @@ class IngestionItemRow(Base):
         ),
         UniqueConstraint("operation_id", "position", name="uq_ingestion_position"),
         UniqueConstraint("staging_key", name="uq_ingestion_staging"),
+        Index("ix_ingestion_artifact_protection", "namespace_id", "artifact_id", "state"),
         CheckConstraint("position BETWEEN 0 AND 99", name="ck_ingestion_position"),
         CheckConstraint(
             "state IN ('awaiting_upload','uploading','ready','accepted','failed',"
@@ -667,11 +674,125 @@ class SampleArtifactRow(Base):
         ForeignKeyConstraint(
             ["namespace_id", "artifact_id"], ["artifacts.namespace_id", "artifacts.id"]
         ),
+        Index("ix_sample_artifact_protection", "namespace_id", "artifact_id"),
     )
     revision_id: Mapped[UUID] = mapped_column(primary_key=True)
     namespace_id: Mapped[UUID]
     sample_id: Mapped[UUID]
     artifact_id: Mapped[UUID]
+
+
+class PublicationGroupRow(Base):
+    __tablename__ = "publication_groups"
+    __table_args__ = (
+        UniqueConstraint("namespace_id", "id", name="uq_publication_group_namespace"),
+        ForeignKeyConstraint(["namespace_id", "id"], ["operations.namespace_id", "operations.id"]),
+        ForeignKeyConstraint(
+            ["namespace_id", "dataset_id"], ["datasets.namespace_id", "datasets.id"]
+        ),
+        ForeignKeyConstraint(["candidate_id"], ["publication_candidates.id"]),
+        ForeignKeyConstraint(
+            ["namespace_id", "generation_id"],
+            ["publication_candidates.namespace_id", "publication_candidates.generation_id"],
+        ),
+        ForeignKeyConstraint(["report_id"], ["quality_reports.id"]),
+        ForeignKeyConstraint(
+            ["namespace_id", "manifest_artifact_id"], ["artifacts.namespace_id", "artifacts.id"]
+        ),
+        CheckConstraint(
+            "state IN ('building','prepared','published','releasing','released')",
+            name="ck_publication_group_state",
+        ),
+        CheckConstraint(
+            "0 <= prepared_count AND prepared_count <= expected_count AND epoch >= 0",
+            name="ck_publication_group_progress",
+        ),
+        CheckConstraint(
+            "(manifest_artifact_id IS NULL AND manifest_digest IS NULL AND manifest_size IS NULL)"
+            " OR (manifest_artifact_id IS NOT NULL AND manifest_digest IS NOT NULL"
+            " AND manifest_size IS NOT NULL AND manifest_digest ~ '^[0-9a-f]{64}$'"
+            " AND manifest_size BETWEEN 0 AND 268435456)",
+            name="ck_publication_group_manifest",
+        ),
+        Index("ix_publication_group_target", "namespace_id", "dataset_id", "candidate_id", "id"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    namespace_id: Mapped[UUID]
+    dataset_id: Mapped[UUID]
+    candidate_id: Mapped[UUID]
+    generation_id: Mapped[UUID]
+    report_id: Mapped[UUID]
+    expected_count: Mapped[int] = mapped_column(BigInteger)
+    prepared_count: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    cursor: Mapped[UUID | None]
+    state: Mapped[str] = mapped_column(String(20), server_default="building")
+    epoch: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("clock_timestamp() + interval '24 hours'")
+    )
+    manifest_artifact_id: Mapped[UUID | None]
+    manifest_digest: Mapped[str | None] = mapped_column(String(64))
+    manifest_size: Mapped[int | None] = mapped_column(BigInteger)
+    last_error: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RetentionReferenceRow(Base):
+    __tablename__ = "retention_references"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "group_id"],
+            ["publication_groups.namespace_id", "publication_groups.id"],
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "artifact_id"], ["artifacts.namespace_id", "artifacts.id"]
+        ),
+        Index("ix_retention_artifact_group", "artifact_id", "group_id"),
+    )
+    group_id: Mapped[UUID] = mapped_column(primary_key=True)
+    artifact_id: Mapped[UUID] = mapped_column(primary_key=True)
+    namespace_id: Mapped[UUID]
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DatasetVersionRow(Base):
+    __tablename__ = "dataset_versions"
+    __table_args__ = (
+        UniqueConstraint("namespace_id", "dataset_id", "label", name="uq_dataset_version_label"),
+        UniqueConstraint("group_id", name="uq_dataset_version_group"),
+        ForeignKeyConstraint(
+            ["namespace_id", "dataset_id"], ["datasets.namespace_id", "datasets.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "group_id"],
+            ["publication_groups.namespace_id", "publication_groups.id"],
+        ),
+        ForeignKeyConstraint(["candidate_id"], ["publication_candidates.id"]),
+        ForeignKeyConstraint(["report_id"], ["quality_reports.id"]),
+        ForeignKeyConstraint(
+            ["namespace_id", "generation_id"],
+            ["publication_candidates.namespace_id", "publication_candidates.generation_id"],
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "manifest_artifact_id"], ["artifacts.namespace_id", "artifacts.id"]
+        ),
+        CheckConstraint("length(btrim(label)) > 0", name="ck_dataset_version_label"),
+        CheckConstraint("manifest_digest ~ '^[0-9a-f]{64}$'", name="ck_dataset_version_digest"),
+        CheckConstraint("manifest_size BETWEEN 0 AND 268435456", name="ck_dataset_version_size"),
+        Index("ix_dataset_version_page", "namespace_id", "dataset_id", "id"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    dataset_id: Mapped[UUID]
+    label: Mapped[str] = mapped_column(String(100))
+    generation_id: Mapped[UUID]
+    candidate_id: Mapped[UUID]
+    report_id: Mapped[UUID]
+    group_id: Mapped[UUID]
+    manifest_artifact_id: Mapped[UUID]
+    manifest_digest: Mapped[str] = mapped_column(String(64))
+    manifest_size: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class RegistryRepository:

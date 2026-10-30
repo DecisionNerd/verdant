@@ -1,0 +1,777 @@
+{
+  "all_relation_lock_footprints_equal": 0,
+  "cases": [
+    {
+      "application_statement_count": 24,
+      "elapsed_finalization_ms_including_observation": 25.495,
+      "index_lock_count_at_outbox_flush": 49,
+      "index_relation_count_at_outbox_flush": 32,
+      "member_count": 1,
+      "relation_lock_count_at_outbox_flush": 75,
+      "relation_locks_at_outbox_flush": [
+        {
+          "mode": "RowShareLock",
+          "relation": "artifacts",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "artifacts_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "audit_events",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "dataset_drafts",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "dataset_drafts",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "dataset_drafts_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "dataset_versions",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "dataset_versions",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "dataset_versions_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "datasets",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "datasets",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "datasets_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "datasets_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "ix_dataset_version_page",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "ix_publication_group_target",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "ix_publication_group_target",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "namespace_grants",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "namespace_grants",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "namespace_grants_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "namespaces",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "namespaces_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "operation_events",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "operation_events",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "operation_events_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "operation_outbox",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "operations",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "operations",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "operations",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "operations_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "operations_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "operations_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "principals",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "principals",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "principals_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "publication_candidates",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "publication_candidates",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "publication_candidates_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "publication_candidates_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "publication_groups",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "publication_groups",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "publication_groups_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "publication_groups_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "quality_policies",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "quality_policies_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "quality_reports",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "quality_reports",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "quality_reports_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "quality_reports_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_artifact_namespace_id",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_candidate_generation",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_candidate_generation",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_candidate_request",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_candidate_request",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_dataset_draft",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_dataset_namespace_id",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_dataset_namespace_id",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_dataset_slug",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_dataset_slug",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_dataset_version_group",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_dataset_version_label",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_draft_namespace_id",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_operation_event_revision",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_operation_namespace_id",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "uq_operation_namespace_id",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_operation_namespace_id",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_operation_request",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "uq_operation_request",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_operation_request",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "uq_publication_group_namespace",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_publication_group_namespace",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_quality_policy_namespace",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_quality_policy_request",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_quality_policy_revision",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_quality_report_request",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_quality_report_request",
+          "relation_kind": "i"
+        }
+      ],
+      "table_lock_count_at_outbox_flush": 26,
+      "table_relation_count_at_outbox_flush": 15
+    },
+    {
+      "application_statement_count": 24,
+      "elapsed_finalization_ms_including_observation": 27.436,
+      "index_lock_count_at_outbox_flush": 46,
+      "index_relation_count_at_outbox_flush": 29,
+      "member_count": 100,
+      "relation_lock_count_at_outbox_flush": 72,
+      "relation_locks_at_outbox_flush": [
+        {
+          "mode": "RowShareLock",
+          "relation": "artifacts",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "artifacts_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "audit_events",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "dataset_drafts",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "dataset_drafts",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "dataset_versions",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "dataset_versions",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "dataset_versions_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "datasets",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "datasets",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "datasets_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "datasets_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "ix_dataset_version_page",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "ix_publication_group_target",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "ix_publication_group_target",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "namespace_grants",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "namespace_grants",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "namespace_grants_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "namespaces",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "namespaces_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "operation_events",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "operation_events",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "operation_events_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "operation_outbox",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "operations",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "operations",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "operations",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "operations_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "operations_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "operations_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "principals",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "principals",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "principals_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "publication_candidates",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "publication_candidates",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "publication_candidates_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "publication_candidates_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "publication_groups",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "publication_groups",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "publication_groups_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "publication_groups_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "quality_policies",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "quality_policies_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "quality_reports",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "quality_reports",
+          "relation_kind": "r"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "quality_reports_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "quality_reports_pkey",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_artifact_namespace_id",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_candidate_generation",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_candidate_generation",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_candidate_request",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_candidate_request",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_dataset_namespace_id",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_dataset_namespace_id",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_dataset_slug",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_dataset_slug",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_dataset_version_group",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_dataset_version_label",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_operation_event_revision",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_operation_namespace_id",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "uq_operation_namespace_id",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_operation_namespace_id",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_operation_request",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "uq_operation_request",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_operation_request",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowExclusiveLock",
+          "relation": "uq_publication_group_namespace",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_publication_group_namespace",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_quality_policy_namespace",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_quality_policy_request",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_quality_policy_revision",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "AccessShareLock",
+          "relation": "uq_quality_report_request",
+          "relation_kind": "i"
+        },
+        {
+          "mode": "RowShareLock",
+          "relation": "uq_quality_report_request",
+          "relation_kind": "i"
+        }
+      ],
+      "table_lock_count_at_outbox_flush": 26,
+      "table_relation_count_at_outbox_flush": 15
+    }
+  ],
+  "implementation_source_version": "bce3fc5e1c68ca7814e2d66a3bc54cace7a07fa9",
+  "limits": {
+    "contended_latency_measured": 0,
+    "index_lock_variation_cause_identified": 0,
+    "observer_time_included": 1,
+    "production_capacity_measured": 0,
+    "row_lock_identity_measured": 0,
+    "samples_per_size": 1,
+    "transaction_protocol_statements_counted": 0,
+    "trigger_internal_statements_counted": 0
+  },
+  "postgresql_version_num": 170006,
+  "schema_version": 1
+}

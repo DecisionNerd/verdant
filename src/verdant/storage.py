@@ -272,21 +272,42 @@ class S3Storage:
         with SpooledTemporaryFile(max_size=CHUNK_BYTES, mode="w+b") as spool:
             self.verify(staging_key, expected, destination=spool)
             spool.seek(0)
-            try:
-                self.client.put_object(
-                    Bucket=self.settings.bucket,
-                    Key=final_key,
-                    Body=spool,
-                    ContentLength=expected.size_bytes,
-                    IfNoneMatch="*",
-                )
-            except ClientError as exc:
-                if exc.response["ResponseMetadata"]["HTTPStatusCode"] != 412:
-                    raise _translate(exc) from None
-            except BotoCoreError as exc:
+            return self.write_immutable(final_key, spool, expected)
+
+    def write_immutable(self, key: str, source: BinaryIO, expected: ObjectDigest):
+        """Conditionally store a verified seekable file and reconcile by exact readback.
+
+        A durable caller must protect the artifact before invoking this method. The
+        final key and digest stay identical across retries, including a lost response.
+        """
+        try:
+            return self.verify(key, expected)
+        except ObjectMissing:
+            pass
+        digest, size = hashlib.sha256(), 0
+        source.seek(0)
+        while chunk := source.read(CHUNK_BYTES):
+            size += len(chunk)
+            if size > expected.size_bytes:
+                raise ObjectCorrupt("Local artifact exceeds declared size")
+            digest.update(chunk)
+        if size != expected.size_bytes or digest.hexdigest() != expected.sha256:
+            raise ObjectCorrupt("Local artifact bytes differ from declared digest")
+        source.seek(0)
+        try:
+            self.client.put_object(
+                Bucket=self.settings.bucket,
+                Key=key,
+                Body=source,
+                ContentLength=expected.size_bytes,
+                IfNoneMatch="*",
+            )
+        except ClientError as exc:
+            if exc.response["ResponseMetadata"]["HTTPStatusCode"] != 412:
                 raise _translate(exc) from None
-        # Conditional-write replay and lost responses reconcile against actual final bytes.
-        return self.verify(final_key, expected)
+        except BotoCoreError as exc:
+            raise _translate(exc) from None
+        return self.verify(key, expected)
 
     def sign_read(self, key: str):
         # Force attachment. Text/image preview belongs to a sandboxed rendering boundary.
@@ -334,3 +355,11 @@ class S3Storage:
 
     def delete_one(self, key: str):
         self._call("delete_object", Key=key)
+
+
+def configured_storage() -> S3Storage:
+    """Require the existing deployment storage configuration for byte operations."""
+    storage = S3Storage.from_env()
+    if storage is None:
+        raise StorageUnavailable("Artifact storage is not configured for this deployment")
+    return storage

@@ -436,6 +436,48 @@ def test_api_mcp_share_service_identity_and_namespace_denial(login_app, registry
             == client.get(base + f"/quality/reports/{completed['id']}", headers=headers).json()
         )
         assert quality_tool("quality_report_get", {"report_id": completed["id"]}) == completed
+        publication = quality_tool(
+            "publication_start",
+            {
+                "candidate_id": candidate_id,
+                "command": {
+                    "request_key": "transport-publication",
+                    "label": "transport-v1",
+                    "report_id": completed["id"],
+                    "mode": "selected_candidate",
+                },
+            },
+        )
+        assert publication["state"] == "building"
+        assert publication["generation_id"] == completed["generation_id"]
+        assert (
+            publication
+            == client.get(base + f"/publications/{publication['id']}", headers=headers).json()
+        )
+        assert quality_tool("publication_get", {"publication_id": publication["id"]}) == publication
+        premature = client.post(
+            "/mcp/",
+            headers=headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 24,
+                "method": "tools/call",
+                "params": {
+                    "name": "publication_finalize",
+                    "arguments": quality_args | {"publication_id": publication["id"]},
+                },
+            },
+        ).json()["result"]
+        assert premature["isError"]
+        assert "Complete artifact protection" in premature["content"][0]["text"]
+        assert (
+            client.post(
+                base + f"/publications/{publication['id']}/finalize",
+                headers=headers,
+                json={"ready": True},
+            ).status_code
+            == 422
+        )
         denied = str(uuid4())
         assert (
             client.get(
