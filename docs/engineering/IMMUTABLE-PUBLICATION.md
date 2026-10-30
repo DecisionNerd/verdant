@@ -210,7 +210,7 @@ object writes nor supplies a safe reset or garbage-collection plan.
 
 Accepted #14 landed through PR #53. This implementation does not establish native Prefect
 publication dispatch, #18 exact-version consumption/archive completion, production
-capacity or default-branch delivery. The #15 owner retains its independent browser
-acceptance gate. See [original qualification](../proofs/issue-17/publication.md) and
+capacity. The candidate two-session gate is covered by the executable
+[automated lifecycle regression](../proofs/issue-15/automated-browser.md). See [original qualification](../proofs/issue-17/publication.md) and
 [accepted-ingestion reconciliation](../proofs/issue-17/ingestion-reconciliation.md)
 for the exact tested stacks and remaining gates.

@@ -1,5 +1,8 @@
 # Accepted ingestion reconciliation
 
+Follow-up: the [automated two-session lifecycle test](../issue-15/automated-browser.md)
+passed and replaces the manual browser gate mentioned in this historical receipt.
+
 On 2026-10-30, accepted main `0c2960123437485cdf5f93cceafc5cf613ceb6c6`
 (#53, #14) was merged into the owned quality branch without rewriting its history.
 The accepted ingestion, source, upload, preview, cleanup and execution paths are

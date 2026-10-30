@@ -1,5 +1,8 @@
 # Lifecycle reconciliation with accepted main
 
+Follow-up: the [automated two-session lifecycle test](../issue-15/automated-browser.md)
+passed and replaces the manual browser gate mentioned in this historical receipt.
+
 On 2026-10-30 the owned #50 → #51 → #52 stack was reconciled with accepted main
 `0c2960123437485cdf5f93cceafc5cf613ceb6c6` (#53, #14). This retains accepted
 ingestion/source/retry/cleanup/preview behavior and adds quality, publication and

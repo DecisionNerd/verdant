@@ -69,6 +69,6 @@ The [publication guide](docs/engineering/IMMUTABLE-PUBLICATION.md) covers protec
 artifact preparation and atomic immutable publication on the development stack.
 The [consumption guide](docs/engineering/VERSION-CONSUMPTION.md) covers exact
 version/manifest reads, verified previews/downloads, recorded lineage and
-revision-checked archive/deprecation controls. These development slices retain
-their separate qualification and upstream landing gates; they do not establish
-complete-platform or default-branch delivery.
+revision-checked archive/deprecation controls. These slices have separate qualification receipts and an automated authenticated
+[full lifecycle regression](docs/proofs/issue-15/automated-browser.md). They do not
+establish complete-platform or production capacity qualification.

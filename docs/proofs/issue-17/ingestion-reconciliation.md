@@ -1,5 +1,8 @@
 # Publication over accepted ingestion
 
+Follow-up: the [automated two-session lifecycle test](../issue-15/automated-browser.md)
+passed and replaces the manual browser gate mentioned in this historical receipt.
+
 The 2026-10-30 reconciliation merges the quality integration over accepted main
 `0c296012` (#53) into the owned publication branch, preserving accepted source,
 retry, preview, execution and staging-cleanup behavior. Quality is `0019_quality`;

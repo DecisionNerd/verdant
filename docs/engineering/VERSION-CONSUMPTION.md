@@ -206,9 +206,9 @@ decision; it is not routine recovery from an unavailable provider.
 This stack follows accepted #14 ingestion (PR #53) through `0018_ingestion_sources`,
 then quality `0019_quality` and publication `0020_publication`. The earlier unmerged
 development migration heads are retained only in their isolated proof databases;
-they are not canonical upgrade sources. The #15 owner retains its independent
-browser acceptance gate. Quality/publication draft PRs #50/#51 and this implementation are not default-branch
-delivery. Optional Evidently/provider integration, general binary previews, full
+they are not canonical upgrade sources. The independent two-session candidate
+workflow and integrated lifecycle now have an executable
+[browser regression](../proofs/issue-15/automated-browser.md) that runs in CI. Optional Evidently/provider integration, general binary previews, full
 external lineage, cloud capacity and lifecycle epic #3 completion are not claimed
 from this bounded consumption slice. See the separate
 [original qualification](../proofs/issue-18/consumption.md) and
