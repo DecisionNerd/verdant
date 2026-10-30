@@ -292,3 +292,45 @@ def test_promotion_python_memory_is_bounded_below_artifact_size(storage, record_
         tracemalloc.stop()
     record_property("promotion_python_peak_bytes", peak)
     assert peak < 12 * 1024 * 1024
+
+
+def test_environment_configuration_signs_browser_endpoint_without_network(monkeypatch):
+    from urllib.parse import urlsplit
+
+    monkeypatch.setenv("VERDANT_S3_ENDPOINT", "http://objects:8333")
+    monkeypatch.setenv("VERDANT_S3_BROWSER_ENDPOINT", "http://127.0.0.1:18333")
+    monkeypatch.setenv("VERDANT_S3_BUCKET", "test-private")
+    monkeypatch.setenv("VERDANT_S3_ACCESS_KEY", "fixture-key")
+    monkeypatch.setenv("VERDANT_S3_SECRET_KEY", "fixture-secret")
+    monkeypatch.setenv("VERDANT_INSECURE_LOCAL_HTTP", "1")
+    adapter = S3Storage.from_env()
+    try:
+        signed = urlsplit(adapter.sign_part("staging/fixture", "fixture-upload", 1, 1))
+        assert signed.netloc == "127.0.0.1:18333"
+        assert adapter.client.meta.endpoint_url == "http://objects:8333"
+        assert "fixture-secret" not in signed.query
+    finally:
+        adapter.close()
+
+
+def test_environment_missing_endpoint_and_incomplete_credentials(monkeypatch):
+    monkeypatch.delenv("VERDANT_S3_ENDPOINT", raising=False)
+    assert S3Storage.from_env() is None
+    monkeypatch.setenv("VERDANT_S3_ENDPOINT", "https://store.test")
+    monkeypatch.setenv("VERDANT_S3_ACCESS_KEY", "fixture-key")
+    monkeypatch.delenv("VERDANT_S3_SECRET_KEY", raising=False)
+    with pytest.raises(ValueError, match="Incomplete"):
+        S3Storage.from_env()
+
+
+def test_missing_signing_credentials_returns_safe_storage_error(storage, monkeypatch):
+    from botocore.exceptions import NoCredentialsError
+
+    adapter, _ = storage
+
+    def unavailable(*args, **kwargs):
+        raise NoCredentialsError()
+
+    monkeypatch.setattr(adapter.signer, "generate_presigned_url", unavailable)
+    with pytest.raises(StorageUnavailable, match="unavailable or denied"):
+        adapter.sign_part("staging", "fixture-upload", 1, 1)

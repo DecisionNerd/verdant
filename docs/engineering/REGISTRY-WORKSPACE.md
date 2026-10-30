@@ -2,6 +2,8 @@
 
 The implemented React/Vite workspace supports authorized catalog discovery, metadata editing, and revisioned draft membership. It is served by the existing backend-owned Keycloak session. It does not publish immutable dataset versions or ingest arbitrary files; those workflows belong to later slices.
 
+Backend upload transport is described in [Verified ingestion](INGESTION.md); its UI and native ingestion execution remain in progress.
+
 ## Start and sign in
 
 Follow [local Compose setup](../../infrastructure/compose/README.md). Open http://127.0.0.1:18800 and sign in with an organizational account admitted to the workspace. An operator binds the exact issuer/subject and grants namespace read or write access through the existing [identity operations](../infra/identity-operations.md). Email is display information, never an identity key.

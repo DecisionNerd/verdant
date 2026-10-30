@@ -23,6 +23,8 @@ from verdant.collection import ArtifactCollector
 from verdant.contracts import DatasetCreate, MembershipWrite, SampleCreate
 from verdant.domain import Conflict, Forbidden, NotFound
 from verdant.identity import IdentityService
+from verdant.ingestion_maintenance import IngestionMaintenance
+from verdant.ingestion_runner import IngestionRunner
 from verdant.manifest import write_manifest
 from verdant.persistence import (
     ArtifactLocationRow,
@@ -30,6 +32,7 @@ from verdant.persistence import (
     AuditRow,
     DatasetRow,
     DatasetVersionRow,
+    IngestionItemRow,
     OperationEventRow,
     OperationRow,
     OutboxRow,
@@ -231,6 +234,132 @@ def prepare(fixture, publication):
 
 def scalar_count(session, model, ns):
     return session.scalar(select(func.count()).select_from(model).where(model.namespace_id == ns))
+
+
+@pytest.fixture
+def ingested_publication(ready_ingestion, registry, sessions):
+    """Real accepted upload through publication, without seeding artifact bindings."""
+    create, actor, ns, adapter = ready_ingestion
+    registry_service, _, _ = registry
+    body = b"Accepted upload survives publication and staging cleanup."
+    ingestion, batch = create([("publication-source", body)], metadata={"label": "cat"})
+    accepted = IngestionRunner(sessions, adapter).run(actor, ns, batch.operation.id, 1)
+    assert accepted.operation.status == "succeeded"
+    item = accepted.items[0]
+    assert item.state == "accepted" and accepted.cleanup_operation_id is not None
+    dataset = registry_service.create_dataset(
+        actor, ns, DatasetCreate(name="Ingested publication", slug="ingested", modality="text")
+    )
+    registry_service.set_membership(
+        actor,
+        ns,
+        dataset.id,
+        item.sample_id,
+        MembershipWrite(
+            expected_revision=0, sample_revision_id=item.accepted_revision_id, split="train"
+        ),
+    )
+    versioning = VersioningService(sessions)
+    candidate = versioning.capture(
+        actor, ns, dataset.id, CandidateCapture(request_key=str(uuid4()), expected_revision=1)
+    )
+    candidate = versioning.prepare(
+        actor, ns, dataset.id, candidate.id, CandidatePrepare(expected_count=0, limit=25)
+    )
+    quality = QualityService(sessions)
+    policy = quality.create_policy(
+        actor,
+        ns,
+        dataset.id,
+        PolicyCreate(
+            request_key=str(uuid4()),
+            name="accepted_upload",
+            expected_revision=0,
+            definition=QualityDefinition.model_validate(
+                {
+                    "rules": [
+                        {"id": "count", "kind": "minimum_samples", "minimum": 1},
+                        {"id": "label", "kind": "required_metadata", "key": "label"},
+                    ]
+                }
+            ),
+        ),
+    )
+    report = quality.start(
+        actor,
+        ns,
+        dataset.id,
+        candidate.id,
+        ValidationStart(request_key=str(uuid4()), policy_id=policy.id),
+    )
+    report = quality.advance(
+        actor, ns, dataset.id, report.id, ValidationBatch(expected_count=0, limit=25)
+    )
+    assert report.required_rules_pass
+    fixture = SimpleNamespace(
+        actor=actor,
+        ns=ns,
+        dataset=dataset,
+        candidate=candidate,
+        report=report,
+        storage=adapter,
+        body=body,
+        item=item,
+        ingestion=ingestion,
+        batch=accepted,
+        service=PublicationService(sessions, bucket=adapter.settings.bucket),
+        runner=PublicationRunner(sessions, adapter),
+    )
+    group = prepare(fixture, start(fixture)[0])
+    fixture.result = fixture.service.finalize(actor, ns, dataset.id, group.id)
+    return fixture
+
+
+def test_accepted_upload_and_linked_staging_cleanup_preserve_published_artifacts(
+    ingested_publication, sessions
+):
+    fixture = ingested_publication
+    with sessions() as session:
+        staging = session.get(IngestionItemRow, fixture.item.id).staging_key
+    cleaned = IngestionMaintenance(sessions, fixture.storage).run(
+        fixture.actor, fixture.ns, fixture.batch.cleanup_operation_id, 1
+    )
+    assert cleaned.status == "succeeded"
+    with pytest.raises(ObjectMissing):
+        fixture.storage.verify(staging, ObjectDigest(fixture.item.sha256, fixture.item.size_bytes))
+    assert (
+        IngestionMaintenance(sessions, fixture.storage).run(
+            fixture.actor, fixture.ns, fixture.batch.cleanup_operation_id, 1
+        )
+        == cleaned
+    )
+    replayed = IngestionRunner(sessions, fixture.storage).run(
+        fixture.actor, fixture.ns, fixture.batch.operation.id, 1
+    )
+    assert replayed.items == fixture.batch.items
+    with sessions() as session:
+        version = session.get(DatasetVersionRow, fixture.result.version_id)
+        for artifact_id in [fixture.item.artifact_id, version.manifest_artifact_id]:
+            artifact = session.get(ArtifactRow, artifact_id)
+            location = session.scalar(
+                select(ArtifactLocationRow).where(ArtifactLocationRow.artifact_id == artifact_id)
+            )
+            output = io.BytesIO()
+            fixture.storage.verify(
+                location.object_key,
+                ObjectDigest(artifact.sha256, artifact.size_bytes),
+                destination=output,
+            )
+            if artifact_id == fixture.item.artifact_id:
+                assert output.getvalue() == fixture.body
+            else:
+                (member,) = json.loads(output.getvalue())["members"]
+                assert member["sample_revision_id"] == str(fixture.item.accepted_revision_id)
+                assert member["artifact"]["id"] == str(fixture.item.artifact_id)
+            with pytest.raises(Conflict, match="protected"):
+                ArtifactCollector(sessions, fixture.storage).claim(
+                    fixture.actor, fixture.ns, artifact_id
+                )
 
 
 @pytest.mark.parametrize("fault", ["manifest_too_large", "preparation_io_unavailable"])

@@ -1,14 +1,14 @@
 """Mutable catalog availability over immutable published version content.
 
-Revision ID: 0018_availability
-Revises: 0017_publication
+Revision ID: 0021_availability
+Revises: 0020_publication
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0018_availability"
-down_revision = "0017_publication"
+revision = "0021_availability"
+down_revision = "0020_publication"
 branch_labels = None
 depends_on = None
 

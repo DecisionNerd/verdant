@@ -8,10 +8,11 @@ from prefect.client.schemas.actions import WorkPoolCreate
 from prefect.workers.process import ProcessWorker
 
 from verdant.dispatch import serve
-from verdant.flows import verify_artifact
+from verdant.flows import ingest_operations, verify_artifact
 
 POOL = "verdant-local"
 DEPLOYMENT = "local-verification"
+INGESTION_DEPLOYMENT = "local-ingestion"
 
 
 async def ensure_pool():
@@ -32,7 +33,10 @@ async def dispatch():
         deployment = await client.read_deployment_by_name(
             f"verdant-artifact-verification/{DEPLOYMENT}"
         )
-    await serve(None, deployment.id)
+        ingestion = await client.read_deployment_by_name(
+            f"verdant-ingestion/{INGESTION_DEPLOYMENT}"
+        )
+    await serve(None, deployment.id, ingestion.id)
 
 
 def main():
@@ -43,6 +47,9 @@ def main():
         asyncio.run(ensure_pool())
         verify_artifact.to_deployment(
             name=DEPLOYMENT, work_pool_name=POOL, job_variables={"working_dir": "/app"}
+        ).apply()
+        ingest_operations.to_deployment(
+            name=INGESTION_DEPLOYMENT, work_pool_name=POOL, job_variables={"working_dir": "/app"}
         ).apply()
     else:
         asyncio.run(dispatch())

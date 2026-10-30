@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
+from test_publication import ingested_publication as ingested_publication
 from test_publication import prepare, start, while_blocked
 from test_publication import publication_fixture as publication_fixture
 
@@ -23,6 +24,7 @@ from verdant.consumption import (
 from verdant.contracts import DatasetUpdate, MembershipWrite, SampleCreate, SampleRevise
 from verdant.domain import Conflict, Forbidden, NotFound
 from verdant.identity import IdentityService
+from verdant.ingestion_maintenance import IngestionMaintenance
 from verdant.operations import OperationService, VerificationRequest
 from verdant.persistence import (
     ArtifactLocationRow,
@@ -195,6 +197,37 @@ def test_exact_manifest_members_and_partial_lineage_are_retained(consumed):
     assert "object_key" not in first.model_dump_json()
     assert first.quality_report.id == fixture.report.id
     assert first.quality_policy.id == fixture.policy.id
+
+
+def test_actual_ingestion_publication_and_cleanup_preserve_archived_exact_reads(
+    ingested_publication, sessions
+):
+    fixture = ingested_publication
+    reader = ConsumptionService(sessions, fixture.storage)
+    args = fixture.actor, fixture.ns, fixture.dataset.id, fixture.result.version_id
+    version = reader.get_version(*args)
+    (member,) = reader.members(*args).items
+    assert member.sample_revision_id == fixture.item.accepted_revision_id
+    assert member.artifact.id == fixture.item.artifact_id
+    assert (
+        IngestionMaintenance(sessions, fixture.storage)
+        .run(fixture.actor, fixture.ns, fixture.batch.cleanup_operation_id, 1)
+        .status
+        == "succeeded"
+    )
+    reader.dataset_availability(
+        fixture.actor,
+        fixture.ns,
+        fixture.dataset.id,
+        DatasetAvailability(expected_revision=0, action="archive"),
+    )
+    reader.version_availability(*args, VersionAvailability(expected_revision=0, action="archive"))
+    assert reader.preview(*args, fixture.item.sample_id).text == fixture.body.decode()
+    output = io.BytesIO()
+    receipt = reader.stream_manifest(*args, output)
+    assert receipt.sha256 == version.manifest_digest
+    assert hashlib.sha256(output.getvalue()).hexdigest() == version.manifest_digest
+    assert reader.list_versions(fixture.actor, fixture.ns, fixture.dataset.id).total == 0
 
 
 def test_old_content_survives_metadata_draft_and_availability_changes(consumed):
@@ -647,7 +680,7 @@ def test_utf8_preview_is_bounded_and_binary_is_explicit(consumed, sessions):
 
 def test_rest_download_redirect_hides_signed_credentials_from_descriptors(consumed):
     fixture, reader, version = consumed()
-    app = create_app(reader.sessions, artifact_storage=fixture.storage)
+    app = create_app(reader.sessions, storage=fixture.storage)
     app.dependency_overrides[verified_principal] = lambda: fixture.actor
     base = f"/api/v1/namespaces/{fixture.ns}/datasets/{fixture.dataset.id}"
     with TestClient(app) as client:
@@ -668,7 +701,7 @@ def test_rest_download_redirect_hides_signed_credentials_from_descriptors(consum
         assert client.get(path + "/download", follow_redirects=False).status_code == 307
         fixture.storage.delete_one(fixture.source_key)
         failure = client.get(path + "/preview")
-        assert failure.status_code == 409 and "missing" in failure.json()["detail"]
+        assert failure.status_code == 404 and "missing" in failure.json()["detail"]
         assert fixture.source_key not in str(failure.json())
         archive = client.post(
             base + "/availability", json={"expected_revision": 0, "action": "archive"}

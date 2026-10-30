@@ -1,6 +1,7 @@
 """FastAPI composition over shared services. Identity verification is supplied by #11."""
 
 import os
+from contextlib import asynccontextmanager
 from typing import Annotated
 from uuid import UUID
 
@@ -15,7 +16,19 @@ from verdant import publication as p
 from verdant import quality_service as q
 from verdant.application import RegistryService
 from verdant.auth import IdentityRuntime, IdentitySettings
-from verdant.domain import Conflict, DomainError, Forbidden, NotFound, Principal
+from verdant.contracts import SAMPLE_INGESTION_KINDS
+from verdant.domain import DomainError, Forbidden, NotFound, Principal
+from verdant.ingestion import (
+    IngestionBatch,
+    IngestionService,
+    ReuploadRequest,
+    SignedUploadPart,
+    SourceRegistrationRequest,
+    UploadLimits,
+    UploadPartRequest,
+    UploadProgress,
+    UploadRequest,
+)
 from verdant.logging import configure_access_logging
 from verdant.operations import (
     Operation,
@@ -26,6 +39,7 @@ from verdant.operations import (
     VerificationRequest,
 )
 from verdant.persistence import make_sessions
+from verdant.preview import PreviewService, SamplePreview
 from verdant.publication_runner import PublicationRunner
 from verdant.storage import (
     ObjectCorrupt,
@@ -56,43 +70,50 @@ Actor = Annotated[Principal, Depends(verified_principal)]
 def create_app(
     sessions: sessionmaker[Session] | None = None,
     identity_settings: IdentitySettings | None = None,
-    artifact_storage: S3Storage | None = None,
+    *,
+    storage: S3Storage | None = None,
 ) -> FastAPI:
     configure_access_logging()
     sessions = sessions or make_sessions(os.environ["VERDANT_DATABASE_URL"])
     service = RegistryService(sessions)
     operations = OperationService(sessions)
     quality = q.QualityService(sessions)
-    consumption = read.ConsumptionService(sessions, artifact_storage)
+    owns_storage = storage is None
+    storage = storage or S3Storage.from_env()
+    ingestion = IngestionService(
+        sessions, bucket=storage.settings.bucket if storage else "unconfigured", storage=storage
+    )
+    consumption = read.ConsumptionService(sessions, storage)
     publications = p.PublicationService(
         sessions,
-        bucket=artifact_storage.settings.bucket
-        if artifact_storage
+        bucket=storage.settings.bucket
+        if storage
         else os.environ.get("VERDANT_S3_BUCKET", "verdant-artifacts"),
     )
     versioning = VersioningService(sessions)
     app = FastAPI(title="Verdant platform", version=str(c.CONTRACT_VERSION))
+    app.state.storage = storage
+    previews = PreviewService(sessions, storage)
     identity_settings = identity_settings or IdentitySettings.from_env()
     if identity_settings is not None:
         IdentityRuntime(sessions, identity_settings).install(app, verified_principal)
 
     @app.exception_handler(DomainError)
     async def domain_error(request: Request, exc: DomainError):
-        code = {Forbidden: 403, NotFound: 404, Conflict: 409}[type(exc)]
+        code = 403 if isinstance(exc, Forbidden) else 404 if isinstance(exc, NotFound) else 409
         return JSONResponse(status_code=code, content={"detail": str(exc)})
 
     @app.exception_handler(StorageError)
     async def storage_error(request: Request, exc: StorageError):
-        if isinstance(exc, ObjectMissing):
-            detail = "Retained bytes are missing. Restore a verified copy before retrying."
-        elif isinstance(exc, ObjectCorrupt):
-            detail = "Retained bytes failed digest verification. Restore a verified copy."
-        else:
-            detail = "Required artifact storage is unavailable"
+        code = (
+            404
+            if isinstance(exc, ObjectMissing)
+            else 409
+            if isinstance(exc, ObjectCorrupt)
+            else 503
+        )
         return JSONResponse(
-            status_code=409 if isinstance(exc, (ObjectMissing, ObjectCorrupt)) else 503,
-            content={"detail": detail},
-            headers={"Cache-Control": "no-store"},
+            status_code=code, content={"detail": str(exc)}, headers={"Cache-Control": "no-store"}
         )
 
     @app.get("/health/live")
@@ -265,7 +286,7 @@ def create_app(
         command: p.PublicationBatch,
         actor: Actor,
     ):
-        return PublicationRunner(sessions, artifact_storage or configured_storage()).prepare(
+        return PublicationRunner(sessions, storage or configured_storage()).prepare(
             actor, namespace_id, dataset_id, publication_id, command
         )
 
@@ -363,6 +384,109 @@ def create_app(
         actor: Actor,
     ):
         return quality.advance(actor, namespace_id, dataset_id, report_id, command)
+
+    @app.get(
+        prefix + "/samples/{sample_id}/revisions/{revision_id}/preview",
+        response_model=SamplePreview,
+    )
+    def preview_sample(namespace_id: UUID, sample_id: UUID, revision_id: UUID, actor: Actor):
+        result = previews.get(actor, namespace_id, sample_id, revision_id)
+        return JSONResponse(result.model_dump(mode="json"), headers={"Cache-Control": "no-store"})
+
+    @app.get(prefix + "/ingestions/limits", response_model=UploadLimits)
+    def upload_limits(namespace_id: UUID, actor: Actor):
+        return ingestion.limits(actor, namespace_id)
+
+    @app.get(prefix + "/ingestions", response_model=OperationPage)
+    def list_ingestions(
+        namespace_id: UUID,
+        actor: Actor,
+        after: UUID | None = None,
+        limit: int = Query(default=25, ge=1, le=100),
+    ):
+        return operations.list_operations(
+            actor, namespace_id, after, limit, kind=SAMPLE_INGESTION_KINDS
+        )
+
+    @app.post(prefix + "/ingestions/uploads", response_model=IngestionBatch, status_code=202)
+    def admit_upload(namespace_id: UUID, command: UploadRequest, actor: Actor):
+        ingestion.require_storage(actor, namespace_id)
+        return ingestion.admit(actor, namespace_id, command)
+
+    @app.post(prefix + "/ingestions/sources", response_model=IngestionBatch, status_code=202)
+    def register_sources(namespace_id: UUID, command: SourceRegistrationRequest, actor: Actor):
+        return ingestion.admit_source(actor, namespace_id, command)
+
+    @app.post(prefix + "/ingestions/reuploads", response_model=IngestionBatch, status_code=202)
+    def reupload(namespace_id: UUID, command: ReuploadRequest, actor: Actor):
+        ingestion.require_storage(actor, namespace_id)
+        return ingestion.reupload(actor, namespace_id, command)
+
+    @app.get(prefix + "/ingestions/{operation_id}", response_model=IngestionBatch)
+    def get_ingestion(namespace_id: UUID, operation_id: UUID, actor: Actor):
+        return ingestion.get(actor, namespace_id, operation_id)
+
+    @app.post(
+        prefix + "/ingestions/{operation_id}/items/{item_id}/initiate",
+        response_model=IngestionBatch,
+    )
+    def initiate_upload(
+        namespace_id: UUID,
+        operation_id: UUID,
+        item_id: UUID,
+        command: OperationAction,
+        actor: Actor,
+    ):
+        return ingestion.initiate_upload(actor, namespace_id, operation_id, item_id, command.epoch)
+
+    @app.post(
+        prefix + "/ingestions/{operation_id}/items/{item_id}/sign-part",
+        response_model=SignedUploadPart,
+    )
+    def sign_upload_part(
+        namespace_id: UUID,
+        operation_id: UUID,
+        item_id: UUID,
+        command: UploadPartRequest,
+        actor: Actor,
+    ):
+        return ingestion.sign_upload_part(
+            actor, namespace_id, operation_id, item_id, command.epoch, command.part_number
+        )
+
+    @app.get(
+        prefix + "/ingestions/{operation_id}/items/{item_id}/parts", response_model=UploadProgress
+    )
+    def upload_progress(
+        namespace_id: UUID,
+        operation_id: UUID,
+        item_id: UUID,
+        actor: Actor,
+        epoch: int = Query(ge=1, le=9223372036854775807),
+    ):
+        return ingestion.upload_progress(actor, namespace_id, operation_id, item_id, epoch)
+
+    @app.post(
+        prefix + "/ingestions/{operation_id}/items/{item_id}/complete",
+        response_model=IngestionBatch,
+        status_code=202,
+    )
+    def complete_upload(
+        namespace_id: UUID,
+        operation_id: UUID,
+        item_id: UUID,
+        command: OperationAction,
+        actor: Actor,
+    ):
+        return ingestion.complete_upload(actor, namespace_id, operation_id, item_id, command.epoch)
+
+    @app.post(
+        prefix + "/ingestions/{operation_id}/cancel", response_model=IngestionBatch, status_code=202
+    )
+    def cancel_ingestion(
+        namespace_id: UUID, operation_id: UUID, command: OperationAction, actor: Actor
+    ):
+        return ingestion.request_cancel(actor, namespace_id, operation_id, command.epoch)
 
     @app.post(prefix + "/operations/verify-artifact", response_model=Operation, status_code=202)
     def verify_artifact(namespace_id: UUID, command: VerificationRequest, actor: Actor):
@@ -562,4 +686,16 @@ def create_app(
             actor, namespace_id, dataset_id, revision=revision, after=after, limit=limit
         )
 
+    previous_lifespan = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(application):
+        try:
+            async with previous_lifespan(application):
+                yield
+        finally:
+            if owns_storage and storage is not None:
+                storage.close()
+
+    app.router.lifespan_context = lifespan
     return app

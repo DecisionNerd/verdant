@@ -1,0 +1,20 @@
+{
+  "namespace_id": "36cf9557-a20e-4e1f-8abe-5542ab20550e",
+  "fixture": "New empty namespace, no grants; retained after qualification",
+  "actor": "Existing Compose Owner browser session",
+  "requested_view": "ingestions",
+  "requested_ingestion_id": "4f0bafda-2de7-4152-ac74-c644bfebdee7",
+  "actual_namespace_http_status": 403,
+  "visible_error": "You do not have permission for this workspace.",
+  "ingestion_controls_and_history_hidden": true,
+  "grant_count": 0,
+  "operation_count": 0,
+  "sample_count": 0,
+  "screenshot": "browser/inaccessible-workspace.png",
+  "limits": [
+    "No read-only principal qualification",
+    "No mid-session grant revocation qualification",
+    "No new denied account login qualification",
+    "No independent Chrome proof"
+  ]
+}

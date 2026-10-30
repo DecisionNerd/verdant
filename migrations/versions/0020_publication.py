@@ -1,14 +1,14 @@
 """Aggregate publication retention and immutable dataset versions.
 
-Revision ID: 0017_publication
-Revises: 0016_quality
+Revision ID: 0020_publication
+Revises: 0019_quality
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0017_publication"
-down_revision = "0016_quality"
+revision = "0020_publication"
+down_revision = "0019_quality"
 branch_labels = None
 depends_on = None
 

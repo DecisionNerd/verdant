@@ -1,15 +1,16 @@
 """Namespace-owned ingestion declarations composed with durable operation admission."""
 
 import hashlib
+import json
 from datetime import timedelta
 from uuid import UUID, uuid4
 
-from pydantic import Field, JsonValue, model_validator
+from pydantic import Field, JsonValue, ValidationError, field_validator, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from verdant.application import RegistryService
-from verdant.contracts import Contract, Digest, Revision, SampleContent
+from verdant.contracts import SAMPLE_INGESTION_KINDS, Contract, Digest, Revision, SampleContent
 from verdant.domain import Conflict, NotFound, Principal
 from verdant.identity import current_principal
 from verdant.operations import (
@@ -17,6 +18,7 @@ from verdant.operations import (
     EffectRequest,
     EffectResult,
     Operation,
+    OperationAction,
     OperationRequest,
     OperationService,
 )
@@ -24,6 +26,7 @@ from verdant.persistence import (
     ArtifactLocationRow,
     ArtifactRow,
     EffectReceiptRow,
+    IngestionCleanupTaskRow,
     IngestionItemRow,
     OperationRow,
     RegistryRepository,
@@ -38,6 +41,8 @@ from verdant.storage import (
     ObjectMissing,
     S3Storage,
     StorageUnavailable,
+    configured_source_key,
+    validate_source_path,
 )
 from verdant.telemetry import observed
 
@@ -52,6 +57,7 @@ class UploadDeclaration(Contract):
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
     target_sample_id: UUID | None = None
     expected_revision: Revision | None = None
+    retry_of_item_id: UUID | None = None
 
     @model_validator(mode="after")
     def revision_target(self):
@@ -84,9 +90,49 @@ class UploadRequest(Contract):
         )
 
 
+class SourceDeclaration(UploadDeclaration):
+    source_object: str = Field(min_length=1, max_length=500)
+
+    @field_validator("source_object")
+    @classmethod
+    def canonical_key(cls, value):
+        return validate_source_path(value)
+
+    @model_validator(mode="after")
+    def no_source_retry_origin(self):
+        if self.retry_of_item_id is not None:
+            raise ValueError("Retry source verification or use explicit linked re-upload")
+        return self
+
+
+class SourceRegistrationRequest(UploadRequest):
+    items: list[SourceDeclaration] = Field(min_length=1, max_length=100)
+
+    def operation_request(self):
+        return OperationRequest(
+            request_key=self.request_key,
+            kind="ingest_source",
+            inputs={"items": [item.model_dump(mode="json") for item in self.items]},
+        )
+
+
+class ReuploadRequest(Contract):
+    request_key: str = Field(min_length=1, max_length=200)
+    item_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def distinct_items(self):
+        if len(set(self.item_ids)) != len(self.item_ids):
+            raise ValueError("Recovery cannot repeat an item identity")
+        return self
+
+
 class IngestionItem(Contract):
     id: UUID
     artifact_id: UUID
+    retry_of_item_id: UUID | None
+    replacement_operation_id: UUID | None = None
+    replacement_item_id: UUID | None = None
     position: int
     source_key: str
     modality: str
@@ -96,11 +142,13 @@ class IngestionItem(Contract):
     error: str | None
     sample_id: UUID | None
     accepted_revision_id: UUID | None
+    source_object: str | None = None
 
 
 class IngestionBatch(Contract):
     operation: Operation
     items: list[IngestionItem]
+    cleanup_operation_id: UUID | None = None
 
 
 class SignedUploadPart(Contract):
@@ -108,6 +156,19 @@ class SignedUploadPart(Contract):
     size_bytes: int
     url: str = Field(repr=False)
     expires_in: int = URL_SECONDS
+
+
+class UploadPartRequest(OperationAction):
+    part_number: int = Field(ge=1, le=32, strict=True)
+
+
+class UploadLimits(Contract):
+    configured: bool
+    sources_configured: bool = False
+    max_artifact_bytes: int = MAX_ARTIFACT_BYTES
+    max_items: int = 100
+    part_bytes: int = PART_BYTES
+    signed_url_seconds: int = URL_SECONDS
 
 
 class UploadedPart(Contract):
@@ -162,6 +223,21 @@ class IngestionService:
             raise ValueError("Ingestion storage does not match configured bucket")
         self.storage = storage
 
+    def require_storage(self, actor, namespace_id):
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id, write=True)
+        if self.storage is None:
+            raise StorageUnavailable("Upload storage is not configured")
+
+    def limits(self, actor, namespace_id):
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id)
+        return UploadLimits(
+            configured=self.storage is not None,
+            sources_configured=self.storage is not None
+            and self.storage.settings.source_prefix is not None,
+        )
+
     @staticmethod
     def _view(session, operation):
         rows = session.execute(
@@ -178,14 +254,44 @@ class IngestionService:
             .order_by(IngestionItemRow.position)
             .limit(100)
         ).all()
+        replacements = {}
+        if rows:
+            children = session.scalars(
+                select(IngestionItemRow)
+                .where(
+                    IngestionItemRow.namespace_id == operation.namespace_id,
+                    IngestionItemRow.retry_of_item_id.in_([item.id for item, artifact in rows]),
+                )
+                .limit(100)
+            ).all()
+            replacements = {child.retry_of_item_id: child for child in children}
         return IngestionBatch(
             operation=OperationService._view(operation),
+            cleanup_operation_id=session.scalar(
+                select(IngestionCleanupTaskRow.operation_id).where(
+                    IngestionCleanupTaskRow.namespace_id == operation.namespace_id,
+                    IngestionCleanupTaskRow.parent_operation_id == operation.id,
+                    IngestionCleanupTaskRow.parent_epoch == operation.epoch,
+                )
+            ),
             items=[
                 IngestionItem(
                     id=item.id,
                     artifact_id=item.artifact_id,
+                    retry_of_item_id=item.retry_of_item_id,
+                    replacement_operation_id=replacements[item.id].operation_id
+                    if item.id in replacements
+                    else None,
+                    replacement_item_id=replacements[item.id].id
+                    if item.id in replacements
+                    else None,
                     position=item.position,
                     source_key=item.source_key,
+                    source_object=(
+                        operation.inputs["items"][item.position]["source_object"]
+                        if operation.kind == "ingest_source"
+                        else None
+                    ),
                     modality=item.modality,
                     sha256=artifact.sha256,
                     size_bytes=artifact.size_bytes,
@@ -198,11 +304,115 @@ class IngestionService:
             ],
         )
 
+    def _retry_origins(self, session, actor, namespace_id, command):
+        declarations = {
+            item.retry_of_item_id: item for item in command.items if item.retry_of_item_id
+        }
+        if not declarations:
+            return {}
+        origins = session.scalars(
+            select(IngestionItemRow).where(
+                IngestionItemRow.namespace_id == namespace_id,
+                IngestionItemRow.id.in_(declarations),
+            )
+        ).all()
+        if len(origins) != len(declarations):
+            raise NotFound("Re-upload origin not found")
+        # Parent operations precede their items in lock order. Sort multi-parent recovery batches.
+        parents = {
+            operation_id: self.operations._locked_operation(
+                session, actor, namespace_id, operation_id
+            )
+            for operation_id in sorted({item.operation_id for item in origins}, key=str)
+        }
+        for parent_id, parent in parents.items():
+            count = sum(item.operation_id == parent_id for item in origins)
+            if parent.revision > 9223372036854775807 - count:
+                raise Conflict("Operation revision limit reached")
+        result = {}
+        for origin in origins:
+            parent = parents[origin.operation_id]
+            session.refresh(origin, with_for_update=True)
+            if parent.kind not in SAMPLE_INGESTION_KINDS or parent.status not in {
+                "failed",
+                "cancelled",
+            }:
+                raise Conflict("Re-upload requires a failed or cancelled original operation")
+            if origin.state in {"accepted", "superseded"}:
+                raise Conflict("Accepted or already re-uploaded items cannot be re-uploaded")
+            if parent.revision == 9223372036854775807:
+                raise Conflict("Operation revision limit reached")
+            declaration = declarations[origin.id]
+            artifact = session.get(ArtifactRow, origin.artifact_id)
+            original = (
+                origin.source_key,
+                origin.modality,
+                artifact.sha256,
+                artifact.size_bytes,
+                origin.target_sample_id,
+                origin.expected_revision,
+            )
+            requested = (
+                declaration.source_key,
+                declaration.modality,
+                declaration.sha256,
+                declaration.size_bytes,
+                declaration.target_sample_id,
+                declaration.expected_revision,
+            )
+            if original != requested or json.dumps(
+                origin.metadata_json, sort_keys=True
+            ) != json.dumps(declaration.metadata, sort_keys=True):
+                raise Conflict(
+                    "Re-upload must preserve the declaration; register changed inputs separately"
+                )
+            result[origin.id] = (origin, parent)
+        return result
+
     @observed("ingestion")
     def admit(self, actor: Principal, namespace_id: UUID, command: UploadRequest):
+        return self._admit_ingestion(actor, namespace_id, command, command.operation_request())
+
+    @observed("ingestion")
+    def admit_source(self, actor, namespace_id, command: SourceRegistrationRequest):
+        self.require_storage(actor, namespace_id)
+        prefix = self.storage.settings.source_prefix
+        if prefix is None:
+            raise StorageUnavailable("Source registration is not configured")
+        try:
+            for item in command.items:
+                configured_source_key(prefix, namespace_id, item.source_object)
+        except ValueError:
+            raise Conflict("Source key exceeds the configured namespace bounds") from None
+        request = command.operation_request()
+        request = request.model_copy(
+            update={
+                "inputs": request.inputs
+                | {
+                    "source_scope": {
+                        "store_id": self.store_id,
+                        "bucket": self.bucket,
+                        "prefix": prefix,
+                    }
+                }
+            }
+        )
+        # Revalidate the complete pinned request, including source scope, against shared bounds.
+        try:
+            request = OperationRequest.model_validate(request.model_dump())
+        except ValidationError:
+            raise Conflict("Pinned source inputs exceed limits; select fewer items") from None
+        return self._admit_ingestion(actor, namespace_id, command, request)
+
+    def _admit_ingestion(self, actor, namespace_id, command, request):
+        source_registration = request.kind == "ingest_source"
         with self.sessions.begin() as session:
             operation = self.operations._admit(
-                session, actor, namespace_id, command.operation_request(), initial_status="running"
+                session,
+                actor,
+                namespace_id,
+                request,
+                initial_status="queued" if source_registration else "running",
             )
             row = self.operations._locked_operation(session, actor, namespace_id, operation.id)
             prior = session.scalar(
@@ -210,6 +420,7 @@ class IngestionService:
             )
             if prior is not None:
                 return self._view(session, row)
+            retries = self._retry_origins(session, actor, namespace_id, command)
             expires_at = session.scalar(select(func.clock_timestamp())) + UPLOAD_TTL
             for position, declaration in enumerate(command.items):
                 if declaration.target_sample_id is not None:
@@ -241,6 +452,21 @@ class IngestionService:
                 ):
                     raise Conflict("Source identity already exists; select sample replacement")
                 artifact_id, item_id = uuid4(), uuid4()
+                if declaration.retry_of_item_id is not None:
+                    original, parent = retries[declaration.retry_of_item_id]
+                    original.state = "superseded"
+                    parent.revision += 1
+                    self.operations._record_transition(
+                        session,
+                        actor,
+                        parent,
+                        "operation.ingestion_item_superseded",
+                        {
+                            "item_id": str(original.id),
+                            "replacement_operation_id": str(row.id),
+                            "replacement_item_id": str(item_id),
+                        },
+                    )
                 session.add(
                     ArtifactRow(
                         id=artifact_id,
@@ -259,22 +485,25 @@ class IngestionService:
                         object_key=f"{namespace_id}/artifacts/{artifact_id}",
                     )
                 )
-                session.add(
-                    IngestionItemRow(
-                        id=item_id,
-                        namespace_id=namespace_id,
-                        operation_id=row.id,
-                        position=position,
-                        artifact_id=artifact_id,
-                        source_key=declaration.source_key,
-                        modality=declaration.modality,
-                        metadata_json=declaration.metadata,
-                        target_sample_id=declaration.target_sample_id,
-                        expected_revision=declaration.expected_revision,
-                        staging_key=f"{namespace_id}/staging/{item_id}",
-                        expires_at=expires_at,
-                    )
+                item = IngestionItemRow(
+                    id=item_id,
+                    namespace_id=namespace_id,
+                    operation_id=row.id,
+                    retry_of_item_id=declaration.retry_of_item_id,
+                    position=position,
+                    artifact_id=artifact_id,
+                    source_key=declaration.source_key,
+                    modality=declaration.modality,
+                    metadata_json=declaration.metadata,
+                    target_sample_id=declaration.target_sample_id,
+                    expected_revision=declaration.expected_revision,
+                    staging_key=f"{namespace_id}/staging/{item_id}",
+                    expires_at=expires_at,
                 )
+                session.add(item)
+                if source_registration:
+                    session.flush()
+                    item.state = "ready"
             session.flush()
             return self._view(session, row)
 
@@ -283,15 +512,62 @@ class IngestionService:
         with self.sessions.begin() as session:
             current_principal(session, actor.id).require(namespace_id)
             row = session.scalar(
-                select(OperationRow).where(
+                select(OperationRow)
+                .where(
                     OperationRow.namespace_id == namespace_id,
                     OperationRow.id == operation_id,
-                    OperationRow.kind == "ingest_upload",
+                    OperationRow.kind.in_(SAMPLE_INGESTION_KINDS),
                 )
+                .with_for_update(read=True)
             )
             if row is None:
                 raise NotFound("Ingestion operation not found")
             return self._view(session, row)
+
+    @observed("ingestion")
+    def reupload(self, actor, namespace_id, command: ReuploadRequest):
+        with self.sessions.begin() as session:
+            current_principal(session, actor.id).require(namespace_id, write=True)
+            rows = session.execute(
+                select(IngestionItemRow, ArtifactRow)
+                .join(
+                    ArtifactRow,
+                    (ArtifactRow.id == IngestionItemRow.artifact_id)
+                    & (ArtifactRow.namespace_id == IngestionItemRow.namespace_id),
+                )
+                .where(
+                    IngestionItemRow.namespace_id == namespace_id,
+                    IngestionItemRow.id.in_(command.item_ids),
+                )
+                .limit(100)
+            ).all()
+            if len(rows) != len(command.item_ids):
+                raise NotFound("Re-upload origin not found")
+            by_id = {item.id: (item, artifact) for item, artifact in rows}
+            declarations = []
+            for item_id in command.item_ids:
+                item, artifact = by_id[item_id]
+                declarations.append(
+                    UploadDeclaration(
+                        source_key=item.source_key,
+                        modality=item.modality,
+                        sha256=artifact.sha256,
+                        size_bytes=artifact.size_bytes,
+                        metadata=item.metadata_json,
+                        target_sample_id=item.target_sample_id,
+                        expected_revision=item.expected_revision,
+                        retry_of_item_id=item.id,
+                    )
+                )
+            try:
+                request = UploadRequest(request_key=command.request_key, items=declarations)
+            except ValidationError:
+                raise Conflict(
+                    "Recovery inputs conflict or exceed limits; select fewer items"
+                ) from None
+        # Declaration fields are immutable; admission rechecks current grants and origin state
+        # under parent/item locks before committing the replacement operation.
+        return self.admit(actor, namespace_id, request)
 
     def _upload_item(
         self, session, actor, namespace_id, operation_id, item_id, epoch, *, allow_ready=False
@@ -601,7 +877,10 @@ class IngestionService:
             operation = self.operations._locked_operation(
                 session, actor, namespace_id, operation_id, epoch
             )
-            if operation.kind != "ingest_upload" or operation.status not in {"queued", "running"}:
+            if operation.kind not in SAMPLE_INGESTION_KINDS or operation.status not in {
+                "queued",
+                "running",
+            }:
                 raise Conflict("Operation does not permit ingestion verification")
             pending = session.scalar(
                 select(IngestionItemRow.id)
@@ -629,7 +908,10 @@ class IngestionService:
         operation = self.operations._locked_operation(
             session, actor, namespace_id, operation_id, epoch
         )
-        if operation.kind != "ingest_upload" or operation.status not in {"running", "succeeded"}:
+        if operation.kind not in SAMPLE_INGESTION_KINDS or operation.status not in {
+            "running",
+            "succeeded",
+        }:
             raise Conflict("Operation does not permit sample acceptance")
         item = session.scalar(
             select(IngestionItemRow)
@@ -664,15 +946,61 @@ class IngestionService:
             raise StorageUnavailable(
                 "Stored artifact location is unavailable in this configuration"
             )
-        source = IngestionSource(
+        return (
+            operation,
+            item,
+            artifact,
+            self._promotion_source(operation, item, artifact, location),
+        )
+
+    def _promotion_source(self, operation, item, artifact, location, *, require_configuration=True):
+        source_key = item.staging_key
+        if operation.kind == "ingest_source":
+            try:
+                scope = operation.inputs["source_scope"]
+                declaration = SourceDeclaration.model_validate(
+                    operation.inputs["items"][item.position]
+                )
+                if set(scope) != {"store_id", "bucket", "prefix"} or (
+                    scope["store_id"],
+                    scope["bucket"],
+                ) != (self.store_id, self.bucket):
+                    raise ValueError("Source storage differs")
+                if (
+                    declaration.source_key,
+                    declaration.modality,
+                    declaration.sha256,
+                    declaration.size_bytes,
+                    declaration.metadata,
+                    declaration.target_sample_id,
+                    declaration.expected_revision,
+                ) != (
+                    item.source_key,
+                    item.modality,
+                    artifact.sha256,
+                    artifact.size_bytes,
+                    item.metadata_json,
+                    item.target_sample_id,
+                    item.expected_revision,
+                ):
+                    raise ValueError("Source declaration differs")
+                if require_configuration and (
+                    self.storage is None or self.storage.settings.source_prefix != scope["prefix"]
+                ):
+                    raise StorageUnavailable("Recorded source scope is not enabled")
+                source_key = configured_source_key(
+                    scope["prefix"], operation.namespace_id, declaration.source_object
+                )
+            except (KeyError, IndexError, TypeError, ValueError):
+                raise Conflict("Stored source declaration is invalid") from None
+        return IngestionSource(
             item_id=item.id,
             artifact_id=artifact.id,
-            staging_key=item.staging_key,
+            staging_key=source_key,
             final_key=location.object_key,
             sha256=artifact.sha256,
             size_bytes=artifact.size_bytes,
         )
-        return operation, item, artifact, source
 
     @observed("ingestion")
     def verification_source(self, actor, namespace_id, operation_id, item_id, epoch):
@@ -834,6 +1162,8 @@ class IngestionService:
                 "operation.succeeded" if remaining is None else "operation.ingestion_item_accepted",
                 {"item_id": str(item_id), "sample_revision_id": str(revision.id)},
             )
+            if remaining is None:
+                self._admit_cleanup(session, actor, operation)
             return self._view(session, operation)
 
     @observed("ingestion")
@@ -859,7 +1189,7 @@ class IngestionService:
                 .with_for_update()
             )
             if (
-                operation.kind != "ingest_upload"
+                operation.kind not in SAMPLE_INGESTION_KINDS
                 or operation.status != "running"
                 or item is None
                 or item.state != "ready"
@@ -880,3 +1210,86 @@ class IngestionService:
                 },
             )
             return self._view(session, operation)
+
+    @observed("ingestion")
+    def request_cancel(self, actor, namespace_id, operation_id, epoch, *, expired_only=False):
+        with self.sessions.begin() as session:
+            operation = self.operations._locked_operation(
+                session, actor, namespace_id, operation_id, epoch
+            )
+            if operation.kind not in SAMPLE_INGESTION_KINDS:
+                raise Conflict("Unsupported ingestion operation kind")
+            if operation.status in {"cancellation_requested", "cancelled"}:
+                self._admit_cleanup(session, actor, operation)
+                return self._view(session, operation)
+            if operation.status not in {"running", "queued", "failed"}:
+                raise Conflict("Operation does not permit cancellation")
+            if expired_only:
+                expired = session.scalar(
+                    select(IngestionItemRow.id)
+                    .where(
+                        IngestionItemRow.operation_id == operation_id,
+                        IngestionItemRow.state.in_(["awaiting_upload", "uploading"]),
+                        IngestionItemRow.expires_at <= func.clock_timestamp(),
+                    )
+                    .limit(1)
+                )
+                if expired is None:
+                    raise Conflict("Operation has no expired incomplete upload")
+            if operation.revision == 9223372036854775807:
+                raise Conflict("Operation revision limit reached")
+            operation.status = "cancellation_requested"
+            operation.revision += 1
+            self.operations._record_transition(
+                session,
+                actor,
+                operation,
+                extra={"reason": "upload_expired" if expired_only else "user_requested"},
+            )
+            self._admit_cleanup(session, actor, operation)
+            return self._view(session, operation)
+
+    def _admit_cleanup(self, session, actor, parent):
+        if parent.kind not in SAMPLE_INGESTION_KINDS or parent.status not in {
+            "cancellation_requested",
+            "cancelled",
+            "succeeded",
+        }:
+            raise Conflict("Parent operation does not permit cleanup admission")
+        existing = session.scalar(
+            select(IngestionCleanupTaskRow).where(
+                IngestionCleanupTaskRow.namespace_id == parent.namespace_id,
+                IngestionCleanupTaskRow.parent_operation_id == parent.id,
+                IngestionCleanupTaskRow.parent_epoch == parent.epoch,
+            )
+        )
+        if existing is not None:
+            return self.operations._view(session.get(OperationRow, existing.operation_id))
+        child = self.operations._admit(
+            session,
+            actor,
+            parent.namespace_id,
+            OperationRequest(
+                request_key=f"ingestion-cleanup:{parent.id}:{parent.epoch}",
+                kind="ingest_cleanup",
+                inputs={"parent_operation_id": str(parent.id), "parent_epoch": parent.epoch},
+            ),
+        )
+        session.add(
+            IngestionCleanupTaskRow(
+                operation_id=child.id,
+                namespace_id=parent.namespace_id,
+                parent_operation_id=parent.id,
+                parent_epoch=parent.epoch,
+            )
+        )
+        session.flush()
+        return child
+
+    @observed("ingestion")
+    def ensure_cleanup(self, actor, namespace_id, operation_id, epoch):
+        with self.sessions.begin() as session:
+            parent = self.operations._locked_operation(
+                session, actor, namespace_id, operation_id, epoch
+            )
+            return self._admit_cleanup(session, actor, parent)

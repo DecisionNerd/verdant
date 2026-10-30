@@ -1,0 +1,109 @@
+{
+  "checkpoint": "schema14-to18-b9cf094-20261028T052358Z",
+  "clone_network": "verdant-issue14-restore-016e6d30",
+  "isolation": {
+    "internal_network": true,
+    "host_ports": false,
+    "required_unique_database_marker": true
+  },
+  "before": {
+    "schema": "0014_interpretation",
+    "all_old_table_hashes_match": true,
+    "old_table_count": 22,
+    "partial_count": 100,
+    "expected_frozen_member_count": 101,
+    "source_members_sha256": "25741e70c7f695e3d282f9575500b2d60c105e7356566d774736aaba694022b4",
+    "restored_keycloak_service_identity_verified": true,
+    "verified_original_object_count": 3,
+    "provider_references": [
+      {
+        "provider_run_id": "5b781660-60ec-467f-8203-958ce277abd1",
+        "state": "Completed"
+      },
+      {
+        "provider_run_id": "a9a52fde-71b5-43cd-a9d5-293bc74bfdfd",
+        "state": "Completed"
+      },
+      {
+        "provider_run_id": "c06b0d5b-7e0f-4a2d-932e-97426d99c7cd",
+        "state": "Failed"
+      },
+      {
+        "provider_run_id": "a9439a63-cae4-47d3-8686-1a7e67677999",
+        "state": "Failed"
+      },
+      {
+        "provider_run_id": "71d65053-1d9a-455d-acfe-a73eaeff85cf",
+        "state": "Completed"
+      },
+      {
+        "provider_run_id": "9c9ccbca-cddb-4d3e-be7e-edfae3d67a2a",
+        "state": "Crashed"
+      }
+    ]
+  },
+  "after": {
+    "schema": "0018_ingestion_sources",
+    "all_old_table_hashes_match": true,
+    "old_table_count": 22,
+    "partial_count": 100,
+    "expected_frozen_member_count": 101,
+    "source_members_sha256": "25741e70c7f695e3d282f9575500b2d60c105e7356566d774736aaba694022b4",
+    "restored_keycloak_service_identity_verified": true,
+    "verified_original_object_count": 3,
+    "provider_references": [
+      {
+        "provider_run_id": "5b781660-60ec-467f-8203-958ce277abd1",
+        "state": "Completed"
+      },
+      {
+        "provider_run_id": "a9a52fde-71b5-43cd-a9d5-293bc74bfdfd",
+        "state": "Completed"
+      },
+      {
+        "provider_run_id": "c06b0d5b-7e0f-4a2d-932e-97426d99c7cd",
+        "state": "Failed"
+      },
+      {
+        "provider_run_id": "a9439a63-cae4-47d3-8686-1a7e67677999",
+        "state": "Failed"
+      },
+      {
+        "provider_run_id": "71d65053-1d9a-455d-acfe-a73eaeff85cf",
+        "state": "Completed"
+      },
+      {
+        "provider_run_id": "9c9ccbca-cddb-4d3e-be7e-edfae3d67a2a",
+        "state": "Crashed"
+      }
+    ],
+    "cloned_candidate_resumed_and_sealed_with_original_pins": true
+  },
+  "native_database_owners_and_privileges_retained": true,
+  "extra_isolated_bootstrap_role": "restore_admin",
+  "supplemented_tracked_mount": {
+    "path": "infrastructure/compose/quarkus.properties",
+    "source_commit": "b9cf094",
+    "sha256": "1e230ab5e8bf801113ce7c76842f254f8c57b509ec71c6a78b0323ad3ecda332",
+    "reason": "Original private-input backup omitted this tracked bind mount; restored from verified pinned Git configuration."
+  },
+  "live_candidate_after": {
+    "state": "preparing",
+    "prepared_count": 100,
+    "source_revision": 102,
+    "latest_draft_revision": 102,
+    "generation_id": "467f563d-c1ac-4d5f-8dee-d08bc3591c33"
+  },
+  "limits": [
+    "No restored browser UI/deployment qualification",
+    "Clone candidate resume does not satisfy live independent Chrome proof",
+    "Only objects from checkpoint succeeded verification operations were reverified",
+    "Original checkpoint required tracked-config supplementation"
+  ],
+  "clone_containers_stopped": true,
+  "clone_volumes_preserved": [
+    "verdant-issue14-restore-registry-016e6d30-data",
+    "verdant-issue14-restore-workflow-016e6d30-data",
+    "verdant-issue14-restore-objects-016e6d30-data"
+  ]
+}

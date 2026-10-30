@@ -59,7 +59,7 @@ Failed alternative copies reset the spool. Destination failures propagate and
 callers discard any partial destination output. These bounds are not production
 throughput, latency or capacity certification.
 
-REST reports missing/corrupt retained bytes as HTTP **409**, unavailable storage or
+REST reports missing retained bytes as HTTP **404** and corrupt bytes as **409**, unavailable storage or
 an unqualified placement as **503**, a sample outside the requested version as
 **404**, and denied current namespace access as **403**. The configured identity
 layer handles unauthenticated/expired requests. Error responses omit object keys,
@@ -185,12 +185,12 @@ conflicts rather than treating a metadata descriptor as a verified read.
 
 ## Migration and delivery boundary
 
-Additive migration `0018_availability` follows `0017_publication`; it adds version
+Additive migration `0021_availability` follows `0020_publication`; it adds version
 availability, prior state and revision. Its guard permits only valid availability
 transitions while preserving every immutable content field and forbidding version
 deletion. Dataset availability was introduced in #17; #18 adds catalog controls,
 revision-checked commands and admission enforcement around it. The schema head is
-`0018_availability`; startup does not apply migrations automatically.
+`0021_availability`; startup does not apply migrations automatically.
 
 For application rollback, retain the additive schema and retained data. Older code
 may not enforce the new catalog/admission semantics: retaining columns alone does
@@ -203,11 +203,14 @@ does not unarchive datasets, rewrite manifests, undo external storage actions or
 release retention. Such a downgrade needs a backup and a deliberate compatibility
 decision; it is not routine recovery from an unavailable provider.
 
-This stack includes development snapshots from separately owned #14 ingestion and
-#15 candidate work. Their canonical acceptance/landing remains with those owners;
-quality/publication draft PRs #50/#51 and this implementation are not default-branch
+This stack follows accepted #14 ingestion (PR #53) through `0018_ingestion_sources`,
+then quality `0019_quality` and publication `0020_publication`. The earlier unmerged
+development migration heads are retained only in their isolated proof databases;
+they are not canonical upgrade sources. The #15 owner retains its independent
+browser acceptance gate. Quality/publication draft PRs #50/#51 and this implementation are not default-branch
 delivery. Optional Evidently/provider integration, general binary previews, full
 external lineage, cloud capacity and lifecycle epic #3 completion are not claimed
 from this bounded consumption slice. See the separate
-[qualification receipt](../proofs/issue-18/consumption.md) before making acceptance
+[original qualification](../proofs/issue-18/consumption.md) and
+[accepted-ingestion reconciliation](../proofs/issue-18/ingestion-reconciliation.md) before making acceptance
 or closure claims.

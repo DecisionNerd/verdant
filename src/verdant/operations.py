@@ -10,7 +10,7 @@ from pydantic import Field, JsonValue, model_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 
-from verdant.contracts import Contract, Digest, Revision
+from verdant.contracts import SAMPLE_INGESTION_KINDS, Contract, Digest, Revision
 from verdant.domain import Conflict, NotFound, Principal
 from verdant.identity import current_principal
 from verdant.persistence import (
@@ -18,6 +18,7 @@ from verdant.persistence import (
     ConsumerCheckpointRow,
     ConsumerInboxRow,
     EffectReceiptRow,
+    IngestionItemRow,
     NamespaceRow,
     OperationEventRow,
     OperationRow,
@@ -349,8 +350,24 @@ class OperationService:
                 raise Conflict("Operation attempt is stale")
             if row.status == target and not new_attempt:
                 return self._view(row)
-            if row.status not in allowed:
+            if row.status not in allowed or (
+                new_attempt and row.status == "cancelled" and row.kind != "ingest_cleanup"
+            ):
                 raise Conflict("Operation state does not permit this transition")
+            if (
+                new_attempt
+                and row.kind in SAMPLE_INGESTION_KINDS
+                and session.scalar(
+                    select(IngestionItemRow.id)
+                    .where(
+                        IngestionItemRow.operation_id == operation_id,
+                        IngestionItemRow.state == "superseded",
+                    )
+                    .limit(1)
+                )
+                is not None
+            ):
+                raise Conflict("Re-uploaded items belong to their new operation")
             if row.revision == 9223372036854775807 or (
                 new_attempt and row.epoch == 9223372036854775807
             ):
@@ -470,7 +487,11 @@ class OperationService:
     ):
         with self.sessions.begin() as session:
             row = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
-            if row.kind != "verify_sample_artifact" or row.status in {"succeeded", "cancelled"}:
+            if row.kind not in {
+                "verify_sample_artifact",
+                *SAMPLE_INGESTION_KINDS,
+                "ingest_cleanup",
+            } or row.status in {"succeeded", "cancelled"}:
                 raise Conflict("Operation does not permit reconciliation")
             pending = session.scalar(
                 select(OperationEventRow.id)
@@ -502,7 +523,13 @@ class OperationService:
     @observed("operations")
     def retry(self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int):
         return self._transition(
-            actor, namespace_id, operation_id, epoch, {"failed"}, "queued", new_attempt=True
+            actor,
+            namespace_id,
+            operation_id,
+            epoch,
+            {"failed", "cancelled"},
+            "queued",
+            new_attempt=True,
         )
 
     @observed("operations")
@@ -651,6 +678,20 @@ class OperationService:
         epoch: int,
         command: EffectRequest,
     ) -> EffectReceipt:
+        with self.sessions.begin() as session:
+            return self._prepare_effect(session, actor, namespace_id, operation_id, epoch, command)
+
+    def _prepare_effect(
+        self,
+        session,
+        actor,
+        namespace_id,
+        operation_id,
+        epoch,
+        command,
+        *,
+        allowed_statuses=frozenset({"running"}),
+    ):
         def digest(value):
             return hashlib.sha256(
                 json.dumps(
@@ -663,49 +704,61 @@ class OperationService:
             ).hexdigest()
 
         key, request_digest = digest(command.identity()), digest(command.request)
-        with self.sessions.begin() as session:
-            operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
-            if operation.status != "running":
-                raise Conflict("Effects require a running operation")
-            row = session.scalar(
-                select(EffectReceiptRow).where(
-                    EffectReceiptRow.operation_id == operation_id,
-                    EffectReceiptRow.effect_key == key,
-                )
+        operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
+        if operation.status not in allowed_statuses:
+            raise Conflict("Operation does not permit this effect phase")
+        row = session.scalar(
+            select(EffectReceiptRow).where(
+                EffectReceiptRow.operation_id == operation_id,
+                EffectReceiptRow.effect_key == key,
             )
-            if row is not None:
-                if row.request_digest != request_digest:
-                    raise Conflict("Logical effect was already bound to different inputs")
-                return self._effect_view(row)
-            row = EffectReceiptRow(
-                namespace_id=namespace_id,
-                operation_id=operation_id,
-                effect_key=key,
-                identity=command.identity(),
-                request_digest=request_digest,
-                request=command.request,
-            )
-            session.add(row)
-            session.flush()
-            self._effect_event(session, actor, operation, row, "prepared")
+        )
+        if row is not None:
+            if row.request_digest != request_digest:
+                raise Conflict("Logical effect was already bound to different inputs")
             return self._effect_view(row)
+        row = EffectReceiptRow(
+            namespace_id=namespace_id,
+            operation_id=operation_id,
+            effect_key=key,
+            identity=command.identity(),
+            request_digest=request_digest,
+            request=command.request,
+        )
+        session.add(row)
+        session.flush()
+        self._effect_event(session, actor, operation, row, "prepared")
+        return self._effect_view(row)
 
     @observed("operations")
     def begin_effect(
         self, actor: Principal, namespace_id: UUID, operation_id: UUID, epoch: int, receipt_id: UUID
     ) -> EffectReceipt:
         with self.sessions.begin() as session:
-            operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
-            if operation.status != "running":
-                raise Conflict("Effects require a running operation")
-            row = self._locked_effect(session, namespace_id, operation_id, receipt_id)
-            if row.status != "prepared":
-                raise Conflict("Effect already dispatched; reuse success or reconcile uncertainty")
-            # Persist uncertainty before external I/O. A crash must never allow blind replay.
-            row.status, row.dispatch_id, row.dispatch_epoch = "unknown", uuid4(), epoch
-            row.revision += 1
-            self._effect_event(session, actor, operation, row, "dispatched")
-            return self._effect_view(row)
+            return self._begin_effect(session, actor, namespace_id, operation_id, epoch, receipt_id)
+
+    def _begin_effect(
+        self,
+        session,
+        actor,
+        namespace_id,
+        operation_id,
+        epoch,
+        receipt_id,
+        *,
+        allowed_statuses=frozenset({"running"}),
+    ):
+        operation = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
+        if operation.status not in allowed_statuses:
+            raise Conflict("Operation does not permit this effect phase")
+        row = self._locked_effect(session, namespace_id, operation_id, receipt_id)
+        if row.status != "prepared":
+            raise Conflict("Effect already dispatched; reuse success or reconcile uncertainty")
+        # Persist uncertainty before external I/O. A crash must never allow blind replay.
+        row.status, row.dispatch_id, row.dispatch_epoch = "unknown", uuid4(), epoch
+        row.revision += 1
+        self._effect_event(session, actor, operation, row, "dispatched")
+        return self._effect_view(row)
 
     @observed("operations")
     def complete_effect(
@@ -925,6 +978,7 @@ class OperationService:
                     "upload_ready",
                     "upload_failed",
                     "ingestion_item_accepted",
+                    "ingestion_item_superseded",
                 )
             }
             error = None
@@ -1013,7 +1067,7 @@ class OperationService:
                 raise Conflict("Started provider admission must be reconciled")
             if inbox.outcome != "quarantined":
                 inbox.outcome = "quarantined"
-                inbox.error = "Unsupported operation kind for artifact verification deployment"
+                inbox.error = "Unsupported operation kind for configured workflow deployments"
                 session.add(
                     AuditRow(
                         namespace_id=namespace_id,
@@ -1165,13 +1219,23 @@ class OperationService:
 
     @observed("operations")
     def list_operations(
-        self, actor: Principal, namespace_id: UUID, after: UUID | None = None, limit: int = 25
+        self,
+        actor: Principal,
+        namespace_id: UUID,
+        after: UUID | None = None,
+        limit: int = 25,
+        *,
+        kind: str | frozenset[str] | None = None,
     ) -> OperationPage:
         if not 1 <= limit <= 100:
             raise ValueError("Operation page must be between 1 and 100")
         with self.sessions.begin() as session:
             current_principal(session, actor.id).require(namespace_id)
             query = select(OperationRow).where(OperationRow.namespace_id == namespace_id)
+            if kind is not None:
+                query = query.where(
+                    OperationRow.kind.in_([kind] if isinstance(kind, str) else kind)
+                )
             if after is not None:
                 query = query.where(OperationRow.id > after)
             rows = session.scalars(query.order_by(OperationRow.id).limit(limit + 1)).all()

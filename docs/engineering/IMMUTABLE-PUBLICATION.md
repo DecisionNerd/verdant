@@ -94,12 +94,13 @@ Storage I/O occurs outside registry transactions. The worker-only claim/accept
 methods are an internal trust boundary: public requests cannot submit readiness,
 verification timestamps, artifact digests or accepted storage proofs.
 
-Deployment composition uses `configured_storage()` with explicit existing
-`VERDANT_S3_ENDPOINT`, `VERDANT_S3_BUCKET`, `VERDANT_S3_ACCESS_KEY` and
-`VERDANT_S3_SECRET_KEY`. Optional `VERDANT_S3_BROWSER_ENDPOINT` defaults to the
-server endpoint; region uses `AWS_DEFAULT_REGION` (default `us-east-1`). Plain
-HTTP requires the local-only `VERDANT_INSECURE_LOCAL_HTTP=1` setting. This helper
-does not discover ambient cloud credentials. Injected `S3Storage` is supported
+Deployment composition reuses the accepted ingestion `S3Storage.from_env()` and
+the same injected storage instance/lifespan for ingestion, preview and publication.
+It honors the existing endpoint, bucket, credentials, browser endpoint, source
+prefix, addressing style and `VERDANT_S3_REGION` settings. `configured_storage()`
+delegates to that factory and fails when storage is unconfigured; it does not
+define a second configuration profile. Plain HTTP still requires the local-only
+`VERDANT_INSECURE_LOCAL_HTTP=1` setting. Injected `S3Storage` is supported
 for owned application/test composition. Credential values stay out of logs/docs.
 
 ## Atomic commit and collection
@@ -190,10 +191,12 @@ use the established identity verification path, and services reload current gran
 
 ## Migration and delivery boundary
 
-The publication stack reconciles `0014_interpretation → 0015_ingestion →
-0016_quality → 0017_publication`. The current #18 development stack extends it with
-`0018_availability`, now `SCHEMA_REVISION`; startup never upgrades schema. Run the
-existing explicit Alembic deployment process. The publication migration adds
+This stack follows accepted ingestion through `0018_ingestion_sources`, quality
+`0019_quality`, then publication `0020_publication`. The consumption layer adds
+`0021_availability`, the current schema head. Startup never upgrades schema.
+The unmerged development publication revision `0017_publication` was resequenced;
+its isolated databases remain retained outside this canonical upgrade chain.
+Run the existing explicit Alembic deployment process. The migration adds
 publication groups, references and immutable versions, guarded artifact collection
 state and a dataset availability column used by finalization. The #18
 [consumption guide](VERSION-CONSUMPTION.md) describes the implemented exact reads,
@@ -205,8 +208,9 @@ downgrade drops publication/version/reference records and the new state columns;
 it needs a backup and deliberate operator approval. It neither undoes external
 object writes nor supplies a safe reset or garbage-collection plan.
 
-Publication qualification does not establish #14 ingestion acceptance, native
-Prefect publication dispatch, #18 acceptance, production capacity or default-branch
-delivery. Existing #14/#15 owners retain canonical
-acceptance and landing. See [qualification](../proofs/issue-17/publication.md) for
-the exact tested stack and remaining gates.
+Accepted #14 landed through PR #53. This implementation does not establish native Prefect
+publication dispatch, #18 exact-version consumption/archive completion, production
+capacity or default-branch delivery. The #15 owner retains its independent browser
+acceptance gate. See [original qualification](../proofs/issue-17/publication.md) and
+[accepted-ingestion reconciliation](../proofs/issue-17/ingestion-reconciliation.md)
+for the exact tested stacks and remaining gates.

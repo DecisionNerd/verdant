@@ -75,3 +75,58 @@ def storage():
         continuation = page["NextContinuationToken"]
     for offset in range(0, len(keys), 100):
         adapter.delete(keys[offset : offset + 100])
+
+
+@pytest.fixture
+def ready_ingestion(registry, sessions, storage):
+    import hashlib
+
+    import httpx
+
+    from verdant.ingestion import IngestionService, UploadDeclaration, UploadRequest
+    from verdant.persistence import IngestionItemRow
+
+    _, actor, ns = registry
+    adapter, _ = storage
+    owned = []
+
+    def create(entries=None, *, target=None, metadata=None, retry_of=None, uploaded_bodies=None):
+        entries = entries or [("source", b"verified content")]
+        service = IngestionService(sessions, bucket=adapter.settings.bucket, storage=adapter)
+        batch = service.admit(
+            actor,
+            ns,
+            UploadRequest(
+                request_key=str(uuid4()),
+                items=[
+                    UploadDeclaration(
+                        source_key=name,
+                        modality="text",
+                        sha256=hashlib.sha256(body).hexdigest(),
+                        size_bytes=len(body),
+                        metadata=metadata or {},
+                        target_sample_id=target[0] if target else None,
+                        expected_revision=target[1] if target else None,
+                        retry_of_item_id=retry_of,
+                    )
+                    for name, body in entries
+                ],
+            ),
+        )
+        for item, (name, body) in zip(batch.items, entries, strict=True):
+            service.initiate_upload(actor, ns, batch.operation.id, item.id, 1)
+            with sessions() as session:
+                stored = session.get(IngestionItemRow, item.id)
+                owned.append((stored.staging_key, stored.upload_id))
+            signed = service.sign_upload_part(actor, ns, batch.operation.id, item.id, 1, 1)
+            with httpx.Client(timeout=10, trust_env=False) as http:
+                uploaded = (uploaded_bodies or {}).get(name, body)
+                http.put(signed.url, content=uploaded).raise_for_status()
+            batch = service.complete_upload(actor, ns, batch.operation.id, item.id, 1)
+        return service, batch
+
+    yield create, actor, ns, adapter
+    # Retain accepted final bytes with their persistent test-database references.
+    for key, upload_id in owned:
+        adapter.abort(key, upload_id)
+        adapter.delete_one(key)
