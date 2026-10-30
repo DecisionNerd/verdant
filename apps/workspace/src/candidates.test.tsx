@@ -78,3 +78,43 @@ it("retries lost capture admission with the same request and source revision", a
   expect(calls[0][2]).toEqual(calls[1][2]);
   expect(calls[1][2]).toMatchObject({ expected_revision: 5 });
 });
+
+it("pauses archived dataset captures while preserving existing candidate preparation", async () => {
+  history.replaceState(null, "", "/?namespace=ns&dataset=ds&candidate=frozen");
+  let candidate = { id: "frozen", source_revision: 2, latest_draft_revision: 2, generation_id: "generation", state: "preparing", prepared_count: 0, cursor: null };
+  vi.mocked(request).mockImplementation(async (path, _csrf, body) => {
+    if (path.includes("/draft/members")) return { revision: 2 };
+    if (path.endsWith("/prepare") && body) { candidate = { ...candidate, state: "sealed", prepared_count: 1 }; return candidate; }
+    if (path.includes("/frozen/members")) return { candidate, items: [], next_after: null };
+    return { items: [], next_after: null };
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><Candidates namespace="ns" dataset="ds" csrf="csrf" writable archived /></QueryClientProvider>);
+  await screen.findByText("Preparation: preparing · 0 members");
+  expect((screen.getByRole("button", { name: "Capture latest draft" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Resume preparation" }));
+  await screen.findByText(/1 members prepared. Generation sealed/);
+  const writes = vi.mocked(request).mock.calls.filter(call => call[2] !== undefined);
+  expect(writes).toHaveLength(1);
+  expect(writes[0][0]).toBe("/api/v1/namespaces/ns/datasets/ds/candidates/frozen/prepare");
+});
+
+it("does not let an old dataset capture response change the new dataset URL", async () => {
+  history.replaceState(null, "", "/?namespace=ns&dataset=ds");
+  let resolve: ((value: unknown) => void) | undefined;
+  vi.mocked(request).mockImplementation(async (path, _csrf, body) => {
+    if (body) return new Promise(done => { resolve = done; });
+    if (path.includes("/draft/members")) return { revision: 2 };
+    return { items: [], next_after: null };
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(<QueryClientProvider client={client}><Candidates key="old" namespace="ns" dataset="ds" csrf="csrf" writable /></QueryClientProvider>);
+  await screen.findByText("Latest draft revision: 2");
+  fireEvent.click(screen.getByRole("button", { name: "Capture latest draft" }));
+  history.replaceState(null, "", "/?namespace=other&dataset=new");
+  view.rerender(<QueryClientProvider client={client}><Candidates key="new" namespace="other" dataset="new" csrf="csrf" writable /></QueryClientProvider>);
+  await act(async () => { resolve!({ id: "old-capture", source_revision: 2 }); });
+  expect(new URLSearchParams(location.search).get("dataset")).toBe("new");
+  expect(new URLSearchParams(location.search).has("candidate")).toBe(false);
+  expect(screen.queryByRole("heading", { name: "Selected candidate old-capture" })).toBeNull();
+});

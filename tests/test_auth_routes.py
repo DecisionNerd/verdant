@@ -478,6 +478,31 @@ def test_api_mcp_share_service_identity_and_namespace_denial(login_app, registry
             ).status_code
             == 422
         )
+        # Availability/consumption use the same signed principal and filtered catalog.
+        versions = quality_tool("versions_list", {})
+        assert versions == client.get(base + "/versions", headers=headers).json()
+        assert versions["total"] == 0
+        archived = quality_tool(
+            "dataset_availability",
+            {
+                "command": {"expected_revision": d["revision"], "action": "archive"},
+            },
+        )
+        assert archived["availability"] == "archived"
+        assert client.get(base, headers=headers).json() == archived
+        catalog = f"/api/v1/namespaces/{ns}/datasets"
+        visible = client.get(catalog, headers=headers).json()
+        all_datasets = client.get(catalog + "?include_archived=true", headers=headers).json()
+        assert visible["total"] == 1 and all_datasets["total"] == 2
+        assert d["id"] not in {item["id"] for item in visible["items"]}
+        assert d["id"] in {item["id"] for item in all_datasets["items"]}
+        restored = quality_tool(
+            "dataset_availability",
+            {
+                "command": {"expected_revision": archived["revision"], "action": "unarchive"},
+            },
+        )
+        assert restored["availability"] == "active"
         denied = str(uuid4())
         assert (
             client.get(

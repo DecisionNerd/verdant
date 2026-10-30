@@ -188,8 +188,11 @@ resource was introduced. Native Prefect publication dispatch is not proved here.
 Canonical #14 ingestion and #15 candidate acceptance/landing remain with their
 existing owners. Reconcile the development stack with accepted dependency/main
 history before landing, then rerun affected checks and CI. The dataset availability
-column supports publication guards; #18 consumption/archive behavior remains under
-implementation. Production/cloud qualification, capacity certification, issue
+column in this #17 snapshot supports publication guards. The later #18 stack adds
+[exact-version consumption and availability controls](../../engineering/VERSION-CONSUMPTION.md)
+with [its own qualification](../issue-18/consumption.md); those changes and their
+acceptance are outside this historical `0017_publication` receipt.
+Production/cloud qualification, capacity certification, issue
 closure and default-branch integration are not claimed.
 
 Implementation, operation/retry contracts and additive rollback guidance are in

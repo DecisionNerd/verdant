@@ -1,5 +1,9 @@
 # Frozen candidate capture progress
 
+The automated [two-session lifecycle regression](automated-browser.md) now supplies
+passing completion evidence for the former manual browser gate. The notes below
+retain the original implementation history; their pending statements are historical.
+
 This task branch integrates accepted main `be4a945` through merge `e7d9921`. Candidate migrations are `0012_candidates` and `0013_generations`, after the accepted operations migration chain. No #15 completion is claimed; schema-14 runtime qualification is recorded below.
 
 The first implementation captures candidate/source draft revision/generation identity under the existing draft lock and current write authorization, with an idempotent request key/digest and atomic audit. A repeated request resolves its original capture before checking the latest draft revision, so later edits cannot silently recapture different data. Source and latest revisions are returned separately. Database triggers reject capture-identity mutation and deletion.

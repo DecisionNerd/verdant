@@ -17,7 +17,7 @@ type PublicationView = {
   version_id: string | null;
 };
 type Admission = { request_key: string; label: string; report_id: string; mode: PublicationView["mode"] };
-type Props = { namespace: string; dataset: string; candidate: string; csrf: string; writable: boolean };
+type Props = { namespace: string; dataset: string; candidate: string; csrf: string; writable: boolean; archived?: boolean };
 const denied = (error: Error | null) => error instanceof ApiError && [401, 403].includes(error.status);
 const passed = (report: Report) => report.state === "complete" && report.required_rules_pass === true;
 
@@ -25,7 +25,7 @@ export function Publication(props: Props) {
   return <PublicationPanel key={`${props.namespace}/${props.dataset}/${props.candidate}`} {...props} />;
 }
 
-function PublicationPanel({ namespace, dataset, candidate, csrf, writable }: Props) {
+function PublicationPanel({ namespace, dataset, candidate, csrf, writable, archived = false }: Props) {
   const cache = useQueryClient();
   const labelHelp = useId();
   const active = useRef(true);
@@ -60,7 +60,7 @@ function PublicationPanel({ namespace, dataset, candidate, csrf, writable }: Pro
 
   async function start(event: FormEvent) {
     event.preventDefault();
-    if (!writable || busy || reports.isError || publications.isError || !selectedReport || !passed(selectedReport)
+    if (!writable || archived || busy || reports.isError || publications.isError || !selectedReport || !passed(selectedReport)
       || (selectedReport.candidate_id && selectedReport.candidate_id !== candidate)) return;
     setBusy(true); setError("");
     try {
@@ -80,7 +80,7 @@ function PublicationPanel({ namespace, dataset, candidate, csrf, writable }: Pro
   }
 
   async function run(action: "prepare" | "finalize" | "renew" | "release") {
-    if (!writable || busy || stale || !detail || (action === "finalize" && (!gateMatches || detail.expired))) return;
+    if (!writable || busy || stale || !detail || (action === "finalize" && (archived || !gateMatches || detail.expired))) return;
     setBusy(true); setError("");
     try {
       const body = action === "prepare" ? { expected_count: detail.prepared_count, limit: 25 }
@@ -106,11 +106,12 @@ function PublicationPanel({ namespace, dataset, candidate, csrf, writable }: Pro
   const formLocked = busy || !!admission.current;
   return <section aria-label="Dataset publication">
     <h2>Dataset publication</h2>
+    {archived && <p role="status">Archived dataset: new publication and finalization are paused. Existing source checks, renewal and release can continue.</p>}
     <p>One manifest supports up to 256 MiB. Larger candidates need a smaller captured selection before publication.</p>
     <p>Publish the exact selected candidate with its passing quality evidence. Preparation protects its source objects and checks them in bounded batches.</p>
     <p>Publication candidate: <span className="identifier">{candidate}</span></p>
     {reports.isPending ? <p role="status">Loading publication quality evidence…</p> : reports.isError ? <p role="alert">{reports.error.message} Your publication input is preserved. <button onClick={() => void reports.refetch()}>Retry publication reports</button></p> : null}
-    {writable && <form onSubmit={event => void start(event)}>
+    {writable && !archived && <form onSubmit={event => void start(event)}>
       <label>Passing quality report <select required value={selectedReport?.id ?? ""} disabled={formLocked || reports.isError} onChange={event => setSelectedReport(reports.data?.items.find(item => item.id === event.target.value) ?? null)}>
         <option value="">Select exact passing evidence</option>
         {selectedReport && !reports.data?.items.some(item => item.id === selectedReport.id) && <option value={selectedReport.id}>{selectedReport.id} · policy revision {selectedReport.policy_revision}</option>}
@@ -142,6 +143,7 @@ function PublicationPanel({ namespace, dataset, candidate, csrf, writable }: Pro
         : detail.state === "released" ? <p role="status">Preparation released. It cannot be published; start a new preparation when ready.</p>
         : detail.state === "releasing" ? <p role="status">Releasing abandoned source protection. Continue release to finish the remaining batch.</p>
         : detail.expired ? <p role="status">Preparation expired. Renew protection and recheck every source object before publishing.</p>
+        : detail.state === "prepared" && archived ? <p role="status">Artifacts are verified, but the dataset is archived. Unarchive the dataset before publishing.</p>
         : detail.state === "prepared" && detail.mode === "current_draft" && detail.source_revision !== detail.latest_draft_revision ? <p role="status">Artifacts are verified, but the current draft has changed. Publication will report a revision conflict and retain this preparation.</p>
         : detail.state === "prepared" ? <p role="status">Source checks complete. Ready to publish after reviewing the pinned evidence.</p>
         : <p role="status">Preparation checkpoint saved. Resume source checks to continue.</p>}
@@ -149,7 +151,7 @@ function PublicationPanel({ namespace, dataset, candidate, csrf, writable }: Pro
       {writable && <>
         {detail.state === "building" && !detail.expired && <button disabled={busy || stale} onClick={() => void run("prepare")}>Resume source checks</button>}
         {["building", "prepared"].includes(detail.state) && detail.expired && <button disabled={busy || stale} onClick={() => void run("renew")}>Renew protection and recheck all sources</button>}
-        {detail.state === "prepared" && !detail.expired && <button disabled={busy || stale || !gateMatches || publication.isFetching} onClick={() => void run("finalize")}>Publish immutable version</button>}
+        {detail.state === "prepared" && !detail.expired && <button disabled={archived || busy || stale || !gateMatches || publication.isFetching} onClick={() => void run("finalize")}>Publish immutable version</button>}
         {["building", "prepared", "releasing"].includes(detail.state) && <button disabled={busy || stale} onClick={() => void run("release")}>{detail.state === "releasing" ? "Continue releasing protection" : "Release abandoned preparation"}</button>}
       </>}
     </article>}

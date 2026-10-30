@@ -1,0 +1,33 @@
+{
+  "namespace_id": "975cac8b-be56-484d-ad24-e9620449120c",
+  "dataset_id": "c8404945-df2c-4adb-aa98-601bb6723c73",
+  "owner_id": "040c382d-5e33-4717-93ea-4a1ba477aa03",
+  "reader_id": "ae8e93a9-7dac-42a0-9121-2330dbd5066d",
+  "text_sample_id": "ac7a2678-6998-470c-8785-81b69b855da8",
+  "text_v1_revision_id": "74fea756-451b-4b28-95f9-d7146ebfc10e",
+  "text_v2_revision_id": "e288e563-908e-4a4d-9d77-e657b2a7f3bc",
+  "binary_sample_id": "f93728cd-a646-4081-b92b-94764b9be516",
+  "source_artifact_id": "bb37a738-d222-4217-b0e6-3d709a25a504",
+  "source_sha256": "eb2b48cac603bb364914a40bbd736824946e028443ecd9f7f6b28f347958a433",
+  "source_size": 8036,
+  "versions": [
+    {
+      "id": "b25e364a-2d71-4a52-b10d-cbe8635b7125",
+      "candidate_id": "63c06fc0-46e8-42c0-827b-7d8c125bc4bd",
+      "report_id": "7b8d6a1a-6dd4-4368-9956-82b076fa9dd3",
+      "manifest_sha256": "4bf50cd25447d24bada69aa00682e2dc270488af7b31bbf67093a2130b887e91",
+      "manifest_size": 14293,
+      "publication_id": "46cb105e-170f-45f1-80aa-dd38ff08daa0",
+      "source_revision": 26
+    },
+    {
+      "id": "476a6769-2157-453c-852e-0dc04f3c5519",
+      "candidate_id": "98378b21-5a61-4e9e-8400-519d1fccdc8b",
+      "report_id": "7b885697-b911-458b-8c2f-7fa3857c2385",
+      "manifest_sha256": "9d5ac14c9af58b2688c321d647f42990a090db15bde2fc480684dfc6d796232d",
+      "manifest_size": 14294,
+      "publication_id": "5a5201f0-47bf-4498-af2f-3d81bd757ba4",
+      "source_revision": 27
+    }
+  ]
+}

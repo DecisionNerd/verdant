@@ -1,0 +1,20 @@
+{
+  "identities": [
+    {
+      "name": "browser-e2e",
+      "credentials": [
+        {
+          "accessKey": "browser-e2e",
+          "secretKey": "browser-e2e-storage"
+        }
+      ],
+      "actions": [
+        "Admin",
+        "Read",
+        "Write",
+        "List",
+        "Tagging"
+      ]
+    }
+  ]
+}

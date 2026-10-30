@@ -11,6 +11,7 @@ from fastmcp.server.dependencies import get_access_token
 from pydantic import Field
 from starlette.concurrency import run_in_threadpool
 
+from verdant import consumption as read
 from verdant import publication as p
 from verdant import quality_service as q
 from verdant.access_tokens import InvalidAccessToken
@@ -27,7 +28,7 @@ from verdant.ingestion import (
 from verdant.operations import OperationService, VerificationRequest
 from verdant.preview import PreviewService
 from verdant.publication_runner import PublicationRunner
-from verdant.storage import StorageError, configured_storage
+from verdant.storage import ObjectCorrupt, ObjectMissing, StorageError, configured_storage
 from verdant.versioning import (
     CandidateCapture,
     CandidatePrepare,
@@ -77,6 +78,7 @@ def create_mcp_app(runtime, *, storage=None):
     )
     versioning = VersioningService(runtime.sessions)
     quality = q.QualityService(runtime.sessions)
+    consumption = read.ConsumptionService(runtime.sessions, storage)
     publications = p.PublicationService(
         runtime.sessions,
         bucket=storage.settings.bucket
@@ -93,8 +95,85 @@ def create_mcp_app(runtime, *, storage=None):
     async def invoke(method, *args, **kwargs):
         try:
             return await run_in_threadpool(method, actor(), *args, **kwargs)
-        except (DomainError, StorageError) as exc:
+        except DomainError as exc:
             raise ToolError(str(exc)) from None
+        except ObjectMissing:
+            raise ToolError("Retained bytes are missing; restore a verified copy") from None
+        except ObjectCorrupt:
+            raise ToolError("Retained bytes failed digest verification") from None
+        except StorageError:
+            raise ToolError("Required artifact storage is unavailable") from None
+
+    @mcp.tool()
+    async def versions_list(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        after: UUID | None = None,
+        limit: OperationLimit = 25,
+        include_archived: bool = False,
+    ):
+        return await invoke(
+            consumption.list_versions, namespace_id, dataset_id, after, limit, include_archived
+        )
+
+    @mcp.tool()
+    async def version_get(namespace_id: UUID, dataset_id: UUID, version_id: UUID):
+        return await invoke(consumption.get_version, namespace_id, dataset_id, version_id)
+
+    @mcp.tool()
+    async def version_members(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        version_id: UUID,
+        after: UUID | None = None,
+        limit: OperationLimit = 25,
+    ):
+        return await invoke(consumption.members, namespace_id, dataset_id, version_id, after, limit)
+
+    @mcp.tool()
+    async def version_manifest(namespace_id: UUID, dataset_id: UUID, version_id: UUID):
+        """Return exact manifest identity and an authenticated application download path."""
+        return await invoke(consumption.manifest, namespace_id, dataset_id, version_id)
+
+    @mcp.tool()
+    async def version_sample_preview(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        version_id: UUID,
+        sample_id: UUID,
+    ):
+        return await invoke(consumption.preview, namespace_id, dataset_id, version_id, sample_id)
+
+    @mcp.tool()
+    async def version_sample_download(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        version_id: UUID,
+        sample_id: UUID,
+    ):
+        """Return a scoped descriptor; signed credentials never enter tool JSON."""
+        return await invoke(
+            consumption.sample_descriptor, namespace_id, dataset_id, version_id, sample_id
+        )
+
+    @mcp.tool()
+    async def dataset_availability(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        command: read.DatasetAvailability,
+    ):
+        return await invoke(consumption.dataset_availability, namespace_id, dataset_id, command)
+
+    @mcp.tool()
+    async def version_availability(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        version_id: UUID,
+        command: read.VersionAvailability,
+    ):
+        return await invoke(
+            consumption.version_availability, namespace_id, dataset_id, version_id, command
+        )
 
     @mcp.tool()
     async def publication_start(
@@ -349,10 +428,18 @@ def create_mcp_app(runtime, *, storage=None):
         owner_id: UUID | None = None,
         after: UUID | None = None,
         limit: int = 50,
+        include_archived: bool = False,
     ):
         return (
             await invoke(
-                service.list_datasets, namespace_id, search, modality, owner_id, after, limit
+                service.list_datasets,
+                namespace_id,
+                search,
+                modality,
+                owner_id,
+                after,
+                limit,
+                include_archived,
             )
         ).model_dump(mode="json")
 

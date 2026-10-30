@@ -35,8 +35,10 @@ evidence; current authorization failures hide cached evidence and controls.
 ## State, retries and failure recovery
 
 The states are `building → prepared → published`, or
-`building/prepared → releasing → released`. Published groups and versions are
-immutable. One group has one logical `publish_dataset_version` operation and at
+`building/prepared → releasing → released`. Published groups and version content
+are immutable. The #18 [consumption/lifecycle slice](VERSION-CONSUMPTION.md) permits
+revision-checked version availability changes without changing content or retention.
+One group has one logical `publish_dataset_version` operation and at
 most one version. Version labels are unique within a dataset.
 
 Admission uses the existing operation request identity. Reuse the same request
@@ -190,13 +192,16 @@ use the established identity verification path, and services reload current gran
 ## Migration and delivery boundary
 
 This stack follows accepted ingestion through `0018_ingestion_sources`, quality
-`0019_quality`, then publication `0020_publication`. Startup never upgrades schema.
+`0019_quality`, then publication `0020_publication`. The consumption layer adds
+`0021_availability`, the current schema head. Startup never upgrades schema.
 The unmerged development publication revision `0017_publication` was resequenced;
 its isolated databases remain retained outside this canonical upgrade chain.
 Run the existing explicit Alembic deployment process. The migration adds
 publication groups, references and immutable versions, guarded artifact collection
-state and a dataset availability column used by finalization. That column does
-not complete #18 archive/admission/consumption behavior.
+state and a dataset availability column used by finalization. The #18
+[consumption guide](VERSION-CONSUMPTION.md) describes the implemented exact reads,
+catalog controls and archived-dataset admission behavior; its separate qualification
+is not established by the earlier #17 receipt.
 
 For application rollback, preserve the additive schema and data. Explicit schema
 downgrade drops publication/version/reference records and the new state columns;
@@ -205,7 +210,7 @@ object writes nor supplies a safe reset or garbage-collection plan.
 
 Accepted #14 landed through PR #53. This implementation does not establish native Prefect
 publication dispatch, #18 exact-version consumption/archive completion, production
-capacity or default-branch delivery. The #15 owner retains its independent browser
-acceptance gate. See [original qualification](../proofs/issue-17/publication.md) and
+capacity. The candidate two-session gate is covered by the executable
+[automated lifecycle regression](../proofs/issue-15/automated-browser.md). See [original qualification](../proofs/issue-17/publication.md) and
 [accepted-ingestion reconciliation](../proofs/issue-17/ingestion-reconciliation.md)
 for the exact tested stacks and remaining gates.

@@ -58,3 +58,35 @@ Apply the same [Keycloak service matrix](../infra/local-auth.md) to Compose and 
 ## Object-backend parity
 
 Run the [local/cloud S3 contract matrix](../infra/local-object-storage.md) against pinned SeaweedFS and each enabled destination, with actual Verdant/MLflow/Mimir/Loki/Tempo clients. Verify host/container presigned access, digests/multipart/listing/conditional-write behavior, restore and destination cutover without changing manifest bytes or IDs. Mocked S3 fixtures or one successful Put/Get do not qualify a backend. Record unsupported features and source/version bounds; keep source data through validation/rollback.
+
+## Automated authenticated lifecycle
+
+`pnpm --filter @verdant/workspace test:e2e` runs the real browser lifecycle
+regression. Install the locked workspace/Python dependencies and Chromium first:
+
+```sh
+uv sync --locked --group workflows
+pnpm install --filter @verdant/workspace... --frozen-lockfile
+pnpm --filter @verdant/workspace exec playwright install chromium
+pnpm --filter @verdant/workspace test:e2e
+```
+
+Docker must be running; reserved loopback ports 19032, 19033, 19081, 19085 and
+19087 must be free. The suite refuses occupied ports. It creates a unique
+`verdant-browser-*` Compose project with pinned PostgreSQL, Keycloak and SeaweedFS
+images, plus owned API/Vite processes. All users, credentials and data are synthetic.
+It never attaches to the ordinary Compose stack or another owner's browser fixture.
+Its disposable volumes are never shared or reused; teardown removes only that
+unique project and its own volumes, and stops its own process groups.
+
+Two independent Chromium contexts perform actual Keycloak login, then exercise
+101 accepted source uploads, a 100+1 candidate preparation checkpoint across an
+API restart, concurrent draft/evidence edits, full frozen-pin comparisons,
+validation, current-draft conflict, publication and verified manifest download,
+archive/exact reads and revoked-user cache hiding. There is no human browser or
+extension-dismissal step. UI regression tests remain a separate Vitest suite.
+
+The `lifecycle-browser` CI job runs this command automatically. Failure screenshots
+and a bounded identity/digest receipt are retained as workflow artifacts. Auth
+tracing and HAR capture are disabled; signed download URLs, cookies and tokens
+are not written to the receipt.

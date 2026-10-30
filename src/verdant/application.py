@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from verdant import contracts as c
 from verdant.domain import Conflict, NotFound, Principal
-from verdant.identity import current_principal
+from verdant.identity import current_principal, require_current_access
 from verdant.persistence import (
     AuditRow,
     DatasetRow,
@@ -125,6 +125,7 @@ class RegistryService:
             namespace_id=row.namespace_id,
             owner_id=row.owner_id,
             revision=row.revision,
+            availability=row.availability,
             slug=row.slug,
             name=row.name,
             modality=row.modality,
@@ -142,11 +143,14 @@ class RegistryService:
         owner_id: UUID | None = None,
         after: UUID | None = None,
         limit: int = 50,
+        include_archived: bool = False,
     ) -> c.DatasetPage:
         if not 1 <= limit <= 100 or len(search) > 200:
             raise ValueError("Invalid catalog page size or search length")
         with self._transaction(principal, namespace_id) as repo:
             filters = [DatasetRow.namespace_id == namespace_id]
+            if not include_archived:
+                filters.append(DatasetRow.availability == "active")
             if search:
                 filters.append(
                     or_(
@@ -215,8 +219,11 @@ class RegistryService:
             )
             if row is None:
                 raise NotFound("Dataset not found")
+            require_current_access(repo.session, principal.id, namespace_id, write=True)
             if row.revision != command.expected_revision:
                 raise Conflict("Dataset metadata changed; reload the latest revision before saving")
+            if row.availability != "active":
+                raise Conflict("Archived datasets pause metadata edits; unarchive first")
             if row.revision == 9223372036854775807:
                 raise Conflict("Dataset metadata revision limit reached")
             for field in ("slug", "name", "modality"):
@@ -421,7 +428,9 @@ class RegistryService:
         command: c.MembershipWrite,
     ) -> c.DraftChange:
         with self._transaction(principal, namespace_id, write=True) as repo:
-            draft = self._locked_draft(repo, namespace_id, dataset_id, command.expected_revision)
+            draft = self._locked_draft(
+                repo, namespace_id, dataset_id, command.expected_revision, principal
+            )
             revision = repo.session.scalar(
                 select(SampleRevisionRow).where(
                     SampleRevisionRow.namespace_id == namespace_id,
@@ -496,11 +505,25 @@ class RegistryService:
 
     @staticmethod
     def _locked_draft(
-        repo: RegistryRepository, namespace_id: UUID, dataset_id: UUID, expected: int
+        repo: RegistryRepository,
+        namespace_id: UUID,
+        dataset_id: UUID,
+        expected: int,
+        principal: Principal,
     ) -> DraftRow:
+        dataset = repo.session.scalar(
+            select(DatasetRow)
+            .where(DatasetRow.namespace_id == namespace_id, DatasetRow.id == dataset_id)
+            .with_for_update()
+        )
+        if dataset is None:
+            raise NotFound("Dataset not found")
         draft = repo.draft(namespace_id, dataset_id, lock=True)
         if draft is None:
             raise NotFound("Dataset not found")
+        require_current_access(repo.session, principal.id, namespace_id, write=True)
+        if dataset.availability != "active":
+            raise Conflict("Archived datasets pause draft edits; checkpoints are retained")
         if draft.revision != expected:
             raise Conflict("Draft revision changed")
         return draft
@@ -515,7 +538,7 @@ class RegistryService:
         expected_revision: int,
     ) -> c.DraftChange:
         with self._transaction(principal, namespace_id, write=True) as repo:
-            draft = self._locked_draft(repo, namespace_id, dataset_id, expected_revision)
+            draft = self._locked_draft(repo, namespace_id, dataset_id, expected_revision, principal)
             current = repo.session.scalar(
                 select(MembershipRow).where(
                     MembershipRow.draft_id == draft.id,

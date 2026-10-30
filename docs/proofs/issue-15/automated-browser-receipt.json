@@ -1,0 +1,18 @@
+{
+  "candidate_id": "b51849df-41d4-4f4d-9f74-5b626273c84d",
+  "generation_id": "fe758b01-0901-42a0-87ad-3a8b0074b282",
+  "report_id": "d4dec171-65f6-4de4-a001-03a65480374a",
+  "source_revision": 101,
+  "final_draft_revision": 103,
+  "frozen_members": 101,
+  "restart_checkpoint": 100,
+  "pins_retained": true,
+  "independent_sessions": true,
+  "current_draft_conflict": 409,
+  "publication_id": "2d09a2ac-04f0-4d29-8574-2f170586b6bf",
+  "version_id": "0ea47cc4-299a-4a49-9020-36a8c9a5b172",
+  "manifest_sha256": "52ec7f790dd58ee598293fa7e6ec0c1eaf5d1fc4ad590c01143e95910cb5bd09",
+  "manifest_bytes": 113560,
+  "archived_exact_read": true,
+  "revoked_editor_hidden": true
+}

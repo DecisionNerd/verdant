@@ -2,11 +2,12 @@ import { SamplePreview } from "./preview";
 import { VerifyArtifact } from "./operations";
 import { useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { request } from "./api";
+import { ApiError, request } from "./api";
 
 type Member = { sample_id: string; sample_revision_id: string; split: string; interpretation?: Record<string, unknown> };
 type DraftPage = { draft_id: string; revision: number; members: Member[]; next_after: string | null };
 type Sample = { sample_id: string; revision_id: string; revision: number; modality: string; sha256: string; size_bytes: number };
+const denied = (error: Error | null) => error instanceof ApiError && [401,403].includes(error.status);
 export function DraftEditor({ namespace, dataset, csrf, writable }: { namespace: string; dataset: string; csrf: string; writable: boolean }) {
   const cache = useQueryClient();
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
@@ -22,6 +23,7 @@ export function DraftEditor({ namespace, dataset, csrf, writable }: { namespace:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [accessDenied, setAccessDenied] = useState(false);
   const base = `/api/v1/namespaces/${namespace}/datasets/${dataset}/draft/members`;
   const params = new URLSearchParams({ limit: "25" });
   const cursor = cursors.at(-1); if (cursor) params.set("after", cursor);
@@ -43,7 +45,7 @@ export function DraftEditor({ namespace, dataset, csrf, writable }: { namespace:
     }
   }
   async function write(event: FormEvent) {
-    event.preventDefault(); if (!draft.data) return;
+    event.preventDefault(); if (!writable || busy || !draft.data) return;
     setBusy(true); setError(""); setMessage("");
     try {
       let interpretation: unknown;
@@ -54,13 +56,14 @@ export function DraftEditor({ namespace, dataset, csrf, writable }: { namespace:
       const changed = await request<{revision: number}>(`${base}/${sampleId}`, csrf, { expected_revision: editRevision ?? draft.data.revision, sample_revision_id: revisionId, split, ...(interpretation === undefined ? {} : { interpretation }) }, "PUT");
       setEditRevision(changed.revision);
       await refresh(); setMessage("Draft membership saved.");
-    } catch (failure) { setError((failure as Error).message); } finally { setBusy(false); }
+    } catch (failure) { setError((failure as Error).message); if (denied(failure as Error)) setAccessDenied(true); } finally { setBusy(false); }
   }
   async function remove(member: Member) {
-    if (!draft.data) return; setBusy(true); setError("");
+    if (!writable || busy || !draft.data) return; setBusy(true); setError("");
     try { await request(`${base}/${member.sample_id}?expected_revision=${draft.data.revision}`, csrf, {}, "DELETE"); await refresh(); setMessage("Membership removed."); }
-    catch (failure) { setError((failure as Error).message); } finally { setBusy(false); }
+    catch (failure) { setError((failure as Error).message); if (denied(failure as Error)) setAccessDenied(true); } finally { setBusy(false); }
   }
+  if (accessDenied || [draft.error, samples.error, inspection.error].some(denied)) return <p role="alert">Draft access changed. Reload your workspace before continuing.</p>;
   return <section className="draft" aria-labelledby="draft-title"><h2 id="draft-title">Draft membership</h2>
     <button disabled={busy} onClick={() => { void refresh(true).catch(failure => setError((failure as Error).message)); }}>Load current draft</button>
     <form onSubmit={event => { event.preventDefault(); setCursors([null]); setSnapshot(Number(revisionInput)); }}><label>Inspect draft revision <input type="number" min="0" max="9007199254740991" step="1" required value={revisionInput} onChange={event => setRevisionInput(event.target.value)} /></label><button>Open revision</button></form>
