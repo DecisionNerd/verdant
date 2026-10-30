@@ -18,7 +18,7 @@ runtime or retained browser fixture was changed.
   PostgreSQL 17.6 and SeaweedFS 4.51. Fresh database
   `verdant_consumption_reconciled_20261030_test` applied the canonical chain from
   zero through `0021_availability`.
-- **89 UI tests passed**, with TypeScript and production build passing.
+- **92 UI tests passed**, with TypeScript and production build passing.
 - Ruff lint/format, Alembic model consistency and whitespace checks passed.
 - The new integration regression begins with an actual multipart upload and
   accepted ingestion result, without SQL-seeded artifact bindings. It carries
@@ -27,6 +27,13 @@ runtime or retained browser fixture was changed.
 - The accepted missing-object HTTP contract remains **404**; corruption is **409**
   and unavailable storage **503**. The older unmerged consumption assertion of
   missing-object 409 was changed to preserve accepted ingestion compatibility.
+- Independent integration review caught that the browser request helper discarded
+  safe 404 details, reducing missing bytes to a generic service failure. The helper
+  now retains bounded 404 details with an explicit fallback. A test sends an actual
+  fetch 404 through that helper into the preview UI and confirms old bytes disappear;
+  two fallback cases reject absent or oversized error details. All 92 UI tests
+  and the build were rerun after this fix; backend source is unchanged from the
+  394-test snapshot.
 - API/MCP consumption and publication reuse the accepted shared storage instance
   and its configured source-prefix, signing, region/addressing and close behavior.
 

@@ -6,7 +6,7 @@ import { ApiError, request } from "./api";
 import { Versions } from "./versions";
 
 vi.mock("./api", async original => ({ ...await original<typeof import("./api")>(), request: vi.fn() }));
-afterEach(() => { cleanup(); vi.resetAllMocks(); history.replaceState(null, "", "/"); });
+afterEach(() => { cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals(); history.replaceState(null, "", "/"); });
 const base = "/api/v1/namespaces/ns/datasets/ds";
 const exact = `${base}/versions/version-1`;
 function version() {
@@ -96,6 +96,23 @@ describe("exact version consumption", () => {
     await within(sample).findByText("<script>private text</script>");
     server.previewFailure = new ApiError(status, "Exact artifact is missing or could not be verified."); await test.refresh();
     await within(sample).findByText(/Preview is unavailable; no bytes are shown/);
+    expect(within(sample).queryByText("<script>private text</script>")).toBeNull();
+    expect(sample.querySelector("pre")).toBeNull();
+    expect(within(sample).getByRole("button", { name: "Retry verified preview" })).toBeTruthy();
+  });
+
+  it("shows an actual missing-byte 404 response and clears previously rendered content", async () => {
+    mockServer(); const test = mount(); const sample = await openPreview();
+    await within(sample).findByText("<script>private text</script>");
+    const actual = await vi.importActual<typeof import("./api")>("./api");
+    const otherRequests = vi.mocked(request).getMockImplementation()!;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({detail: "Object or upload is missing"}), {status: 404},
+    )));
+    vi.mocked(request).mockImplementation((path, csrf, body, method) => path.endsWith("/preview")
+      ? actual.request(path, csrf, body, method) : otherRequests(path, csrf, body, method));
+    await test.refresh();
+    await within(sample).findByText(/Object or upload is missing/);
     expect(within(sample).queryByText("<script>private text</script>")).toBeNull();
     expect(sample.querySelector("pre")).toBeNull();
     expect(within(sample).getByRole("button", { name: "Retry verified preview" })).toBeTruthy();

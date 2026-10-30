@@ -11,3 +11,7 @@ it("retains a safe fallback for unreadable conflict responses", async () => {
     json: async () => { throw new Error("invalid JSON"); }}));
   await expect(request("/api/test", "csrf", {})).rejects.toThrow("This record changed");
 });
+it.each([null, {detail: "x".repeat(501)}])("keeps a truthful bounded missing-resource fallback", async payload => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ok: false, status: 404, json: async () => payload}));
+  await expect(request("/api/test", "csrf")).rejects.toThrow("The requested record or artifact bytes are missing or inaccessible.");
+});
