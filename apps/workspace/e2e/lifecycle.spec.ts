@@ -52,7 +52,7 @@ test("two independent SSO sessions retain candidate pins, recovery, validation a
   const fixturePath = info.outputPath("fixture.json");
   const cleanup = () => {
     for (const child of [web, api]) if (child?.pid) { try { process.kill(-child.pid, "SIGTERM"); } catch { /* Already stopped. */ } }
-    execFileSync("docker", [...compose, "down", "--timeout", "1"], { stdio: "pipe", timeout: 20_000 });
+    execFileSync("docker", [...compose, "down", "--volumes", "--timeout", "1"], { stdio: "pipe", timeout: 20_000 });
   };
   process.once("exit", cleanup);
   try {
@@ -189,7 +189,7 @@ test("two independent SSO sessions retain candidate pins, recovery, validation a
     await first.close(); await second.close();
   } finally {
     await stop(web); await stop(api);
-    // This unique project has no named volumes and never reuses another project's data.
+    // This unique project never reuses existing data; remove its own disposable volumes too.
     cleanup(); process.off("exit", cleanup);
   }
 });

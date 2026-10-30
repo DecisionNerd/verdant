@@ -76,8 +76,8 @@ Docker must be running; reserved loopback ports 19032, 19033, 19081, 19085 and
 `verdant-browser-*` Compose project with pinned PostgreSQL, Keycloak and SeaweedFS
 images, plus owned API/Vite processes. All users, credentials and data are synthetic.
 It never attaches to the ordinary Compose stack or another owner's browser fixture.
-Its new disposable containers have no persistent volumes; teardown removes only
-that unique project and stops its own process groups.
+Its disposable volumes are never shared or reused; teardown removes only that
+unique project and its own volumes, and stops its own process groups.
 
 Two independent Chromium contexts perform actual Keycloak login, then exercise
 101 accepted source uploads, a 100+1 candidate preparation checkpoint across an
