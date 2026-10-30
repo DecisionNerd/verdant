@@ -167,3 +167,7 @@ __pycache__/
 # Stable private local deployment inputs
 /infrastructure/compose/.local
 /infrastructure/compose/.bootstrap-*/
+
+# Isolated browser regression artifacts (never include auth traces)
+/apps/workspace/test-results/
+/apps/workspace/playwright-report/
