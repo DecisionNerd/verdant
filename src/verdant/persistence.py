@@ -532,6 +532,148 @@ def make_sessions(database_url: str) -> sessionmaker[Session]:
     return sessionmaker(engine, expire_on_commit=False)
 
 
+class IngestionCleanupTaskRow(Base):
+    __tablename__ = "ingestion_cleanup_tasks"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "parent_operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        UniqueConstraint(
+            "namespace_id",
+            "parent_operation_id",
+            "parent_epoch",
+            name="uq_ingestion_cleanup_parent",
+        ),
+        CheckConstraint(
+            "parent_epoch >= 1 AND operation_id <> parent_operation_id",
+            name="ck_ingestion_cleanup_target",
+        ),
+    )
+    operation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    namespace_id: Mapped[UUID]
+    parent_operation_id: Mapped[UUID]
+    parent_epoch: Mapped[int] = mapped_column(BigInteger)
+
+
+class ArtifactRow(Base):
+    __tablename__ = "artifacts"
+    __table_args__ = (
+        UniqueConstraint("namespace_id", "id", name="uq_artifact_namespace_id"),
+        ForeignKeyConstraint(["namespace_id"], ["namespaces.id"]),
+        CheckConstraint("sha256 ~ '^[0-9a-f]{64}$'", name="ck_artifact_digest"),
+        CheckConstraint("size_bytes BETWEEN 0 AND 268435456", name="ck_artifact_size"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    sha256: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ArtifactLocationRow(Base):
+    __tablename__ = "artifact_locations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "artifact_id"], ["artifacts.namespace_id", "artifacts.id"]
+        ),
+        UniqueConstraint("store_id", "bucket", "object_key", name="uq_artifact_placement"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    artifact_id: Mapped[UUID]
+    store_id: Mapped[str] = mapped_column(String(100))
+    bucket: Mapped[str] = mapped_column(String(255))
+    object_key: Mapped[str] = mapped_column(String(1024))
+
+
+class IngestionItemRow(Base):
+    __tablename__ = "ingestion_items"
+    __table_args__ = (
+        UniqueConstraint("namespace_id", "id", name="uq_ingestion_namespace_id"),
+        UniqueConstraint("retry_of_item_id", name="uq_ingestion_retry_origin"),
+        ForeignKeyConstraint(
+            ["namespace_id", "retry_of_item_id"],
+            ["ingestion_items.namespace_id", "ingestion_items.id"],
+            name="fk_ingestion_retry_origin",
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "artifact_id"], ["artifacts.namespace_id", "artifacts.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "target_sample_id"], ["samples.namespace_id", "samples.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "sample_id", "accepted_revision_id"],
+            ["sample_revisions.namespace_id", "sample_revisions.sample_id", "sample_revisions.id"],
+        ),
+        UniqueConstraint("operation_id", "position", name="uq_ingestion_position"),
+        UniqueConstraint("staging_key", name="uq_ingestion_staging"),
+        CheckConstraint("position BETWEEN 0 AND 99", name="ck_ingestion_position"),
+        CheckConstraint(
+            "state IN ('awaiting_upload','uploading','ready','accepted','failed',"
+            "'cancelled','superseded')",
+            name="ck_ingestion_state",
+        ),
+        CheckConstraint("jsonb_typeof(metadata) = 'object'", name="ck_ingestion_metadata"),
+        CheckConstraint(
+            "retry_of_item_id IS NULL OR retry_of_item_id <> id", name="ck_ingestion_retry_self"
+        ),
+        CheckConstraint(
+            "(target_sample_id IS NULL AND expected_revision IS NULL) OR "
+            "(target_sample_id IS NOT NULL AND expected_revision IS NOT NULL "
+            "AND expected_revision >= 1)",
+            name="ck_ingestion_target",
+        ),
+        CheckConstraint(
+            "(state = 'accepted' AND sample_id IS NOT NULL "
+            "AND accepted_revision_id IS NOT NULL) OR "
+            "(state <> 'accepted' AND sample_id IS NULL AND accepted_revision_id IS NULL)",
+            name="ck_ingestion_acceptance",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    operation_id: Mapped[UUID]
+    retry_of_item_id: Mapped[UUID | None]
+    position: Mapped[int] = mapped_column(Integer)
+    artifact_id: Mapped[UUID]
+    source_key: Mapped[str] = mapped_column(String(500))
+    modality: Mapped[str] = mapped_column(String(50))
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSONB)
+    target_sample_id: Mapped[UUID | None]
+    sample_id: Mapped[UUID | None]
+    expected_revision: Mapped[int | None] = mapped_column(BigInteger)
+    staging_key: Mapped[str] = mapped_column(String(1024))
+    upload_id: Mapped[str | None] = mapped_column(String(2048))
+    state: Mapped[str] = mapped_column(String(30), server_default="awaiting_upload")
+    error: Mapped[str | None] = mapped_column(String(100))
+    accepted_revision_id: Mapped[UUID | None]
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SampleArtifactRow(Base):
+    __tablename__ = "sample_artifacts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "sample_id", "revision_id"],
+            ["sample_revisions.namespace_id", "sample_revisions.sample_id", "sample_revisions.id"],
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "artifact_id"], ["artifacts.namespace_id", "artifacts.id"]
+        ),
+    )
+    revision_id: Mapped[UUID] = mapped_column(primary_key=True)
+    namespace_id: Mapped[UUID]
+    sample_id: Mapped[UUID]
+    artifact_id: Mapped[UUID]
+
+
 class RegistryRepository:
     def __init__(self, session: Session):
         self.session = session

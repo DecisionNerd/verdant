@@ -1,0 +1,110 @@
+{
+  "namespace_id": "f056f5e3-6619-4b62-b56f-b91e4ffbb809",
+  "principal_id": "db5d981a-4de2-40a7-b4ef-75cb5a10e1ae",
+  "operation_id": "2033ac65-6836-48fd-9778-5bc6e6a9a046",
+  "item_id": "fc381175-a6a1-476e-bb08-a2df185a0466",
+  "sha256": "e3df86456308e2c39f4042fea716b8d115099ae5db123e238f81f30d4db99fe8",
+  "size_bytes": 60,
+  "verification_deployment_id": "f1112fe0-37fe-4a76-98fd-59b5bdcd4530",
+  "ingestion_deployment_id": "9c211e15-e084-4f18-b6ed-bd5ac06f205e",
+  "pool": "verdant-issue14-native-fault",
+  "database": "verdant_issue14_integrated_test",
+  "mode": "upload",
+  "source_sha256": {
+    "__init__.py": "d82f1ec8d5bc2dce331e88c26b6ef9255c4913b4f25452a749a6756841bbbbde",
+    "access_tokens.py": "b81ae91d4cab9464a9a2366230d91d9d07b05e01b37465574fea29331bf3998c",
+    "api.py": "58cf81e282afb4fe5af9729d3839df98057c91bee7ed35dddc786ad35b201b73",
+    "application.py": "802ca09ac15c8ef57ec4ca38dfe64b9e048958955cc30c816bb6d6991ca4aaa7",
+    "auth.py": "5650eb0f7d899feb79d6d55815bb8a9e335e4540e3a21a35a50c9c7e45e9f20f",
+    "browser_sessions.py": "7c836431f661a8c62f47c3828244f27964232bec63106b12dd66de0d0fc1cdd1",
+    "contracts.py": "7b915d9c7dccef6e9adebf9e4a4f95e609078d0cb3bdf68f6496c621de54c442",
+    "dispatch.py": "d65fde2ed17f3d7b3ad7eb5706530e9a56ae57baf2622623feead481832ad122",
+    "domain.py": "57942ff978ee4d1d438fd399effe3ec78a6bfa186a263917d3f94cc1d596b541",
+    "flows.py": "5bd1f5f6053d07cc27a87d7a67902aa6e24cf45eeb03a7c84df7e348dc4347f7",
+    "identity.py": "c9d9c24915664d8f6bb32f3aedbcf58cef5d9859c67ed013de83967c1457f277",
+    "ingestion.py": "2f209755303d563e9858fbfaa090c3e7146e0856b6c0f3c594a95d5141894b05",
+    "ingestion_cleanup.py": "1077b2b0ba861a7d42130198a110f4676815c07537a977113b54d0869891420a",
+    "ingestion_maintenance.py": "0363b9749cb842688674690fefcf2ad5522f9cb92838cca006998a00ebd1cb6a",
+    "ingestion_runner.py": "e83df59ba78f3461fd2ce26c6ca57b77b091bdcec9fd5f3207a9551f0c47ac49",
+    "logging.py": "3fe162be23dfb6574a8b20adc03608ac7641d653778d2ee5e2f9c0ccf47a1591",
+    "mcp_server.py": "7e743286fb8043770302b25a1cbb174ec802caa8168a80b1d89200ed80e4a43b",
+    "operations.py": "510ca12c4b8e4ccc2e3bf7e0c0bcb10f4b6c431dd22817ef01aef0060e6f74e2",
+    "operator.py": "5170e71be65d0cc8fb6933f7fb38cc2b8ff5329a7113de1e2d26f48cf2a0fac2",
+    "persistence.py": "41cd16a94e2add91b2d5e089750a7bb4f3b7bd7b3229a3890b0468cc15573940",
+    "prefect_submission.py": "624b7676b88da00135d0e2721c452d1cfa21f476579a25e72dce74a428346c79",
+    "preview.py": "6035dcdcbb6969e25ce9dbb882208dca93667a779eb6d6f7c14a8a56079ddd8d",
+    "storage.py": "c3544299bec510993dd686870b15534811844ec4542d9425e8580ee26c91a195",
+    "telemetry.py": "dc09d9eb27755dd9ae91b8ec1a4247100fcfa463fcdfa8aef5d44a4b23491f87",
+    "verification.py": "b92159badca91e119ce867612f01f5f5d2f49cc839485bdc3c9324af7363259e",
+    "versioning.py": "52202563aef35e2929604d30a07ebea61d0b11952bb6ac04eb120a67a30cfb03",
+    "workflow_runtime.py": "186cc42523718541d356f5850e9cbbcce26ec828e6afe5269edb76564caafabb"
+  },
+  "promotion_receipt_id": "ae8335c7-6e7e-4d92-97f0-a993b96b582e",
+  "failed_provider": {
+    "operation_id": "2033ac65-6836-48fd-9778-5bc6e6a9a046",
+    "epoch": 1,
+    "run_id": "642ee9ec-c9bd-4be9-b50e-9d2540f6db24",
+    "state": "Failed",
+    "matching_runs": 1
+  },
+  "failed_without_sample_acceptance": true,
+  "deployment_collision_repaired": {
+    "before": [
+      {
+        "id": "f19f2bcd-60a4-43a7-984c-79b52b716769",
+        "name": "issue14-integrated-regression",
+        "pool": "verdant-issue14-native-fault"
+      },
+      {
+        "id": "26b5930a-714e-4b88-b7b4-462471fbfa1d",
+        "name": "issue14-integrated-local",
+        "pool": "verdant-issue14-native-fault"
+      }
+    ],
+    "original_pool_restored": "verdant-issue14-integrated",
+    "all_original_deployment_runs_terminal_before_repair": true,
+    "failed_attempt_deployment_id": "26b5930a-714e-4b88-b7b4-462471fbfa1d"
+  },
+  "retried_epoch": 2,
+  "recovered_provider": {
+    "operation_id": "2033ac65-6836-48fd-9778-5bc6e6a9a046",
+    "epoch": 2,
+    "run_id": "07a27d55-8d28-4f3e-8be5-0c2ef3a7134a",
+    "state": "Completed",
+    "matching_runs": 1
+  },
+  "cleanup_provider": {
+    "operation_id": "0ee3535a-ec3a-443e-809f-5a0cd7a49aa1",
+    "epoch": 1,
+    "run_id": "90fc841f-2486-4dbc-aebf-124839ca809e",
+    "state": "Completed",
+    "matching_runs": 1
+  },
+  "final_bytes_verified": true,
+  "owned_staging_removed": true,
+  "one_sample_and_revision": true,
+  "stable_promotion_receipt": true,
+  "qualification_limits": [
+    "S3 unavailability via closed loopback port in owned worker only",
+    "Not Prefect server outage or worker-supervisor restart",
+    "Not arbitrary mid-transfer interruption",
+    "Initial deployment-name collision repaired before retry; original runs verified terminal"
+  ],
+  "qualifier_sha256": {
+    "scripts/qualify_ingestion_fault.py": "9bf4aa67ae337cd1e6a5cf20f1b48dbcbe0c557ed254b42591df1461e0a4be3e",
+    "scripts/qualify_ingestion_execution.py": "0a7de54bd35b312bbf4918d903cd562ff83a64ed2374864bae2f437ea9e420b6"
+  },
+  "owned_workers_stopped": true,
+  "live_candidate_unchanged": {
+    "state": "preparing",
+    "prepared_count": 100,
+    "source_revision": 102,
+    "latest_draft_revision": 102,
+    "generation_id": "467f563d-c1ac-4d5f-8dee-d08bc3591c33"
+  },
+  "qualifier_before_endpoint_guard_sha256": {
+    "scripts/qualify_ingestion_fault.py": "2b8778df8033e5753423ebddbe1a2749ceb5aba15728e01f64596dd227b82c88",
+    "scripts/qualify_ingestion_execution.py": "0a7de54bd35b312bbf4918d903cd562ff83a64ed2374864bae2f437ea9e420b6"
+  },
+  "post_execution_qualifier_change": "Added closed-port preflight guard; execution already independently verified the port was closed. Guard itself passed lint/format, not a repeated native fault run."
+}

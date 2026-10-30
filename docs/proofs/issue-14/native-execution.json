@@ -1,0 +1,49 @@
+{
+  "namespace_id": "0cca6324-c386-447a-802d-413f4bc8cf57",
+  "principal_id": "bd52279e-3d28-4e2a-85f5-e0f67f7a0f85",
+  "operation_id": "e934c029-9838-407b-a48b-6a06949d289c",
+  "item_id": "300ab896-8cc2-4076-82b8-c8bd018a2040",
+  "sha256": "e3df86456308e2c39f4042fea716b8d115099ae5db123e238f81f30d4db99fe8",
+  "size_bytes": 60,
+  "verification_deployment_id": "6f4db5a3-11a3-4c2a-81ab-89ee96e23e95",
+  "ingestion_deployment_id": "df079945-67eb-4e87-8fdc-eb179a75b726",
+  "pool": "verdant-issue14-qualification",
+  "database": "verdant_issue14_reupload_test",
+  "source_sha256": {
+    "flows.py": "06dc238be5ff181fc024d93d2b8dbc49f71ef78f9b310c305614219a99f6691f",
+    "dispatch.py": "ebe207a552b61cc15a18a1b76efb6ff7bf2c22ed4b5a7f883a90aa419cdebb85",
+    "ingestion.py": "647d1a8ef3432f7d4e4e2136894e6407bb063e60d30812d6664c48f2103d0164",
+    "ingestion_cleanup.py": "09d70c3b44fc67eaf231ecd448b17021fc3126ca7aa37c34a3c0f73b5264a4e0",
+    "ingestion_maintenance.py": "0363b9749cb842688674690fefcf2ad5522f9cb92838cca006998a00ebd1cb6a"
+  },
+  "status": {
+    "ingestion": "succeeded",
+    "cleanup": "succeeded"
+  },
+  "cleanup_operation_id": "74a9cdd0-83d1-4f01-8320-6a9aec9d1110",
+  "provider_runs": [
+    {
+      "operation_id": "e934c029-9838-407b-a48b-6a06949d289c",
+      "provider_run_id": "1764964f-1267-48bb-a237-426465e7fb54",
+      "state": "Completed",
+      "matching_runs": 1
+    },
+    {
+      "operation_id": "74a9cdd0-83d1-4f01-8320-6a9aec9d1110",
+      "provider_run_id": "e98134c1-3e03-4a02-80bc-100e07651b6a",
+      "state": "Completed",
+      "matching_runs": 1
+    }
+  ],
+  "final_bytes_verified": true,
+  "owned_staging_removed": true,
+  "restart_proof": {
+    "before_worker_pid": 84847,
+    "after_worker_pid": 86925,
+    "prior_worker_terminal": true,
+    "health_port": 18422,
+    "health": "OK",
+    "observation": "same completed provider run IDs, one run per invocation; final bytes verified and staging absent",
+    "scope": "graceful worker restart after both completed runs; not interruption during writes"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "namespace_id": "f9119ad3-ce6f-4eaa-8172-a47608560ba4",
+  "principal_id": "52ab5089-0255-4f34-add4-ad604a10f8c2",
+  "fixture": "New empty namespace; audited read grant then audited revocation; namespace retained",
+  "read_only": {
+    "namespace_http_status": 200,
+    "ingestion_limits_http_status": 200,
+    "ingestion_history_http_status": 200,
+    "upload_controls_hidden": true,
+    "source_registration_controls_hidden": true,
+    "screenshot": "browser/read-only-ingestion.png"
+  },
+  "revoked": {
+    "without_browser_reload": true,
+    "namespace_http_status": 403,
+    "permission_error_visible": true,
+    "ingestion_content_unmounted": true,
+    "grant_count": 0,
+    "operation_count": 0,
+    "sample_count": 0,
+    "screenshot": "browser/read-grant-revoked.png"
+  },
+  "original_human_write_grants_preserved": 2,
+  "limits": [
+    "Empty history fixture; no retained private content to test clearing",
+    "Cached workspace option remains visible but does not authorize requests",
+    "Does not establish write-to-read downgrade during transfer or denied-account login",
+    "No independent Chrome proof"
+  ]
+}

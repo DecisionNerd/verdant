@@ -18,6 +18,7 @@ from verdant.persistence import (
     NamespaceGrantRow,
     NamespaceRow,
     RegistryRepository,
+    SampleArtifactRow,
     SampleRevisionRow,
     SampleRow,
 )
@@ -328,6 +329,31 @@ class RegistryService:
                 raise Conflict("Sample revision changed")
             sample.revision += 1
             row = self._add_revision(repo, sample, command)
+            # Metadata-only edits retain existing verified ownership. Matching arbitrary keys
+            # elsewhere never establish a binding for an unverified sample.
+            prior_artifact = repo.session.scalar(
+                select(SampleArtifactRow.artifact_id)
+                .join(SampleRevisionRow, SampleRevisionRow.id == SampleArtifactRow.revision_id)
+                .where(
+                    SampleArtifactRow.namespace_id == namespace_id,
+                    SampleArtifactRow.sample_id == sample_id,
+                    SampleRevisionRow.namespace_id == namespace_id,
+                    SampleRevisionRow.sample_id == sample_id,
+                    SampleRevisionRow.revision == command.expected_revision,
+                    SampleRevisionRow.object_key == command.object_key,
+                    SampleRevisionRow.sha256 == command.sha256,
+                    SampleRevisionRow.size_bytes == command.size_bytes,
+                )
+            )
+            if prior_artifact is not None:
+                repo.session.add(
+                    SampleArtifactRow(
+                        namespace_id=namespace_id,
+                        sample_id=sample_id,
+                        revision_id=row.id,
+                        artifact_id=prior_artifact,
+                    )
+                )
             self._audit(
                 repo,
                 principal,

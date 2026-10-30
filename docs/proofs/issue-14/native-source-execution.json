@@ -1,0 +1,67 @@
+{
+  "namespace_id": "2e657dae-d282-4c00-97b9-61a0eb68853d",
+  "principal_id": "85826de4-b2a1-4f24-a85a-9a4eba939774",
+  "operation_id": "bc8ef6f2-b932-4e25-bb56-f8a01bb45820",
+  "item_id": "fa26300c-1ea2-435b-9420-5755de5a0393",
+  "sha256": "e3df86456308e2c39f4042fea716b8d115099ae5db123e238f81f30d4db99fe8",
+  "size_bytes": 60,
+  "verification_deployment_id": "641e9b4f-611a-4d46-8997-abd004b99c75",
+  "ingestion_deployment_id": "3a47032d-63c6-4eeb-9ad8-e6228785b6b8",
+  "pool": "verdant-issue14-source-qualification",
+  "database": "verdant_issue14_sources_test",
+  "mode": "source",
+  "source_sha256": {
+    "__init__.py": "d82f1ec8d5bc2dce331e88c26b6ef9255c4913b4f25452a749a6756841bbbbde",
+    "access_tokens.py": "b81ae91d4cab9464a9a2366230d91d9d07b05e01b37465574fea29331bf3998c",
+    "api.py": "5d3af7ec78b3de774295dd386ef5c2689a920c6a0a3ea82f32a315fe1a47efb6",
+    "application.py": "01bd57d847389dcb7dd11e64e1795f15dd1be752de8a0d21ad96a2f9fd072ea8",
+    "auth.py": "5650eb0f7d899feb79d6d55815bb8a9e335e4540e3a21a35a50c9c7e45e9f20f",
+    "browser_sessions.py": "7c836431f661a8c62f47c3828244f27964232bec63106b12dd66de0d0fc1cdd1",
+    "contracts.py": "975da31a0de769a3cce71edf9a9cd6a3339ac4442786c8ae100b7e509488b86f",
+    "dispatch.py": "d65fde2ed17f3d7b3ad7eb5706530e9a56ae57baf2622623feead481832ad122",
+    "domain.py": "57942ff978ee4d1d438fd399effe3ec78a6bfa186a263917d3f94cc1d596b541",
+    "flows.py": "5bd1f5f6053d07cc27a87d7a67902aa6e24cf45eeb03a7c84df7e348dc4347f7",
+    "identity.py": "c9d9c24915664d8f6bb32f3aedbcf58cef5d9859c67ed013de83967c1457f277",
+    "ingestion.py": "2f209755303d563e9858fbfaa090c3e7146e0856b6c0f3c594a95d5141894b05",
+    "ingestion_cleanup.py": "1077b2b0ba861a7d42130198a110f4676815c07537a977113b54d0869891420a",
+    "ingestion_maintenance.py": "0363b9749cb842688674690fefcf2ad5522f9cb92838cca006998a00ebd1cb6a",
+    "ingestion_runner.py": "e83df59ba78f3461fd2ce26c6ca57b77b091bdcec9fd5f3207a9551f0c47ac49",
+    "logging.py": "3fe162be23dfb6574a8b20adc03608ac7641d653778d2ee5e2f9c0ccf47a1591",
+    "mcp_server.py": "640b45b4a1ba8048fc08a29367137edf9ba7f322524aef4e3d23497e4ce33097",
+    "operations.py": "510ca12c4b8e4ccc2e3bf7e0c0bcb10f4b6c431dd22817ef01aef0060e6f74e2",
+    "operator.py": "5170e71be65d0cc8fb6933f7fb38cc2b8ff5329a7113de1e2d26f48cf2a0fac2",
+    "persistence.py": "ffa8567486f16911519e782745524da6c39b63abe41c8becbf0596fbd7775be7",
+    "prefect_submission.py": "624b7676b88da00135d0e2721c452d1cfa21f476579a25e72dce74a428346c79",
+    "preview.py": "6035dcdcbb6969e25ce9dbb882208dca93667a779eb6d6f7c14a8a56079ddd8d",
+    "storage.py": "c3544299bec510993dd686870b15534811844ec4542d9425e8580ee26c91a195",
+    "telemetry.py": "dc09d9eb27755dd9ae91b8ec1a4247100fcfa463fcdfa8aef5d44a4b23491f87",
+    "verification.py": "b92159badca91e119ce867612f01f5f5d2f49cc839485bdc3c9324af7363259e",
+    "workflow_runtime.py": "186cc42523718541d356f5850e9cbbcce26ec828e6afe5269edb76564caafabb"
+  },
+  "original_source_retained": true,
+  "status": {
+    "ingestion": "succeeded",
+    "cleanup": "succeeded"
+  },
+  "cleanup_operation_id": "0a4505fa-006e-4d75-9cb7-650f3456cbbf",
+  "provider_runs": [
+    {
+      "operation_id": "bc8ef6f2-b932-4e25-bb56-f8a01bb45820",
+      "provider_run_id": "6d55964a-5822-4cc7-9541-42eaa5174535",
+      "state": "Completed",
+      "matching_runs": 1
+    },
+    {
+      "operation_id": "0a4505fa-006e-4d75-9cb7-650f3456cbbf",
+      "provider_run_id": "5af990c6-113d-421b-9cd6-f7c354c97048",
+      "state": "Completed",
+      "matching_runs": 1
+    }
+  ],
+  "final_bytes_verified": true,
+  "owned_staging_removed": true,
+  "qualification_worker_pid": 1186,
+  "qualification_worker_stopped": true,
+  "schema_revision": "0018_ingestion_sources",
+  "qualifier_sha256": "75efd9f1fc42e98eb96be023ea1006eb5d47bb741006693ba578dda1cea6f4b5"
+}

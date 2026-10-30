@@ -2,6 +2,7 @@
 
 Verdant's target is a modular Python dataset platform. Existing runtime code is outside this documentation refactor's behavior-preservation boundary.
 
+- [Verified ingestion transport](INGESTION.md): implemented backend commands, limits and remaining execution/UI gates.
 - [Identity qualification](IDENTITY-QUALIFICATION.md): implementation, measured proof and remaining gates.
 - [Python foundation](PLATFORM-FOUNDATION.md): current backend setup, contracts and proof limits.
 - [Architecture](ARCHITECTURE.md): ownership, canonical entities, flows and invariants.

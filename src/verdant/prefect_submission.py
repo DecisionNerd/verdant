@@ -5,8 +5,13 @@ from uuid import UUID
 
 from prefect.client.schemas.filters import FlowRunFilter, FlowRunFilterIdempotencyKey
 
+from verdant.contracts import SAMPLE_INGESTION_KINDS
 from verdant.domain import Conflict, Principal
 from verdant.operations import OperationService, WorkflowReconciliation
+
+
+def parameters_match(actual, expected):
+    return isinstance(actual, dict) and type(actual.get("epoch")) is int and actual == expected
 
 
 class WorkflowProviderUnavailable(Exception):
@@ -45,7 +50,7 @@ class PrefectSubmission:
         def validate(run):
             if (
                 run.deployment_id != self.deployment_id
-                or run.parameters != parameters
+                or not parameters_match(run.parameters, parameters)
                 or run.idempotency_key != dispatch.invocation_key
             ):
                 raise Conflict("Provider workflow identity does not match the persisted dispatch")
@@ -133,12 +138,14 @@ class PrefectSubmission:
             run.id != UUID(dispatch.provider_reference)
             or run.deployment_id != dispatch.deployment_id
             or run.idempotency_key != dispatch.invocation_key
-            or run.parameters
-            != {
-                "namespace_id": str(namespace_id),
-                "operation_id": str(operation_id),
-                "epoch": epoch,
-            }
+            or not parameters_match(
+                run.parameters,
+                {
+                    "namespace_id": str(namespace_id),
+                    "operation_id": str(operation_id),
+                    "epoch": epoch,
+                },
+            )
         ):
             raise Conflict("Provider workflow identity does not match persisted dispatch")
         state = await asyncio.to_thread(self.operations.get, actor, namespace_id, operation_id)
@@ -146,9 +153,30 @@ class PrefectSubmission:
             raise Conflict("Operation attempt is stale")
         if run.state is not None and run.state.is_final():
             if state.status == "cancellation_requested":
-                await asyncio.to_thread(
-                    self.operations.cancel_verification, actor, namespace_id, operation_id, epoch
-                )
+                if state.kind in SAMPLE_INGESTION_KINDS:
+                    from verdant.ingestion import IngestionService
+
+                    await asyncio.to_thread(
+                        IngestionService(
+                            self.operations.sessions, bucket="unconfigured"
+                        ).ensure_cleanup,
+                        actor,
+                        namespace_id,
+                        operation_id,
+                        epoch,
+                    )
+                elif state.kind == "ingest_cleanup":
+                    await asyncio.to_thread(
+                        self.operations.confirm_cancel, actor, namespace_id, operation_id, epoch
+                    )
+                else:
+                    await asyncio.to_thread(
+                        self.operations.cancel_verification,
+                        actor,
+                        namespace_id,
+                        operation_id,
+                        epoch,
+                    )
             elif state.status in {"queued", "running"}:
                 # Provider completion cannot establish a logical result. Missing acceptance fails
                 # safely, allowing an explicit retry to reconcile the read-only receipt.

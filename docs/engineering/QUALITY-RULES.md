@@ -68,9 +68,10 @@ versioned artifacts and reference-data identity and must preserve failed/unknown
 required gates on errors. Dashboard availability is independent of these core
 checks. A passing core report alone never establishes publication readiness.
 
-Migration `0016_quality` follows candidate migration `0014_interpretation` on this
-development stack. Reconcile the separately owned #14 ingestion migration before
-landing the combined history. Rollback of application code can retain these
+Migration `0019_quality` follows the accepted #14 ingestion chain ending at
+`0018_ingestion_sources`. The earlier unmerged development revision `0016_quality`
+has been resequenced; its isolated proof databases are retained and are not an
+upgrade source for this canonical chain. Rollback of application code can retain these
 additive tables; an explicit schema downgrade deletes policies/reports and needs
 a backup and deliberate operator decision. Startup never upgrades schema.
 

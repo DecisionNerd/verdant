@@ -1,0 +1,175 @@
+{
+  "operations": [
+    {
+      "id": "acc67c72-4b1b-4ca2-9be9-b7dcf110ea17",
+      "status": "cancelled",
+      "epoch": 1,
+      "cleanup_operation_id": "4c11ae1c-1242-4935-949b-b052be00fd79",
+      "item_id": "b27b6fba-2dc0-4353-8e6b-c378bcae2c69",
+      "state": "superseded",
+      "retry_of_item_id": null,
+      "sample_id": null,
+      "revision_id": null,
+      "sha256": "55491c5ce2065f896abfc776e4370e3dc3184c3659fef115bea43286f4fdeadd",
+      "size_bytes": 134,
+      "native_upload_id_sha256": null,
+      "owned_staging_absent": true,
+      "native_multipart_absent": true
+    },
+    {
+      "id": "1cdb3a5c-e791-4f40-9d9e-c4ad31810d51",
+      "status": "succeeded",
+      "epoch": 1,
+      "cleanup_operation_id": "74260799-5ac0-4100-a8fc-ee6933939874",
+      "item_id": "ae1dc058-f02c-442f-bcc3-fc6950a7f426",
+      "state": "accepted",
+      "retry_of_item_id": "b27b6fba-2dc0-4353-8e6b-c378bcae2c69",
+      "sample_id": "ae264267-c3de-4017-848c-0036cdeed3a1",
+      "revision_id": "e0e5dfe2-e45c-4d0d-8768-8a2ddb630c4a",
+      "sha256": "55491c5ce2065f896abfc776e4370e3dc3184c3659fef115bea43286f4fdeadd",
+      "size_bytes": 134,
+      "native_upload_id_sha256": "00b98f330ff0acb131421cd5466c4c3dc3eaa62ebc461889215389c4e7104b3e",
+      "owned_staging_absent": true,
+      "native_multipart_absent": true,
+      "sample_revision": 1,
+      "metadata": {}
+    },
+    {
+      "id": "d847d392-aecc-478c-828f-2b29c91b9ff3",
+      "status": "succeeded",
+      "epoch": 1,
+      "cleanup_operation_id": "ce3bd511-7dfd-4960-9cae-5baee08924e6",
+      "item_id": "939ec2da-1aeb-46c0-ab6b-bd7893895683",
+      "state": "accepted",
+      "retry_of_item_id": null,
+      "sample_id": "ae264267-c3de-4017-848c-0036cdeed3a1",
+      "revision_id": "bc4cee3a-0fe6-4df6-95d2-1cba576ea85b",
+      "sha256": "a85ff07c3924981cdb42cfc11513afa549445ed5c66523212c57d27e0afb0b0e",
+      "size_bytes": 51,
+      "native_upload_id_sha256": "5a99d7ea0cb41095a2e55e53cb8bcaed76f6decb3f5dc5ca7f75067fc777e5d8",
+      "owned_staging_absent": true,
+      "native_multipart_absent": true,
+      "sample_revision": 2,
+      "metadata": {}
+    },
+    {
+      "id": "5a3ebebf-5598-4c55-b2f3-3adc3fe3c10e",
+      "status": "succeeded",
+      "epoch": 1,
+      "cleanup_operation_id": "88a00950-1d43-47d4-88cb-554540f2e9df",
+      "item_id": "515bd755-1487-4de1-a96d-a3bf247df7f1",
+      "state": "accepted",
+      "retry_of_item_id": null,
+      "sample_id": "a5a2382f-853a-4257-8853-e8b2e2204f4d",
+      "revision_id": "688cbd09-dc38-4f52-9d51-06090c405a3e",
+      "sha256": "281e519df3077b557c6b03f5da83c4e8d397219259615dd7c3308f89cae8f2a6",
+      "size_bytes": 67108864,
+      "native_upload_id_sha256": "6b021c8ff2f4f76bec891d5a78aa870aa55827c3a1ea14df92f400efc6b9672c",
+      "owned_staging_absent": true,
+      "native_multipart_absent": true,
+      "sample_revision": 1,
+      "metadata": {}
+    },
+    {
+      "id": "138ae9d1-d7ad-4c95-bb46-b9be800ed5e8",
+      "status": "cancelled",
+      "epoch": 1,
+      "cleanup_operation_id": "bc75254e-755e-4303-8d6c-bde16c3f68e8",
+      "item_id": "9b807c22-3b35-4e04-8699-99cb932754c2",
+      "state": "cancelled",
+      "retry_of_item_id": null,
+      "sample_id": null,
+      "revision_id": null,
+      "sha256": "281e519df3077b557c6b03f5da83c4e8d397219259615dd7c3308f89cae8f2a6",
+      "size_bytes": 67108864,
+      "native_upload_id_sha256": "ff387ac788ec08fb18d1874ec1dafdb20989a65df24028127d245c8bf52c6f31",
+      "owned_staging_absent": true,
+      "native_multipart_absent": true
+    }
+  ],
+  "provider_runs": [
+    {
+      "operation_id": "4c11ae1c-1242-4935-949b-b052be00fd79",
+      "provider_run_id": "615b4e58-00dc-4c0c-bdf1-70bfebf37ad0",
+      "state": "Completed",
+      "matching_runs": 1
+    },
+    {
+      "operation_id": "1cdb3a5c-e791-4f40-9d9e-c4ad31810d51",
+      "provider_run_id": "ba53a2af-094f-437d-9e6a-d17ede2be35d",
+      "state": "Completed",
+      "matching_runs": 1
+    },
+    {
+      "operation_id": "74260799-5ac0-4100-a8fc-ee6933939874",
+      "provider_run_id": "9fc92128-2fe9-41a6-817d-a03882fc359d",
+      "state": "Completed",
+      "matching_runs": 1
+    },
+    {
+      "operation_id": "d847d392-aecc-478c-828f-2b29c91b9ff3",
+      "provider_run_id": "b1214e2e-af9c-443d-8329-29fe50022a6d",
+      "state": "Completed",
+      "matching_runs": 1
+    },
+    {
+      "operation_id": "ce3bd511-7dfd-4960-9cae-5baee08924e6",
+      "provider_run_id": "ee7dbdf0-0381-4d54-99fe-5d99107d71ec",
+      "state": "Completed",
+      "matching_runs": 1
+    },
+    {
+      "operation_id": "5a3ebebf-5598-4c55-b2f3-3adc3fe3c10e",
+      "provider_run_id": "eecb6ef6-9b55-40a3-bd06-ff1b69200c23",
+      "state": "Completed",
+      "matching_runs": 1
+    },
+    {
+      "operation_id": "88a00950-1d43-47d4-88cb-554540f2e9df",
+      "provider_run_id": "95ea7dd1-1167-4c13-886d-927b97b893ee",
+      "state": "Completed",
+      "matching_runs": 1
+    },
+    {
+      "operation_id": "bc75254e-755e-4303-8d6c-bde16c3f68e8",
+      "provider_run_id": "9e57bc38-c18a-4c82-a28b-6847214d09f2",
+      "state": "Completed",
+      "matching_runs": 1
+    }
+  ],
+  "all_retained_accepted_artifacts_verified": 7,
+  "original_source_retained": true,
+  "multipart_before": {
+    "operation_id": "5a3ebebf-5598-4c55-b2f3-3adc3fe3c10e",
+    "epoch": 1,
+    "native_upload_id_sha256": "6b021c8ff2f4f76bec891d5a78aa870aa55827c3a1ea14df92f400efc6b9672c",
+    "parts": [
+      {
+        "PartNumber": 1,
+        "ETag": "\"57b019a28c426df5727b3992701bd2be\"",
+        "Size": 8388608
+      },
+      {
+        "PartNumber": 2,
+        "ETag": "\"57b019a28c426df5727b3992701bd2be\"",
+        "Size": 8388608
+      }
+    ],
+    "not_yet_accepted": true
+  },
+  "partial_cancellation_before": {
+    "operation_id": "138ae9d1-d7ad-4c95-bb46-b9be800ed5e8",
+    "stored_parts_before_cancel": 2,
+    "stored_bytes_before_cancel": 16777216,
+    "sample_not_accepted": true
+  },
+  "wrong_selection_effect_receipts_before_transfer": 0,
+  "multipart_sign_requests_total": 9,
+  "multipart_resume_first_observed_part": 3,
+  "stale_replacement_browser_conflict": "Replacement sample revision changed",
+  "same_native_upload_and_epoch": true,
+  "stable_sample_revision_1_to_2": true,
+  "replacement_metadata_preserved": true,
+  "web_source_sha256": "f3289de2f28b4245bb1027a00a9279a22abe201bc469dfec43d845272eaddddf",
+  "web_image_id": "sha256:2387c70c126d83840e68b9a07afed73b1bf94c08cd4a4f8f32e4b0ea9b766244"
+}
