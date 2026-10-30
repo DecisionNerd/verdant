@@ -40,7 +40,7 @@ Keycloak uses native Quarkus JDBC validation on borrow through `quarkus.properti
 
 ## Optional workflow execution
 
-The native Prefect execution overlay uses a separate persistent PostgreSQL database and generated machine credentials. It publishes no additional host ports and disables the Prefect dashboard. The worker executes the fixed artifact-verification flow; PostgreSQL registry Operations remains the logical authority.
+The native Prefect execution overlay uses a separate persistent PostgreSQL database and generated machine credentials. It publishes no additional host ports and disables the Prefect dashboard. The worker executes the fixed artifact-verification and ingestion flows; PostgreSQL registry Operations remains the logical authority. Ingestion dispatch handles uploads and separate linked cleanup operations.
 
 ```sh
 python3 infrastructure/compose/bootstrap-workflows.py
@@ -48,10 +48,18 @@ docker compose --env-file infrastructure/compose/.local/compose.env --env-file i
 docker compose --env-file infrastructure/compose/.local/compose.env --env-file infrastructure/compose/.local/workflows.env -f infrastructure/compose/compose.yaml -f infrastructure/compose/workflows.yaml up -d --build
 ```
 
-Preserve `.local/workflows.env` with the `workflow-database` volume. Repeated bootstrap retains credentials; it does not change existing platform inputs or reset any database. Native Prefect starts its own metadata migrations before becoming healthy. One registration job creates/updates the fixed process pool/deployment before worker and dispatcher startup. One workflow image build supplies all execution services.
+Preserve `.local/workflows.env` with the `workflow-database` volume. Repeated bootstrap retains credentials; it does not change existing platform inputs or reset any database. Native Prefect starts its own metadata migrations before becoming healthy. One registration job creates/updates the fixed process pool and both deployments before worker and dispatcher startup. One workflow image build supplies all execution services.
 
 The service identity still requires explicit operator provisioning and namespace write grants. The dispatcher discovers only currently authorized namespaces, at most 100 per discovery page, and cycles pages. Each namespace delivery batch is bounded. New grants become eligible without restarting the dispatcher; revoked grants are rechecked before claims and commands. The worker independently verifies Keycloak service identity and current grants for execution.
 
 Stop the overlay using the same two `-f` files and private env files with `down`, without `--volumes`. Keep private inputs and both PostgreSQL volumes together for recovery. Native process workers inherit service credentials from container environment; deployment parameters contain only namespace ID, operation ID, and epoch. No cloud account or model access is configured.
 
 Packaged-runtime qualification is tracked in `docs/proofs/issue-19/verification.md`; configuration validity and container health alone do not prove operation execution or browser recovery.
+
+### Optional read-only ingestion sources
+
+Set `VERDANT_S3_SOURCE_PREFIX` consistently for API and workflow services to enable existing-object registration in the primary bucket. The default empty value disables this capability. Object references resolve below `<prefix>/<namespace UUID>/`; users supply relative keys, expected SHA-256 and size. Keep source provision/write authority separate from application registration. Workers copy verified bytes into their owned final artifacts and never clean up source originals. The UI keeps source registration distinct from file upload. Enabling configuration alone is not backend or browser qualification; see `docs/proofs/issue-14/storage.md`.
+
+### Candidate and ingestion schema integration
+
+The combined schema runs candidate migrations 12–14 before ingestion migrations 15–18. Coordinate platform API/worker/dispatcher writers before upgrading, preserve a registry/object/workflow checkpoint and private inputs, run the single migration job, then start matching images and register both deployments. An older schema-14 metadata writer must not overlap new verified ingestion. Use a forward repair or coordinated checkpoint restore rather than an old-image-only rollback after ingestion writes. Early standalone ingestion proof databases stamped18 without candidate tables remain archival test evidence; do not reuse them for the combined runtime. Actual runtime/browser rollout evidence is tracked separately from the fresh and schema14→18 PostgreSQL proofs.

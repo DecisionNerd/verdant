@@ -6,8 +6,7 @@ Reports retain the exact candidate, generation, source revision, policy revision
 and evaluator version. Reevaluation creates another report; changing a policy or
 the working draft never replaces earlier evidence. This implements the core
 quality slice of #16 within lifecycle epic #3. Publication enforcement and
-artifact retention are implemented by the separate
-[publication service](IMMUTABLE-PUBLICATION.md); a passing report alone does not publish.
+artifact retention remain owned by #17, which is not implemented here.
 
 `QualityDefinition` version 1 has 1–32 uniquely named rules and at least one
 required rule. Each rule applies to the whole generation or one named split:
@@ -69,9 +68,10 @@ versioned artifacts and reference-data identity and must preserve failed/unknown
 required gates on errors. Dashboard availability is independent of these core
 checks. A passing core report alone never establishes publication readiness.
 
-The publication development stack reconciles candidate `0014_interpretation`,
-ingestion `0015_ingestion`, quality `0016_quality` and publication `0017_publication`.
-Reconcile accepted dependency history before landing. Rollback of application code can retain these
+Migration `0019_quality` follows the accepted #14 ingestion chain ending at
+`0018_ingestion_sources`. The earlier unmerged development revision `0016_quality`
+has been resequenced; its isolated proof databases are retained and are not an
+upgrade source for this canonical chain. Rollback of application code can retain these
 additive tables; an explicit schema downgrade deletes policies/reports and needs
 a backup and deliberate operator decision. Startup never upgrades schema.
 

@@ -92,12 +92,13 @@ Storage I/O occurs outside registry transactions. The worker-only claim/accept
 methods are an internal trust boundary: public requests cannot submit readiness,
 verification timestamps, artifact digests or accepted storage proofs.
 
-Deployment composition uses `configured_storage()` with explicit existing
-`VERDANT_S3_ENDPOINT`, `VERDANT_S3_BUCKET`, `VERDANT_S3_ACCESS_KEY` and
-`VERDANT_S3_SECRET_KEY`. Optional `VERDANT_S3_BROWSER_ENDPOINT` defaults to the
-server endpoint; region uses `AWS_DEFAULT_REGION` (default `us-east-1`). Plain
-HTTP requires the local-only `VERDANT_INSECURE_LOCAL_HTTP=1` setting. This helper
-does not discover ambient cloud credentials. Injected `S3Storage` is supported
+Deployment composition reuses the accepted ingestion `S3Storage.from_env()` and
+the same injected storage instance/lifespan for ingestion, preview and publication.
+It honors the existing endpoint, bucket, credentials, browser endpoint, source
+prefix, addressing style and `VERDANT_S3_REGION` settings. `configured_storage()`
+delegates to that factory and fails when storage is unconfigured; it does not
+define a second configuration profile. Plain HTTP still requires the local-only
+`VERDANT_INSECURE_LOCAL_HTTP=1` setting. Injected `S3Storage` is supported
 for owned application/test composition. Credential values stay out of logs/docs.
 
 ## Atomic commit and collection
@@ -158,13 +159,26 @@ from verdant.publication_runner import PublicationRunner
 
 service = PublicationService(sessions, bucket=storage.settings.bucket)
 runner = PublicationRunner(sessions, storage)
-group = service.start(actor, namespace_id, dataset_id, candidate_id, PublicationStart(
-    request_key="release-1-attempt", label="release-1", report_id=report_id,
-    mode="selected_candidate",
-))
+group = service.start(
+    actor,
+    namespace_id,
+    dataset_id,
+    candidate_id,
+    PublicationStart(
+        request_key="release-1-attempt",
+        label="release-1",
+        report_id=report_id,
+        mode="selected_candidate",
+    ),
+)
 while group.state == "building":
-    group = runner.prepare(actor, namespace_id, dataset_id, group.id,
-                           PublicationBatch(expected_count=group.prepared_count, limit=25))
+    group = runner.prepare(
+        actor,
+        namespace_id,
+        dataset_id,
+        group.id,
+        PublicationBatch(expected_count=group.prepared_count, limit=25),
+    )
 # Inspect evidence and handle any conflict before explicitly committing.
 group = service.finalize(actor, namespace_id, dataset_id, group.id)
 ```
@@ -175,9 +189,11 @@ use the established identity verification path, and services reload current gran
 
 ## Migration and delivery boundary
 
-This stack reconciles `0014_interpretation → 0015_ingestion → 0016_quality →
-0017_publication`. `SCHEMA_REVISION` is `0017_publication`; startup never upgrades
-schema. Run the existing explicit Alembic deployment process. The migration adds
+This stack follows accepted ingestion through `0018_ingestion_sources`, quality
+`0019_quality`, then publication `0020_publication`. Startup never upgrades schema.
+The unmerged development publication revision `0017_publication` was resequenced;
+its isolated databases remain retained outside this canonical upgrade chain.
+Run the existing explicit Alembic deployment process. The migration adds
 publication groups, references and immutable versions, guarded artifact collection
 state and a dataset availability column used by finalization. That column does
 not complete #18 archive/admission/consumption behavior.
@@ -187,8 +203,9 @@ downgrade drops publication/version/reference records and the new state columns;
 it needs a backup and deliberate operator approval. It neither undoes external
 object writes nor supplies a safe reset or garbage-collection plan.
 
-This implementation does not establish #14 ingestion acceptance, native Prefect
+Accepted #14 landed through PR #53. This implementation does not establish native Prefect
 publication dispatch, #18 exact-version consumption/archive completion, production
-capacity or default-branch delivery. Existing #14/#15 owners retain canonical
-acceptance and landing. See [qualification](../proofs/issue-17/publication.md) for
-the exact tested stack and remaining gates.
+capacity or default-branch delivery. The #15 owner retains its independent browser
+acceptance gate. See [original qualification](../proofs/issue-17/publication.md) and
+[accepted-ingestion reconciliation](../proofs/issue-17/ingestion-reconciliation.md)
+for the exact tested stacks and remaining gates.

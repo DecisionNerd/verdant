@@ -1,0 +1,43 @@
+{
+  "from": "0019_quality",
+  "to": "0020_publication",
+  "database": "verdant_quality_reconciled_20261030_test",
+  "selected_existing_columns_only": true,
+  "before": {
+    "sample_revisions": {
+      "rows": 231,
+      "sha256": "8af9799126f39d944b0b691db503e6486fa6081081088ad081e0643747480064"
+    },
+    "artifacts": {
+      "rows": 212,
+      "sha256": "71206ed5af796183601044532219559eca4ea1d7c1accf5a26d29a7bb9ccb015"
+    },
+    "ingestion_items": {
+      "rows": 213,
+      "sha256": "99748e72a23c6b386f931769697477d00e7e779934ba32eb0c0d03fd3daf480a"
+    },
+    "quality_policies": {
+      "rows": 10,
+      "sha256": "eaa426b82ac0af948fd190a14cfba870831db4572110203013f65791611df82f"
+    }
+  },
+  "after": {
+    "sample_revisions": {
+      "rows": 231,
+      "sha256": "8af9799126f39d944b0b691db503e6486fa6081081088ad081e0643747480064"
+    },
+    "artifacts": {
+      "rows": 212,
+      "sha256": "71206ed5af796183601044532219559eca4ea1d7c1accf5a26d29a7bb9ccb015"
+    },
+    "ingestion_items": {
+      "rows": 213,
+      "sha256": "99748e72a23c6b386f931769697477d00e7e779934ba32eb0c0d03fd3daf480a"
+    },
+    "quality_policies": {
+      "rows": 10,
+      "sha256": "eaa426b82ac0af948fd190a14cfba870831db4572110203013f65791611df82f"
+    }
+  },
+  "equal": true
+}

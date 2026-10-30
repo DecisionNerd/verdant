@@ -38,6 +38,28 @@ class StorageUnavailable(StorageError):
     pass
 
 
+def validate_source_path(value: str):
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value) <= 500
+        or any(part in {"", ".", ".."} for part in value.split("/"))
+        or any(ord(char) < 32 or ord(char) == 127 for char in value)
+        or any(char in value for char in "\\:%?#")
+    ):
+        raise ValueError("Source paths must be canonical relative keys, not URLs")
+    value.encode("utf-8")  # Reject non-UTF-8 surrogate input before provider requests.
+    return value
+
+
+def configured_source_key(prefix: str, namespace_id, relative: str):
+    validate_source_path(prefix)
+    validate_source_path(relative)
+    key = f"{prefix}/{namespace_id}/{relative}"
+    if len(key.encode("utf-8")) > 1024:
+        raise ValueError("Configured source key exceeds supported length")
+    return key
+
+
 @dataclass(frozen=True)
 class S3Settings:
     bucket: str
@@ -46,8 +68,11 @@ class S3Settings:
     region: str = "us-east-1"
     addressing_style: str = "path"
     allow_insecure_http: bool = False
+    source_prefix: str | None = None
 
     def __post_init__(self):
+        if self.source_prefix is not None:
+            validate_source_path(self.source_prefix)
         for endpoint in (self.endpoint, self.browser_endpoint):
             parsed = urlsplit(endpoint)
             if (
@@ -88,6 +113,33 @@ def _translate(exc):
 
 
 class S3Storage:
+    @classmethod
+    def from_env(cls):
+        endpoint = os.environ.get("VERDANT_S3_ENDPOINT")
+        if not endpoint:
+            return None
+        access, secret = (
+            os.environ.get("VERDANT_S3_ACCESS_KEY"),
+            os.environ.get("VERDANT_S3_SECRET_KEY"),
+        )
+        if bool(access) != bool(secret):
+            raise ValueError("Incomplete configured object-storage credentials")
+        settings = S3Settings(
+            bucket=os.environ["VERDANT_S3_BUCKET"],
+            endpoint=endpoint,
+            browser_endpoint=os.environ.get("VERDANT_S3_BROWSER_ENDPOINT", endpoint),
+            region=os.environ.get("VERDANT_S3_REGION", "us-east-1"),
+            addressing_style=os.environ.get("VERDANT_S3_ADDRESSING_STYLE", "path"),
+            source_prefix=os.environ.get("VERDANT_S3_SOURCE_PREFIX") or None,
+            allow_insecure_http=os.environ.get("VERDANT_INSECURE_LOCAL_HTTP") == "1",
+        )
+        session = (
+            boto3.Session(aws_access_key_id=access, aws_secret_access_key=secret)
+            if access
+            else None
+        )
+        return cls(settings, session=session)
+
     def __init__(self, settings: S3Settings, *, session=None):
         self.settings = settings
         session = session or boto3.Session()
@@ -105,9 +157,19 @@ class S3Storage:
             "s3", endpoint_url=settings.browser_endpoint, region_name=settings.region, config=config
         )
 
+    def close(self):
+        self.client.close()
+        self.signer.close()
+
     def _call(self, method, **kwargs):
         try:
             return getattr(self.client, method)(Bucket=self.settings.bucket, **kwargs)
+        except (BotoCoreError, ClientError) as exc:
+            raise _translate(exc) from None
+
+    def _sign(self, method, params):
+        try:
+            return self.signer.generate_presigned_url(method, Params=params, ExpiresIn=URL_SECONDS)
         except (BotoCoreError, ClientError) as exc:
             raise _translate(exc) from None
 
@@ -134,16 +196,15 @@ class S3Storage:
     def sign_part(self, key: str, upload_id: str, number: int, size_bytes: int):
         if not 1 <= number <= 32 or not 0 <= size_bytes <= PART_BYTES:
             raise ValueError("Unsupported upload part number or size")
-        return self.signer.generate_presigned_url(
+        return self._sign(
             "upload_part",
-            Params={
+            {
                 "Bucket": self.settings.bucket,
                 "Key": key,
                 "UploadId": upload_id,
                 "PartNumber": number,
                 "ContentLength": size_bytes,
             },
-            ExpiresIn=URL_SECONDS,
         )
 
     def complete(self, key: str, upload_id: str, expected_size: int):
@@ -250,15 +311,14 @@ class S3Storage:
 
     def sign_read(self, key: str):
         # Force attachment. Text/image preview belongs to a sandboxed rendering boundary.
-        return self.signer.generate_presigned_url(
+        return self._sign(
             "get_object",
-            Params={
+            {
                 "Bucket": self.settings.bucket,
                 "Key": key,
                 "ResponseContentDisposition": "attachment",
                 "ResponseContentType": "application/octet-stream",
             },
-            ExpiresIn=URL_SECONDS,
         )
 
     def list_page(self, prefix: str, *, continuation: str | None = None, limit: int = 100):
@@ -298,27 +358,8 @@ class S3Storage:
 
 
 def configured_storage() -> S3Storage:
-    """Use explicit deployment artifact credentials, never ambient cloud credentials."""
-    names = (
-        "VERDANT_S3_ENDPOINT",
-        "VERDANT_S3_BUCKET",
-        "VERDANT_S3_ACCESS_KEY",
-        "VERDANT_S3_SECRET_KEY",
-    )
-    if not all(os.environ.get(name) for name in names):
+    """Require the existing deployment storage configuration for byte operations."""
+    storage = S3Storage.from_env()
+    if storage is None:
         raise StorageUnavailable("Artifact storage is not configured for this deployment")
-    endpoint = os.environ["VERDANT_S3_ENDPOINT"]
-    settings = S3Settings(
-        bucket=os.environ["VERDANT_S3_BUCKET"],
-        endpoint=endpoint,
-        browser_endpoint=os.environ.get("VERDANT_S3_BROWSER_ENDPOINT", endpoint),
-        region=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"),
-        allow_insecure_http=os.environ.get("VERDANT_INSECURE_LOCAL_HTTP") == "1",
-    )
-    return S3Storage(
-        settings,
-        session=boto3.Session(
-            aws_access_key_id=os.environ["VERDANT_S3_ACCESS_KEY"],
-            aws_secret_access_key=os.environ["VERDANT_S3_SECRET_KEY"],
-        ),
-    )
+    return storage

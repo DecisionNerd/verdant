@@ -534,6 +534,32 @@ def make_sessions(database_url: str) -> sessionmaker[Session]:
     return sessionmaker(engine, expire_on_commit=False)
 
 
+class IngestionCleanupTaskRow(Base):
+    __tablename__ = "ingestion_cleanup_tasks"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "parent_operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        UniqueConstraint(
+            "namespace_id",
+            "parent_operation_id",
+            "parent_epoch",
+            name="uq_ingestion_cleanup_parent",
+        ),
+        CheckConstraint(
+            "parent_epoch >= 1 AND operation_id <> parent_operation_id",
+            name="ck_ingestion_cleanup_target",
+        ),
+    )
+    operation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    namespace_id: Mapped[UUID]
+    parent_operation_id: Mapped[UUID]
+    parent_epoch: Mapped[int] = mapped_column(BigInteger)
+
+
 class ArtifactRow(Base):
     __tablename__ = "artifacts"
     __table_args__ = (
@@ -572,6 +598,13 @@ class ArtifactLocationRow(Base):
 class IngestionItemRow(Base):
     __tablename__ = "ingestion_items"
     __table_args__ = (
+        UniqueConstraint("namespace_id", "id", name="uq_ingestion_namespace_id"),
+        UniqueConstraint("retry_of_item_id", name="uq_ingestion_retry_origin"),
+        ForeignKeyConstraint(
+            ["namespace_id", "retry_of_item_id"],
+            ["ingestion_items.namespace_id", "ingestion_items.id"],
+            name="fk_ingestion_retry_origin",
+        ),
         ForeignKeyConstraint(
             ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
         ),
@@ -590,10 +623,14 @@ class IngestionItemRow(Base):
         Index("ix_ingestion_artifact_protection", "namespace_id", "artifact_id", "state"),
         CheckConstraint("position BETWEEN 0 AND 99", name="ck_ingestion_position"),
         CheckConstraint(
-            "state IN ('awaiting_upload','uploading','ready','accepted','failed','cancelled')",
+            "state IN ('awaiting_upload','uploading','ready','accepted','failed',"
+            "'cancelled','superseded')",
             name="ck_ingestion_state",
         ),
         CheckConstraint("jsonb_typeof(metadata) = 'object'", name="ck_ingestion_metadata"),
+        CheckConstraint(
+            "retry_of_item_id IS NULL OR retry_of_item_id <> id", name="ck_ingestion_retry_self"
+        ),
         CheckConstraint(
             "(target_sample_id IS NULL AND expected_revision IS NULL) OR "
             "(target_sample_id IS NOT NULL AND expected_revision IS NOT NULL "
@@ -610,6 +647,7 @@ class IngestionItemRow(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     namespace_id: Mapped[UUID]
     operation_id: Mapped[UUID]
+    retry_of_item_id: Mapped[UUID | None]
     position: Mapped[int] = mapped_column(Integer)
     artifact_id: Mapped[UUID]
     source_key: Mapped[str] = mapped_column(String(500))

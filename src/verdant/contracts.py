@@ -12,7 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 CONTRACT_VERSION = 1
 EVENT_VERSION = 1
 MANIFEST_VERSION = 1  # Fixed verdant.manifest.v1 encoding with retained exact-byte readers.
-SCHEMA_REVISION = "0017_publication"
+SCHEMA_REVISION = "0020_publication"
+SAMPLE_INGESTION_KINDS = frozenset({"ingest_upload", "ingest_source"})
 
 Slug = Annotated[str, Field(min_length=1, max_length=100, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")]
 Digest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]

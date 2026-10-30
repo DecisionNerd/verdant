@@ -1,0 +1,25 @@
+{
+  "test": "tests/test_ingestion_runner.py::test_maximum_batch_releases_each_spool_and_bounds_worker_memory",
+  "result": "1 passed in 25.98s",
+  "environment": "isolated integrated PostgreSQL schema18 and actual local SeaweedFS fixture",
+  "item_count": 100,
+  "worker_pass_counts": [
+    25,
+    50,
+    75,
+    100
+  ],
+  "batch_aggregate_artifact_bytes": 209715200,
+  "batch_worker_python_peak_bytes": 4247309,
+  "python_peak_bound_bytes": 33554432,
+  "closed_rolled_spool_count": 100,
+  "sample_count": 100,
+  "sample_revision_count": 100,
+  "idempotent_replay_verified": true,
+  "test_source_sha256": "bd82d6d3e04f7081b32d00bd07952293d146315147d20fc6e3b0ba842007fb86",
+  "limits": [
+    "Worker Python allocations measured after fixture upload",
+    "Not aggregate browser or worker-container RSS",
+    "Maximum individual artifact RSS measured separately in resources.json"
+  ]
+}

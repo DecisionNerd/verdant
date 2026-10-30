@@ -15,9 +15,17 @@ from verdant import publication as p
 from verdant import quality_service as q
 from verdant.access_tokens import InvalidAccessToken
 from verdant.application import RegistryService
-from verdant.contracts import DatasetCreate, DatasetUpdate
+from verdant.contracts import SAMPLE_INGESTION_KINDS, DatasetCreate, DatasetUpdate
 from verdant.domain import DomainError, Forbidden, Principal
+from verdant.ingestion import (
+    IngestionService,
+    ReuploadRequest,
+    SourceRegistrationRequest,
+    UploadPartRequest,
+    UploadRequest,
+)
 from verdant.operations import OperationService, VerificationRequest
+from verdant.preview import PreviewService
 from verdant.publication_runner import PublicationRunner
 from verdant.storage import StorageError, configured_storage
 from verdant.versioning import (
@@ -57,15 +65,23 @@ class RegistryTokenVerifier(TokenVerifier):
         )
 
 
-def create_mcp_app(runtime):
+def create_mcp_app(runtime, *, storage=None):
     mcp = FastMCP("Verdant", auth=RegistryTokenVerifier(runtime))
     service = RegistryService(runtime.sessions)
     operations = OperationService(runtime.sessions)
+    previews = PreviewService(runtime.sessions, storage)
+    ingestion = IngestionService(
+        runtime.sessions,
+        bucket=storage.settings.bucket if storage else "unconfigured",
+        storage=storage,
+    )
     versioning = VersioningService(runtime.sessions)
     quality = q.QualityService(runtime.sessions)
     publications = p.PublicationService(
         runtime.sessions,
-        bucket=os.environ.get("VERDANT_S3_BUCKET", "verdant-artifacts"),
+        bucket=storage.settings.bucket
+        if storage
+        else os.environ.get("VERDANT_S3_BUCKET", "verdant-artifacts"),
     )
 
     def actor() -> Principal:
@@ -74,10 +90,10 @@ def create_mcp_app(runtime):
             raise ToolError("Verified service identity required")
         return Principal(UUID(token.claims["verdant_principal_id"]), transport="mcp")
 
-    async def invoke(method, *args):
+    async def invoke(method, *args, **kwargs):
         try:
-            return await run_in_threadpool(method, actor(), *args)
-        except DomainError as exc:
+            return await run_in_threadpool(method, actor(), *args, **kwargs)
+        except (DomainError, StorageError) as exc:
             raise ToolError(str(exc)) from None
 
     @mcp.tool()
@@ -105,7 +121,7 @@ def create_mcp_app(runtime):
         namespace_id: UUID, dataset_id: UUID, publication_id: UUID, command: p.PublicationBatch
     ):
         try:
-            runner = PublicationRunner(runtime.sessions, configured_storage())
+            runner = PublicationRunner(runtime.sessions, storage or configured_storage())
         except StorageError:
             raise ToolError("Required artifact storage is unavailable") from None
         return await invoke(runner.prepare, namespace_id, dataset_id, publication_id, command)
@@ -165,6 +181,75 @@ def create_mcp_app(runtime):
         namespace_id: UUID, dataset_id: UUID, report_id: UUID, command: q.ValidationBatch
     ):
         return await invoke(quality.advance, namespace_id, dataset_id, report_id, command)
+
+    @mcp.tool()
+    async def sample_revision_preview(namespace_id: UUID, sample_id: UUID, revision_id: UUID):
+        return await invoke(previews.get, namespace_id, sample_id, revision_id)
+
+    @mcp.tool()
+    async def ingestion_limits(namespace_id: UUID):
+        return await invoke(ingestion.limits, namespace_id)
+
+    @mcp.tool()
+    async def ingestions_list(
+        namespace_id: UUID, after: UUID | None = None, limit: OperationLimit = 25
+    ):
+        return await invoke(
+            operations.list_operations, namespace_id, after, limit, kind=SAMPLE_INGESTION_KINDS
+        )
+
+    @mcp.tool()
+    async def ingestion_upload_admit(namespace_id: UUID, command: UploadRequest):
+        await invoke(ingestion.require_storage, namespace_id)
+        return await invoke(ingestion.admit, namespace_id, command)
+
+    @mcp.tool()
+    async def ingestion_source_admit(namespace_id: UUID, command: SourceRegistrationRequest):
+        return await invoke(ingestion.admit_source, namespace_id, command)
+
+    @mcp.tool()
+    async def ingestion_reupload(namespace_id: UUID, command: ReuploadRequest):
+        await invoke(ingestion.require_storage, namespace_id)
+        return await invoke(ingestion.reupload, namespace_id, command)
+
+    @mcp.tool()
+    async def ingestion_get(namespace_id: UUID, operation_id: UUID):
+        return await invoke(ingestion.get, namespace_id, operation_id)
+
+    @mcp.tool()
+    async def ingestion_upload_initiate(
+        namespace_id: UUID, operation_id: UUID, item_id: UUID, epoch: OperationEpoch
+    ):
+        return await invoke(ingestion.initiate_upload, namespace_id, operation_id, item_id, epoch)
+
+    @mcp.tool()
+    async def ingestion_upload_sign_part(
+        namespace_id: UUID, operation_id: UUID, item_id: UUID, command: UploadPartRequest
+    ):
+        return await invoke(
+            ingestion.sign_upload_part,
+            namespace_id,
+            operation_id,
+            item_id,
+            command.epoch,
+            command.part_number,
+        )
+
+    @mcp.tool()
+    async def ingestion_upload_parts(
+        namespace_id: UUID, operation_id: UUID, item_id: UUID, epoch: OperationEpoch
+    ):
+        return await invoke(ingestion.upload_progress, namespace_id, operation_id, item_id, epoch)
+
+    @mcp.tool()
+    async def ingestion_upload_complete(
+        namespace_id: UUID, operation_id: UUID, item_id: UUID, epoch: OperationEpoch
+    ):
+        return await invoke(ingestion.complete_upload, namespace_id, operation_id, item_id, epoch)
+
+    @mcp.tool()
+    async def ingestion_cancel(namespace_id: UUID, operation_id: UUID, epoch: OperationEpoch):
+        return await invoke(ingestion.request_cancel, namespace_id, operation_id, epoch)
 
     @mcp.tool()
     async def candidate_capture(namespace_id: UUID, dataset_id: UUID, command: CandidateCapture):
