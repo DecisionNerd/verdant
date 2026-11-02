@@ -37,17 +37,20 @@ class IdentitySettings:
     audience: str
     service_clients: frozenset[str]
     allow_insecure_http: bool = False
+    human_clients: frozenset[str] = frozenset()
 
     def __post_init__(self):
         AccessTokenSettings(
             self.issuer,
             self.audience,
-            self.service_clients,
+            self.service_clients | self.human_clients,
             allow_insecure_http=self.allow_insecure_http,
         )
         parsed = urlsplit(self.app_url)
         if (
-            parsed.scheme not in ({"https", "http"} if self.allow_insecure_http else {"https"})
+            self.service_clients & self.human_clients
+            or any(not client for client in self.human_clients)
+            or parsed.scheme not in ({"https", "http"} if self.allow_insecure_http else {"https"})
             or not parsed.hostname
             or parsed.username
             or parsed.password
@@ -76,6 +79,11 @@ class IdentitySettings:
                 client.strip() for client in os.environ["VERDANT_SERVICE_CLIENTS"].split(",")
             ),
             allow_insecure_http=os.environ.get("VERDANT_INSECURE_LOCAL_HTTP") == "1",
+            human_clients=frozenset(
+                client.strip()
+                for client in os.environ.get("VERDANT_HUMAN_CLIENTS", "").split(",")
+                if client.strip()
+            ),
         )
 
 
@@ -89,7 +97,7 @@ class IdentityRuntime:
             AccessTokenSettings(
                 settings.issuer,
                 settings.audience,
-                settings.service_clients,
+                settings.service_clients | settings.human_clients,
                 allow_insecure_http=settings.allow_insecure_http,
             )
         )
@@ -121,6 +129,22 @@ class IdentityRuntime:
                 raise Forbidden("Session revoked")
             return current_principal(session, principal_id)
 
+    def token_principal(self, claims: dict) -> Principal:
+        """Fixed client admission determines principal kind, never caller claims or email.
+
+        Bearer use cannot provision identities. Human OAuth clients resolve only
+        previously admitted exact issuer/subject bindings; service clients cannot
+        impersonate those human bindings, even with a correctly signed token.
+        """
+        client = claims["azp"]
+        if client in self.settings.human_clients:
+            kind = "human"
+        elif client in self.settings.service_clients:
+            kind = "service"
+        else:
+            raise Forbidden("Access-token client denied")
+        return self.identities.resolve(claims["iss"], claims["sub"], kind=kind)
+
     async def browser_principal(self, request: Request) -> Principal:
         await load_session(request)
         try:
@@ -142,9 +166,7 @@ class IdentityRuntime:
                 raise HTTPException(401, "Valid access token required")
             try:
                 claims = await self.tokens.verify_async(token)
-                actor = await run_in_threadpool(
-                    self.identities.resolve, claims["iss"], claims["sub"], kind="service"
-                )
+                actor = await run_in_threadpool(self.token_principal, claims)
                 return replace(actor, transport="http-bearer")
             except InvalidAccessToken:
                 raise HTTPException(401, "Valid access token required") from None

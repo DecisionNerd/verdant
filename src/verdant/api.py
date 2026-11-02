@@ -7,6 +7,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -48,6 +49,7 @@ from verdant.storage import (
     StorageError,
     configured_storage,
 )
+from verdant.transport_contracts import PlatformCapabilities, capabilities
 from verdant.versioning import (
     Candidate,
     CandidateCapture,
@@ -59,7 +61,11 @@ from verdant.versioning import (
 )
 
 
-def verified_principal() -> Principal:
+def verified_principal(
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(HTTPBearer(auto_error=False))
+    ],
+) -> Principal:
     """Fail closed until the Keycloak verifier is installed; no header/password shortcut."""
     raise HTTPException(status_code=401, detail="Verified identity required")
 
@@ -92,6 +98,14 @@ def create_app(
     )
     versioning = VersioningService(sessions)
     app = FastAPI(title="Verdant platform", version=str(c.CONTRACT_VERSION))
+
+    @app.middleware("http")
+    async def contract_version(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/api/v1/"):
+            response.headers["X-Verdant-Contract-Version"] = str(c.CONTRACT_VERSION)
+        return response
+
     app.state.storage = storage
     previews = PreviewService(sessions, storage)
     identity_settings = identity_settings or IdentitySettings.from_env()
@@ -139,6 +153,10 @@ def create_app(
             "schema_revision": revision,
             "identity": "unqualified",
         }
+
+    @app.get("/api/v1/capabilities", response_model=PlatformCapabilities)
+    def platform_capabilities(actor: Actor):
+        return capabilities()
 
     @app.get("/api/v1/namespaces", response_model=c.NamespacePage)
     def list_namespaces(

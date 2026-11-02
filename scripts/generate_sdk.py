@@ -1,0 +1,176 @@
+"""Generate typed SDK methods and the exact public OpenAPI snapshot, without IO.
+
+Models are shared Pydantic contracts, not hand-copied parallel definitions. Public
+OpenAPI operations choose the routes; their FastAPI model bindings supply Python
+names without another schema/model generator dependency.
+"""
+
+import argparse
+import difflib
+import json
+import os
+import types
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Annotated, Any, Literal, Union, get_args, get_origin
+from unittest.mock import patch
+
+from fastapi.routing import APIRoute
+
+from verdant.api import create_app
+from verdant.persistence import make_sessions
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def generate():
+    # Configuration must never cause credential/provider/database network access
+    # during contract generation. The engine is never connected or queried.
+    with patch.dict(os.environ, {}, clear=True):
+        sessions = make_sessions("postgresql+psycopg://localhost/offline_contract_test")
+        app = create_app(
+            sessions, storage=SimpleNamespace(settings=SimpleNamespace(bucket="offline"))
+        )
+        spec = app.openapi()
+        sessions.kw["bind"].dispose()
+    spec["x-verdant-contract-version"] = 1
+    imports = set()
+
+    def annotation(kind):
+        origin, args = get_origin(kind), get_args(kind)
+        if kind is None or kind is type(None):
+            return "None"
+        if kind is Any:
+            imports.add("from typing import Any")
+            return "Any"
+        if origin is Annotated:
+            return annotation(args[0])
+        if origin in (Union, types.UnionType):
+            return " | ".join(annotation(arg) for arg in args)
+        if origin is Literal:
+            imports.add("from typing import Literal")
+            return "Literal[" + ", ".join(repr(arg) for arg in args) + "]"
+        if origin in (list, dict, tuple, set):
+            return origin.__name__ + "[" + ", ".join(annotation(arg) for arg in args) + "]"
+        if isinstance(kind, type):
+            if kind.__module__ == "builtins":
+                return kind.__name__
+            alias = kind.__module__.replace(".", "_")
+            imports.add(f"import {kind.__module__} as {alias}")
+            return alias + "." + kind.__name__
+        raise TypeError(f"Unsupported SDK contract annotation: {kind!r}")
+
+    methods = []
+    names = set()
+    for route in app.routes:
+        if (
+            not isinstance(route, APIRoute)
+            or not route.include_in_schema
+            or not route.path.startswith("/api/v1/")
+        ):
+            continue
+        for method in sorted(route.methods):
+            assert spec["paths"][route.path][method.lower()]["operationId"]
+            if route.response_model is None:
+                # Redirect/byte endpoints use the digest-verifying streaming helper.
+                continue
+            if route.name in names:
+                raise ValueError("Duplicate SDK method name: " + route.name)
+            names.add(route.name)
+            fields = route.dependant.path_params + route.dependant.query_params
+            fields += route.dependant.body_params
+            params = []
+            for field in fields:
+                info = field.field_info
+                value = f"{field.name}: {annotation(info.annotation)}"
+                if not info.is_required():
+                    value += f" = {info.default!r}"
+                params.append(value)
+            result = annotation(route.response_model)
+            signature = ", *, " + ", ".join(params) if params else ""
+            methods.extend(
+                [
+                    "",
+                    f"    def {route.name}(self{signature}) -> {result}:",
+                    f'        """Call the {route.name} OpenAPI operation."""',
+                ]
+            )
+            path = route.path
+            for field in route.dependant.path_params:
+                path = path.replace("{" + field.name + "}", "{self._segment(" + field.name + ")}")
+            query = ", ".join(
+                f"{field.alias!r}: {field.name}" for field in route.dependant.query_params
+            )
+            bodies = route.dependant.body_params
+            if len(bodies) > 1:
+                raise ValueError("SDK generator needs an explicit compound body contract")
+            body = bodies[0].name if bodies else "None"
+            literals = []
+            for part in path.split("/")[1:]:
+                part = "/" + part
+                literals.append(("f" if "{" in part else "") + repr(part))
+            methods.extend(
+                [
+                    f"        return self._request({method!r}, (",
+                    *["            " + part for part in literals],
+                    "        ),",
+                    f"            params={{{query}}}, body={body}, model={result})",
+                ]
+            )
+    source = (
+        '"""Generated by scripts/generate_sdk.py; edit the public API contracts instead."""\n\n'
+        "from __future__ import annotations\n\n"
+        + "\n".join(sorted(imports))
+        + "\n\nfrom verdant.sdk.transport import Transport\n\n\nclass GeneratedClient(Transport):\n"
+        + "\n".join(methods)
+        + "\n"
+    )
+    # Match the repository's locked formatter to make --check byte-exact.
+    import subprocess
+
+    linted = subprocess.run(
+        ["ruff", "check", "--select", "I,F", "--fix", "--stdin-filename", "generated.py", "-"],
+        input=source.encode(),
+        capture_output=True,
+    )
+    if linted.returncode:
+        raise SystemExit(linted.stderr.decode())
+    source = linted.stdout.decode()
+    formatted = subprocess.check_output(
+        ["ruff", "format", "--stdin-filename", "generated.py", "-"], input=source.encode()
+    ).decode()
+    return {
+        ROOT / "src/verdant/sdk/generated.py": formatted,
+        ROOT / "docs/contracts/openapi.json": json.dumps(spec, indent=2, sort_keys=True) + "\n",
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
+    changed = False
+    for path, expected in generate().items():
+        actual = path.read_text() if path.exists() else ""
+        if actual == expected:
+            continue
+        changed = True
+        if args.check:
+            print(
+                "".join(
+                    difflib.unified_diff(
+                        actual.splitlines(True),
+                        expected.splitlines(True),
+                        fromfile=str(path),
+                        tofile="generated",
+                    )
+                )[:8000]
+            )
+        else:
+            path.write_text(expected)
+    if args.check and changed:
+        raise SystemExit("SDK/OpenAPI drift: run uv run python scripts/generate_sdk.py")
+
+
+if __name__ == "__main__":
+    main()

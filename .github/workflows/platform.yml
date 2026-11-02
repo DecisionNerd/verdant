@@ -34,6 +34,7 @@ jobs:
         run: |
           uv run --locked --group workflows ruff check src migrations tests scripts infrastructure/compose
           uv run --locked --group workflows ruff format --check src migrations tests scripts infrastructure/compose
+          uv run --locked --group workflows python scripts/generate_sdk.py --check
       - name: PostgreSQL lifecycle and contracts
         run: |
           uv run --locked --group workflows pytest -q
