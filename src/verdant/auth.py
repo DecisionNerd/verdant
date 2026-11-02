@@ -2,6 +2,7 @@
 
 import os
 import secrets
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from time import time
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -364,5 +365,13 @@ class IdentityRuntime:
         from verdant.mcp_server import create_mcp_app
 
         mcp_app = create_mcp_app(self, storage=getattr(app.state, "storage", None))
-        app.router.lifespan_context = mcp_app.lifespan
+        previous_lifespan = app.router.lifespan_context
+
+        @asynccontextmanager
+        async def lifespan(application):
+            async with previous_lifespan(application) as previous:
+                async with mcp_app.lifespan(application) as mounted:
+                    yield (previous or {}) | (mounted or {})
+
+        app.router.lifespan_context = lifespan
         app.mount("/mcp", mcp_app)
