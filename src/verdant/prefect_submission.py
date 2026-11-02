@@ -152,7 +152,17 @@ class PrefectSubmission:
         if state.epoch != epoch:
             raise Conflict("Operation attempt is stale")
         if run.state is not None and run.state.is_final():
-            if state.status == "cancellation_requested":
+            if state.kind == "process_flow":
+                from verdant.process_flow import ProcessService
+
+                await asyncio.to_thread(
+                    ProcessService(self.operations.sessions).reconcile_completed_execution,
+                    actor,
+                    namespace_id,
+                    operation_id,
+                    epoch,
+                )
+            elif state.status == "cancellation_requested":
                 if state.kind in SAMPLE_INGESTION_KINDS:
                     from verdant.ingestion import IngestionService
 

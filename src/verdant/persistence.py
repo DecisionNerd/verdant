@@ -374,7 +374,7 @@ class OperationRow(Base):
         ForeignKeyConstraint(["creator_id"], ["principals.id"]),
         CheckConstraint(
             "status IN ('queued','running','cancellation_requested','cancelled',"
-            "'failed','succeeded','reconciliation_needed')",
+            "'failed','succeeded','reconciliation_needed','pause_requested','paused')",
             name="ck_operation_status",
         ),
         CheckConstraint("epoch >= 1 AND revision >= 0", name="ck_operation_revision"),
@@ -528,7 +528,9 @@ def make_sessions(database_url: str) -> sessionmaker[Session]:
 
     if make_url(database_url).get_backend_name() != "postgresql":
         raise ValueError("The platform requires PostgreSQL")
-    engine = create_engine(database_url, pool_pre_ping=True, pool_size=5, max_overflow=0)
+    engine = create_engine(
+        database_url, pool_pre_ping=True, pool_size=5, max_overflow=0, hide_parameters=True
+    )
     if engine.dialect.name != "postgresql":
         raise ValueError("The platform requires PostgreSQL")
     return sessionmaker(engine, expire_on_commit=False)
@@ -841,3 +843,126 @@ class RegistryRepository:
         if after is not None:
             statement = statement.where(MembershipRow.sample_id > after)
         return list(self.session.scalars(statement))
+
+
+class ModelProfileRow(Base):
+    __tablename__ = "model_profiles"
+    __table_args__ = (
+        UniqueConstraint("namespace_id", "id", name="uq_model_profile_namespace"),
+        UniqueConstraint("namespace_id", "name", "revision", name="uq_model_profile_revision"),
+        ForeignKeyConstraint(["namespace_id"], ["namespaces.id"]),
+        ForeignKeyConstraint(["creator_id"], ["principals.id"]),
+        CheckConstraint("revision >= 1", name="ck_model_profile_revision"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    name: Mapped[str] = mapped_column(String(100))
+    revision: Mapped[int] = mapped_column(BigInteger)
+    definition: Mapped[dict] = mapped_column(JSONB)
+    credential_ref: Mapped[str] = mapped_column(String(110))
+    config_digest: Mapped[str] = mapped_column(String(64))
+    creator_id: Mapped[UUID]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProcessFlowRow(Base):
+    __tablename__ = "process_flows"
+    __table_args__ = (
+        UniqueConstraint("namespace_id", "id", name="uq_process_flow_namespace"),
+        UniqueConstraint(
+            "namespace_id", "dataset_id", "name", "revision", name="uq_process_flow_revision"
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "dataset_id"], ["datasets.namespace_id", "datasets.id"]
+        ),
+        ForeignKeyConstraint(["creator_id"], ["principals.id"]),
+        CheckConstraint("revision >= 1", name="ck_process_flow_revision"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    dataset_id: Mapped[UUID]
+    name: Mapped[str] = mapped_column(String(100))
+    revision: Mapped[int] = mapped_column(BigInteger)
+    definition: Mapped[dict] = mapped_column(JSONB)
+    config_digest: Mapped[str] = mapped_column(String(64))
+    creator_id: Mapped[UUID]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProcessRunRow(Base):
+    __tablename__ = "process_runs"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "flow_id"], ["process_flows.namespace_id", "process_flows.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "dataset_id"], ["datasets.namespace_id", "datasets.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "generation_id"],
+            ["publication_candidates.namespace_id", "publication_candidates.generation_id"],
+        ),
+        ForeignKeyConstraint(["version_id"], ["dataset_versions.id"]),
+        ForeignKeyConstraint(["candidate_id"], ["publication_candidates.id"]),
+        CheckConstraint(
+            "member_count BETWEEN 1 AND 1000 AND completed_count BETWEEN 0 AND member_count",
+            name="ck_process_progress",
+        ),
+    )
+    operation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    namespace_id: Mapped[UUID]
+    dataset_id: Mapped[UUID]
+    flow_id: Mapped[UUID]
+    candidate_id: Mapped[UUID]
+    version_id: Mapped[UUID | None]
+    generation_id: Mapped[UUID]
+    member_count: Mapped[int] = mapped_column(Integer)
+    completed_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    cursor: Mapped[UUID | None]
+    trial_of: Mapped[UUID | None]
+
+
+class ProcessOutputRow(Base):
+    __tablename__ = "process_outputs"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        ForeignKeyConstraint(["receipt_id"], ["effect_receipts.id"]),
+        ForeignKeyConstraint(["profile_id"], ["model_profiles.id"]),
+        CheckConstraint(
+            "step_position BETWEEN 0 AND 7 AND accepted_epoch >= 1",
+            name="ck_process_output_position",
+        ),
+    )
+    operation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    sample_id: Mapped[UUID] = mapped_column(primary_key=True)
+    step_position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    namespace_id: Mapped[UUID]
+    sample_revision_id: Mapped[UUID]
+    receipt_id: Mapped[UUID]
+    accepted_epoch: Mapped[int] = mapped_column(BigInteger)
+    input_digest: Mapped[str] = mapped_column(String(64))
+    output_digest: Mapped[str] = mapped_column(String(64))
+    result: Mapped[dict] = mapped_column(JSONB)
+    profile_id: Mapped[UUID | None]
+    profile_digest: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProcessAttemptRow(Base):
+    __tablename__ = "process_attempts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+    )
+    operation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    epoch: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    namespace_id: Mapped[UUID]
+    status: Mapped[str] = mapped_column(String(30))
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -107,6 +107,9 @@ def create_app(
         return response
 
     app.state.storage = storage
+    from verdant.process_routes import install_process_routes
+
+    install_process_routes(app, sessions, Actor)
     previews = PreviewService(sessions, storage)
     identity_settings = identity_settings or IdentitySettings.from_env()
     if identity_settings is not None:

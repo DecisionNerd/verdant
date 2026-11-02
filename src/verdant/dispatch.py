@@ -22,7 +22,12 @@ class DispatchBatch:
 
 class WorkflowDispatcher:
     def __init__(
-        self, sessions, client, deployment_id: UUID, ingestion_deployment_id: UUID | None = None
+        self,
+        sessions,
+        client,
+        deployment_id: UUID,
+        ingestion_deployment_id: UUID | None = None,
+        process_deployment_id: UUID | None = None,
     ):
         self.operations = OperationService(sessions)
         self.ingestion = IngestionService(sessions, bucket="unconfigured")
@@ -33,7 +38,15 @@ class WorkflowDispatcher:
             else None
         )
 
+        self.process_submission = (
+            PrefectSubmission(sessions, client, process_deployment_id)
+            if process_deployment_id is not None
+            else None
+        )
+
     def _submission(self, kind):
+        if kind == "process_flow":
+            return self.process_submission
         if kind == "verify_sample_artifact":
             return self.submission
         if kind in SAMPLE_INGESTION_KINDS | {"ingest_cleanup"}:
@@ -64,7 +77,10 @@ class WorkflowDispatcher:
                     operations.get, actor, namespace_id, claim.operation_id
                 )
                 submission = self._submission(state.kind)
-                if submission is None and state.kind in SAMPLE_INGESTION_KINDS | {"ingest_cleanup"}:
+                if submission is None and state.kind in SAMPLE_INGESTION_KINDS | {
+                    "ingest_cleanup",
+                    "process_flow",
+                }:
                     # Known capabilities can be configured later. Keep inbox/dispatch facts
                     # replayable rather than permanently quarantining valid admitted work.
                     deferred += 1
@@ -101,7 +117,24 @@ class WorkflowDispatcher:
                         reconcile_only=True,
                     )
                     outcome = outcome.model_copy(update={"dispatch": reconciled})
-                if (
+                if state.kind == "process_flow" and state.status == "cancellation_requested":
+                    from verdant.process_flow import ProcessService
+
+                    if submission is not None:
+                        try:
+                            await submission.submit(
+                                actor, namespace_id, state.id, state.epoch, reconcile_only=True
+                            )
+                        except NotFound:
+                            pass
+                    await asyncio.to_thread(
+                        ProcessService(operations.sessions).worker_state,
+                        actor,
+                        namespace_id,
+                        state.id,
+                        state.epoch,
+                    )
+                elif (
                     state.status == "cancellation_requested"
                     and state.kind == "verify_sample_artifact"
                 ):
@@ -197,6 +230,7 @@ async def serve(
     namespace_ids: list[UUID] | None,
     deployment_id: UUID,
     ingestion_deployment_id: UUID | None = None,
+    process_deployment_id: UUID | None = None,
 ):
     """Run a single bounded dispatcher, with graceful native process shutdown."""
     import logging
@@ -220,7 +254,7 @@ async def serve(
     try:
         async with get_client() as client:
             dispatcher = WorkflowDispatcher(
-                sessions, client, deployment_id, ingestion_deployment_id
+                sessions, client, deployment_id, ingestion_deployment_id, process_deployment_id
             )
             while not stop.is_set():
                 try:
