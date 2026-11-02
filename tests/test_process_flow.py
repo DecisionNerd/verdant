@@ -357,3 +357,35 @@ def test_acceptance_rejects_forged_member_step_and_digest(process_fixture, sessi
     with sessions() as session:
         assert session.get(ProcessOutputRow, (operation.id, item["sample_id"], 0)) is None
         assert session.get(EffectReceiptRow, receipt.id).status == "unknown"
+
+
+@pytest.mark.parametrize("intent,status", [("pause", "paused"), ("cancel", "cancelled")])
+def test_inflight_success_is_accepted_before_pause_or_cancel_settles(
+    process_fixture, sessions, monkeypatch, intent, status
+):
+    actor, ns, dataset, candidate, storage = process_fixture
+    profile = model_profile(sessions, actor, ns)
+    service, flow, command, operation = make_flow(sessions, process_fixture, profile.id)
+    monkeypatch.setenv("VERDANT_MODEL_SECRET_FIXTURE", "fixture-only")
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        service.action(actor, ns, operation.id, ProcessAction(epoch=1, action=intent))
+        return model_response(
+            200,
+            json={
+                "id": "accepted-before-intent",
+                "choices": [{"finish_reason": "stop", "message": {"content": "accepted output"}}],
+            },
+        )
+
+    runner = ProcessRunner(
+        sessions, storage, adapter=ModelAdapter(transport=httpx.MockTransport(handler))
+    )
+    assert runner.run(actor, ns, operation.id, 1).status == status
+    detail = service.detail(actor, ns, operation.id)
+    assert len(calls) == 1 and len(detail["outputs"]) == 2
+    assert detail["input"]["completed_count"] == 1
+    assert not detail["needs_reconciliation"]
+    assert detail["outputs"][-1]["result"]["text"] == "accepted output"

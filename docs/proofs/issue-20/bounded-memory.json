@@ -1,0 +1,9 @@
+{
+  "members": 512,
+  "source_bytes_verified": 33280512,
+  "batch_members": 25,
+  "pages": 21,
+  "python_allocation_peak_bytes": 3929088,
+  "max_rss_bytes": 296468480,
+  "datachain_version": "0.58.3"
+}

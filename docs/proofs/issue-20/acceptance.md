@@ -62,5 +62,50 @@ credentials/budget were not supplied for this child. Paid calls:zero. The runnab
 operator-authorized live qualification remains parent-owned and must pass separately
 before issue21's live gate can be closed.
 
-The expanded PostgreSQL/S3, blocked-lock revocation and512-member memory proof are
-running separately at this native-proof checkpoint; their final receipt follows.
+## Final shared-service and memory proof
+
+The final PostgreSQL/S3 suite passed **84 tests in111.78seconds**:
+
+```sh
+scripts/test_process.sh tests/test_model_profiles.py tests/test_process_flow.py \
+  tests/test_process_memory.py tests/test_operations.py tests/test_dispatch.py \
+  tests/test_registry.py -q --tb=short --basetemp=/tmp/verdant-process-final-proof
+```
+
+It includes the namespace-lock/revocation regression, profile contracts and versioning,
+strict held-out metadata exclusion, exact step/member/receipt acceptance, confirmed
+rejection recovery, unknown accepted-call timeout without replay, pending pause/cancel
+intent on success and failure, pure-transform interruption recovery, stale epochs,
+unauthorized callers, immutable persistence, and existing operation/dispatch/registry
+behavior. HTTP provider fixtures are explicitly simulated; PostgreSQL/S3/DataChain are
+actual implementations.
+
+The [memory receipt](bounded-memory.json) records512 independent frozen sample
+identities reading the same verified65,001-byte immutable S3 object:33,280,512 source
+bytes verified,21 DataChain pages, at most25 members per page. Incremental traced
+Python allocation peak was3,929,088 bytes; measured process maximum RSS was296,468,480
+bytes, including native dependencies. The test asserts a24MiB Python allocation cap
+and page cardinality. It does not claim an unmeasured whole-host or arbitrary-corpus
+memory limit.
+
+`alembic check` passed with **No new upgrade operations detected**. Final Python
+Ruff/format checks, E2E TypeScript and the workspace build passed; the workspace unit
+suite passed96 tests. Python3.12.11, macOS26.6 arm64, Prefect3.9.0, DataChain0.58.3,
+HTTPX0.28.1 and SQLAlchemy2.0.55 were used. See [verification](verification.json) for
+commands, exact changed files and remaining gates.
+
+The final shared-service/memory fixture used only `verdant-process-proof`, database
+`verdant_process_test`, ports19132/19133, with no auth or Prefect service running.
+Its two containers/network were removed after acceptance. No running child process
+fixtures remain. Root193xx fixtures were never removed or reset.
+
+## Parent integration delta
+
+After the native child proof, the parent found and fixed default MCP serialization of
+`FlowDefinition`: `ConfigDict(serialize_by_alias=True)` preserves the REST/store
+`schema` alias during FastMCP model serialization and digest reproduction. The parent
+owns its real FastMCP-to-typed-SDK parity regression and the merged migration head.
+This child did not overwrite that parent-owned change; the native proof above covers
+REST/direct-domain execution on the stated child source. Combined SDK/MCP/auth and
+annotation acceptance remains the parent's integration proof, rather than an implied
+result of this isolated child run.
