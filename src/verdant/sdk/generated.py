@@ -7,8 +7,10 @@ import uuid as uuid
 import verdant.consumption as verdant_consumption
 import verdant.contracts as verdant_contracts
 import verdant.ingestion as verdant_ingestion
+import verdant.model_profiles as verdant_model_profiles
 import verdant.operations as verdant_operations
 import verdant.preview as verdant_preview
+import verdant.process_flow as verdant_process_flow
 import verdant.publication as verdant_publication
 import verdant.quality_service as verdant_quality_service
 import verdant.transport_contracts as verdant_transport_contracts
@@ -17,6 +19,216 @@ from verdant.sdk.transport import Transport
 
 
 class GeneratedClient(Transport):
+    def create_model_profile(
+        self, *, namespace_id: uuid.UUID, command: verdant_model_profiles.ProfileCreate
+    ) -> verdant_model_profiles.Profile:
+        """Call the create_model_profile OpenAPI operation."""
+        return self._request(
+            "POST",
+            (f"/api/v1/namespaces/{self._segment(namespace_id)}/model-profiles"),
+            params={},
+            body=command,
+            model=verdant_model_profiles.Profile,
+        )
+
+    def list_model_profiles(
+        self, *, namespace_id: uuid.UUID, after: uuid.UUID | None = None, limit: int = 50
+    ) -> verdant_model_profiles.ModelProfilePage:
+        """Call the list_model_profiles OpenAPI operation."""
+        return self._request(
+            "GET",
+            (f"/api/v1/namespaces/{self._segment(namespace_id)}/model-profiles"),
+            params={"after": after, "limit": limit},
+            body=None,
+            model=verdant_model_profiles.ModelProfilePage,
+        )
+
+    def get_model_profile(
+        self, *, namespace_id: uuid.UUID, profile_id: uuid.UUID
+    ) -> verdant_model_profiles.Profile:
+        """Call the get_model_profile OpenAPI operation."""
+        return self._request(
+            "GET",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/model-profiles"
+                f"/{self._segment(profile_id)}"
+            ),
+            params={},
+            body=None,
+            model=verdant_model_profiles.Profile,
+        )
+
+    def create_process_flow(
+        self,
+        *,
+        namespace_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        command: verdant_process_flow.FlowCreate,
+    ) -> verdant_process_flow.Flow:
+        """Call the create_process_flow OpenAPI operation."""
+        return self._request(
+            "POST",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/process-flows"
+            ),
+            params={},
+            body=command,
+            model=verdant_process_flow.Flow,
+        )
+
+    def list_process_flows(
+        self,
+        *,
+        namespace_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        after: uuid.UUID | None = None,
+        limit: int = 50,
+    ) -> verdant_process_flow.FlowPage:
+        """Call the list_process_flows OpenAPI operation."""
+        return self._request(
+            "GET",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/process-flows"
+            ),
+            params={"after": after, "limit": limit},
+            body=None,
+            model=verdant_process_flow.FlowPage,
+        )
+
+    def get_process_flow(
+        self, *, namespace_id: uuid.UUID, dataset_id: uuid.UUID, flow_id: uuid.UUID
+    ) -> verdant_process_flow.Flow:
+        """Call the get_process_flow OpenAPI operation."""
+        return self._request(
+            "GET",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/process-flows"
+                f"/{self._segment(flow_id)}"
+            ),
+            params={},
+            body=None,
+            model=verdant_process_flow.Flow,
+        )
+
+    def list_process_runs(
+        self,
+        *,
+        namespace_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        after: uuid.UUID | None = None,
+        limit: int = 25,
+    ) -> verdant_operations.OperationPage:
+        """Call the list_process_runs OpenAPI operation."""
+        return self._request(
+            "GET",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/process-runs"
+            ),
+            params={"after": after, "limit": limit},
+            body=None,
+            model=verdant_operations.OperationPage,
+        )
+
+    def start_process(
+        self,
+        *,
+        namespace_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        command: verdant_process_flow.ProcessStart,
+    ) -> verdant_operations.Operation:
+        """Call the start_process OpenAPI operation."""
+        return self._request(
+            "POST",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/process-runs"
+            ),
+            params={},
+            body=command,
+            model=verdant_operations.Operation,
+        )
+
+    def process_detail(
+        self,
+        *,
+        namespace_id: uuid.UUID,
+        operation_id: uuid.UUID,
+        after_sample: uuid.UUID | None = None,
+        limit: int = 25,
+    ) -> verdant_process_flow.ProcessDetail:
+        """Call the process_detail OpenAPI operation."""
+        return self._request(
+            "GET",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/process-runs"
+                f"/{self._segment(operation_id)}"
+            ),
+            params={"after_sample": after_sample, "limit": limit},
+            body=None,
+            model=verdant_process_flow.ProcessDetail,
+        )
+
+    def process_action(
+        self,
+        *,
+        namespace_id: uuid.UUID,
+        operation_id: uuid.UUID,
+        command: verdant_process_flow.ProcessAction,
+    ) -> verdant_operations.Operation:
+        """Call the process_action OpenAPI operation."""
+        return self._request(
+            "POST",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/process-runs"
+                f"/{self._segment(operation_id)}"
+                "/actions"
+            ),
+            params={},
+            body=command,
+            model=verdant_operations.Operation,
+        )
+
     def platform_capabilities(self) -> verdant_transport_contracts.PlatformCapabilities:
         """Call the platform_capabilities OpenAPI operation."""
         return self._request(

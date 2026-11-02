@@ -28,6 +28,7 @@ from verdant.ingestion import (
 )
 from verdant.operations import OperationService, VerificationRequest
 from verdant.preview import PreviewService
+from verdant.process_mcp import install_process_tools
 from verdant.publication_runner import PublicationRunner
 from verdant.storage import ObjectCorrupt, ObjectMissing, StorageError, configured_storage
 from verdant.transport_contracts import PlatformCapabilities, capabilities
@@ -518,4 +519,5 @@ def create_mcp_app(runtime, *, storage=None):
         """Create a dataset and revision-zero draft in an authorized namespace."""
         return await invoke(service.create_dataset, namespace_id, command)
 
+    install_process_tools(mcp, runtime.sessions, invoke)
     return mcp.http_app(path="/", stateless_http=True, json_response=True)

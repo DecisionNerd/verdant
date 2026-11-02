@@ -476,6 +476,209 @@
         "title": "EmptyCommand",
         "type": "object"
       },
+      "Flow": {
+        "additionalProperties": false,
+        "properties": {
+          "config_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Config Digest",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dataset_id": {
+            "format": "uuid",
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/FlowDefinition"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "namespace_id": {
+            "format": "uuid",
+            "title": "Namespace Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "namespace_id",
+          "dataset_id",
+          "name",
+          "revision",
+          "definition",
+          "config_digest",
+          "created_at"
+        ],
+        "title": "Flow",
+        "type": "object"
+      },
+      "FlowCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9 _.-]*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/FlowStep"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "steps"
+        ],
+        "title": "FlowCreate",
+        "type": "object"
+      },
+      "FlowDefinition": {
+        "additionalProperties": false,
+        "properties": {
+          "schema": {
+            "const": "verdant.process.v1",
+            "title": "Schema",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/PinnedFlowStep"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema",
+          "steps"
+        ],
+        "title": "FlowDefinition",
+        "type": "object"
+      },
+      "FlowPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Flow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_after": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next After"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "FlowPage",
+        "type": "object"
+      },
+      "FlowStep": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "preprocess",
+              "model"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9 _.-]+$",
+            "title": "Name",
+            "type": "string"
+          },
+          "output_contract": {
+            "default": "text",
+            "enum": [
+              "text",
+              "json"
+            ],
+            "title": "Output Contract",
+            "type": "string"
+          },
+          "profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Id"
+          },
+          "prompt": {
+            "default": "",
+            "maxLength": 4096,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "transform": {
+            "default": "identity",
+            "enum": [
+              "identity",
+              "strip",
+              "lowercase"
+            ],
+            "title": "Transform",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind"
+        ],
+        "title": "FlowStep",
+        "type": "object"
+      },
       "FrozenMember": {
         "additionalProperties": false,
         "properties": {
@@ -1099,6 +1302,130 @@
         "title": "MinimumSamples",
         "type": "object"
       },
+      "ModelProfilePage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Profile"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_after": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next After"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ModelProfilePage",
+        "type": "object"
+      },
+      "ModelResult": {
+        "additionalProperties": false,
+        "properties": {
+          "cost": {
+            "title": "Cost",
+            "type": "null"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "provider_reference": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Reference"
+          },
+          "resolved_model": {
+            "anyOf": [
+              {
+                "maxLength": 150,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Model"
+          },
+          "text": {
+            "maxLength": 65536,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "ModelResult",
+        "type": "object"
+      },
+      "ModelSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "max_output_tokens": {
+            "default": 256,
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Max Output Tokens",
+            "type": "integer"
+          },
+          "temperature": {
+            "default": 0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Temperature",
+            "type": "number"
+          },
+          "top_p": {
+            "default": 1,
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Top P",
+            "type": "number"
+          }
+        },
+        "title": "ModelSettings",
+        "type": "object"
+      },
       "Namespace": {
         "additionalProperties": false,
         "properties": {
@@ -1312,6 +1639,81 @@
         "title": "OperationPage",
         "type": "object"
       },
+      "PinnedFlowStep": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "preprocess",
+              "model"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9 _.-]+$",
+            "title": "Name",
+            "type": "string"
+          },
+          "output_contract": {
+            "default": "text",
+            "enum": [
+              "text",
+              "json"
+            ],
+            "title": "Output Contract",
+            "type": "string"
+          },
+          "profile_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Digest"
+          },
+          "profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Id"
+          },
+          "prompt": {
+            "default": "",
+            "maxLength": 4096,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "transform": {
+            "default": "identity",
+            "enum": [
+              "identity",
+              "strip",
+              "lowercase"
+            ],
+            "title": "Transform",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind"
+        ],
+        "title": "PinnedFlowStep",
+        "type": "object"
+      },
       "PlatformCapabilities": {
         "additionalProperties": false,
         "properties": {
@@ -1326,7 +1728,9 @@
               "candidate",
               "quality",
               "version",
-              "operation"
+              "operation",
+              "process_flow",
+              "model_profile"
             ],
             "items": {
               "type": "string"
@@ -1565,6 +1969,514 @@
           "download_path"
         ],
         "title": "Preview",
+        "type": "object"
+      },
+      "ProcessAction": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "pause",
+              "resume",
+              "cancel",
+              "retry",
+              "reconcile"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "epoch": {
+            "minimum": 1.0,
+            "title": "Epoch",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "epoch",
+          "action"
+        ],
+        "title": "ProcessAction",
+        "type": "object"
+      },
+      "ProcessAttempt": {
+        "additionalProperties": false,
+        "properties": {
+          "epoch": {
+            "minimum": 1.0,
+            "title": "Epoch",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "invocation_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invocation Key"
+          },
+          "provider_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Run Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "epoch",
+          "status",
+          "error_code",
+          "provider_run_id",
+          "invocation_key"
+        ],
+        "title": "ProcessAttempt",
+        "type": "object"
+      },
+      "ProcessDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessAttempt"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
+          "flow": {
+            "$ref": "#/components/schemas/Flow"
+          },
+          "input": {
+            "$ref": "#/components/schemas/ProcessRunInput"
+          },
+          "needs_reconciliation": {
+            "title": "Needs Reconciliation",
+            "type": "boolean"
+          },
+          "next_after": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next After"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/Operation"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessOutput"
+            },
+            "title": "Outputs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "operation",
+          "flow",
+          "input",
+          "needs_reconciliation",
+          "attempts",
+          "outputs",
+          "next_after"
+        ],
+        "title": "ProcessDetail",
+        "type": "object"
+      },
+      "ProcessOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_epoch": {
+            "minimum": 1.0,
+            "title": "Accepted Epoch",
+            "type": "integer"
+          },
+          "input_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Input Digest",
+            "type": "string"
+          },
+          "output_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Output Digest",
+            "type": "string"
+          },
+          "profile_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Digest"
+          },
+          "profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Id"
+          },
+          "receipt_id": {
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/ModelResult"
+          },
+          "sample_id": {
+            "format": "uuid",
+            "title": "Sample Id",
+            "type": "string"
+          },
+          "sample_revision_id": {
+            "format": "uuid",
+            "title": "Sample Revision Id",
+            "type": "string"
+          },
+          "step_position": {
+            "maximum": 7.0,
+            "minimum": 0.0,
+            "title": "Step Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sample_id",
+          "sample_revision_id",
+          "step_position",
+          "receipt_id",
+          "accepted_epoch",
+          "input_digest",
+          "output_digest",
+          "profile_id",
+          "profile_digest",
+          "result"
+        ],
+        "title": "ProcessOutput",
+        "type": "object"
+      },
+      "ProcessRunInput": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "completed_count": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Completed Count",
+            "type": "integer"
+          },
+          "dataset_id": {
+            "format": "uuid",
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "generation_id": {
+            "format": "uuid",
+            "title": "Generation Id",
+            "type": "string"
+          },
+          "member_count": {
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "trial_of": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trial Of"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "candidate_id",
+          "version_id",
+          "generation_id",
+          "member_count",
+          "completed_count",
+          "trial_of"
+        ],
+        "title": "ProcessRunInput",
+        "type": "object"
+      },
+      "ProcessStart": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "flow_id": {
+            "format": "uuid",
+            "title": "Flow Id",
+            "type": "string"
+          },
+          "max_members": {
+            "default": 100,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Max Members",
+            "type": "integer"
+          },
+          "max_model_calls": {
+            "default": 100,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Max Model Calls",
+            "type": "integer"
+          },
+          "request_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Request Key",
+            "type": "string"
+          },
+          "trial_of": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trial Of"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          }
+        },
+        "required": [
+          "request_key",
+          "flow_id"
+        ],
+        "title": "ProcessStart",
+        "type": "object"
+      },
+      "Profile": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "items": {
+              "enum": [
+                "text",
+                "json"
+              ],
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "config_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Config Digest",
+            "type": "string"
+          },
+          "credential_configured": {
+            "title": "Credential Configured",
+            "type": "boolean"
+          },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identity_kind": {
+            "enum": [
+              "exact",
+              "mutable_alias"
+            ],
+            "title": "Identity Kind",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "gemini",
+              "glm"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ModelSettings"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "revision",
+          "provider",
+          "endpoint",
+          "model",
+          "identity_kind",
+          "settings",
+          "capabilities",
+          "config_digest",
+          "credential_configured"
+        ],
+        "title": "Profile",
+        "type": "object"
+      },
+      "ProfileCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "items": {
+              "enum": [
+                "text",
+                "json"
+              ],
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "credential_ref": {
+            "pattern": "^VERDANT_MODEL_SECRET_[A-Z0-9_]{1,80}$",
+            "title": "Credential Ref",
+            "type": "string"
+          },
+          "expected_revision": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "identity_kind": {
+            "enum": [
+              "exact",
+              "mutable_alias"
+            ],
+            "title": "Identity Kind",
+            "type": "string"
+          },
+          "model": {
+            "maxLength": 150,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]*$",
+            "title": "Model",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9 _.-]*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "gemini",
+              "glm"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ModelSettings"
+          }
+        },
+        "required": [
+          "name",
+          "provider",
+          "model",
+          "identity_kind",
+          "credential_ref"
+        ],
+        "title": "ProfileCreate",
         "type": "object"
       },
       "Publication": {
@@ -4760,6 +5672,365 @@
         "summary": "Set Membership"
       }
     },
+    "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/process-flows": {
+      "get": {
+        "operationId": "list_process_flows_api_v1_namespaces__namespace_id__datasets__dataset_id__process_flows_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Process Flows"
+      },
+      "post": {
+        "operationId": "create_process_flow_api_v1_namespaces__namespace_id__datasets__dataset_id__process_flows_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Flow"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Process Flow"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/process-flows/{flow_id}": {
+      "get": {
+        "operationId": "get_process_flow_api_v1_namespaces__namespace_id__datasets__dataset_id__process_flows__flow_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "flow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Flow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Flow"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Process Flow"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/process-runs": {
+      "get": {
+        "operationId": "list_process_runs_api_v1_namespaces__namespace_id__datasets__dataset_id__process_runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Process Runs"
+      },
+      "post": {
+        "operationId": "start_process_api_v1_namespaces__namespace_id__datasets__dataset_id__process_runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Process"
+      }
+    },
     "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/publications/{publication_id}": {
       "get": {
         "operationId": "get_publication_api_v1_namespaces__namespace_id__datasets__dataset_id__publications__publication_id__get",
@@ -6786,6 +8057,188 @@
         "summary": "Sign Upload Part"
       }
     },
+    "/api/v1/namespaces/{namespace_id}/model-profiles": {
+      "get": {
+        "operationId": "list_model_profiles_api_v1_namespaces__namespace_id__model_profiles_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelProfilePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Model Profiles"
+      },
+      "post": {
+        "operationId": "create_model_profile_api_v1_namespaces__namespace_id__model_profiles_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Model Profile"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/model-profiles/{profile_id}": {
+      "get": {
+        "operationId": "get_model_profile_api_v1_namespaces__namespace_id__model_profiles__profile_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Model Profile"
+      }
+    },
     "/api/v1/namespaces/{namespace_id}/operations": {
       "get": {
         "operationId": "list_operations_api_v1_namespaces__namespace_id__operations_get",
@@ -7192,6 +8645,155 @@
           }
         ],
         "summary": "Retry Operation"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/process-runs/{operation_id}": {
+      "get": {
+        "operationId": "process_detail_api_v1_namespaces__namespace_id__process_runs__operation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_sample",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After Sample"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 25,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Process Detail"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/process-runs/{operation_id}/actions": {
+      "post": {
+        "operationId": "process_action_api_v1_namespaces__namespace_id__process_runs__operation_id__actions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Process Action"
       }
     },
     "/api/v1/namespaces/{namespace_id}/samples": {

@@ -11,7 +11,15 @@ class PlatformCapabilities(Contract):
     manifest_version: int = MANIFEST_VERSION
     identity: Literal["keycloak-issuer-subject"] = "keycloak-issuer-subject"
     transports: tuple[str, ...] = ("browser", "http-bearer", "mcp", "managed")
-    domains: tuple[str, ...] = ("dataset", "candidate", "quality", "version", "operation")
+    domains: tuple[str, ...] = (
+        "dataset",
+        "candidate",
+        "quality",
+        "version",
+        "operation",
+        "process_flow",
+        "model_profile",
+    )
     experiments: Literal["not_implemented"] = "not_implemented"
     max_page_size: int = 500
     max_artifact_bytes: int = 256 * 1024 * 1024
