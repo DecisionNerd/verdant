@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 from sqlalchemy import func, select
 
 from verdant.contracts import Contract, Digest
@@ -85,6 +85,7 @@ class PinnedFlowStep(FlowStep):
 
 
 class FlowDefinition(Contract):
+    model_config = ConfigDict(serialize_by_alias=True)
     schema_version: Literal["verdant.process.v1"] = Field(alias="schema")
     steps: list[PinnedFlowStep] = Field(min_length=1, max_length=8)
 
