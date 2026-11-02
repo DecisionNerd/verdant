@@ -28,8 +28,9 @@ parent's generated SDK and FastMCP bindings. No auth implementation is added her
 
 Profile creation requires a backend environment **reference** matching
 `VERDANT_MODEL_SECRET_[A-Z0-9_]+`. The actual secret is supplied only to the managed
-worker by the operator. Responses omit even the reference and expose only credential
-configuration availability. Profile digests cover the reference, fixed provider
+worker by the operator. Responses omit even the reference and report `credential_status="worker_unverified"`.
+The API never infers worker readiness from its own environment or receives a copy
+of the worker secret. Profile digests cover the reference, fixed provider
 origin, identifier, declared exact/mutable-alias identity, settings and capabilities.
 Secret rotation does not change that digest; it does not establish a model snapshot.
 Mutable aliases are explicitly disclosed, and observed provider model identifiers are

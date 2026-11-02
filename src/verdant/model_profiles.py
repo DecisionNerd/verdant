@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 
 from verdant.contracts import Contract, Digest
 from verdant.domain import Conflict, NotFound
-from verdant.identity import current_principal
+from verdant.identity import current_principal, require_current_access
 from verdant.model_inputs import ModelInput
 from verdant.persistence import AuditRow, ModelProfileRow, NamespaceRow
 from verdant.telemetry import observed
@@ -66,7 +66,7 @@ class Profile(Contract):
     settings: ModelSettings
     capabilities: list[Literal["text", "json"]]
     config_digest: Digest
-    credential_configured: bool
+    credential_status: Literal["worker_unverified"] = "worker_unverified"
 
 
 class ModelProfilePage(Contract):
@@ -111,7 +111,7 @@ class ModelProfileService:
             revision=row.revision,
             endpoint=ORIGINS[definition["provider"]],
             config_digest=row.config_digest,
-            credential_configured=bool(os.environ.get(row.credential_ref)),
+            credential_status="worker_unverified",
             **definition,
         )
 
@@ -123,6 +123,7 @@ class ModelProfileService:
             session.scalar(
                 select(NamespaceRow).where(NamespaceRow.id == namespace_id).with_for_update()
             )
+            require_current_access(session, actor.id, namespace_id, write=True)
             latest = (
                 session.scalar(
                     select(func.max(ModelProfileRow.revision)).where(
@@ -283,7 +284,7 @@ class ModelAdapter:
                         if length is not None and (not length.isdecimal() or int(length) > 262144):
                             raise ModelCallError("provider_response_too_large", uncertain=True)
                         chunks, size = [], 0
-                        for chunk in response.iter_raw(chunk_size=16384):
+                        for chunk in response.iter_raw():
                             if time.monotonic() >= deadline:
                                 raise ModelCallError("provider_time_budget", uncertain=True)
                             size += len(chunk)

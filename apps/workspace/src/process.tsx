@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, request } from "./api";
 
-type Profile = { id: string; name: string; revision: number; provider: string; endpoint: string; model: string; identity_kind: string; config_digest: string; credential_configured: boolean; settings: { temperature: number; top_p: number; max_output_tokens: number }; capabilities: string[] };
+type Profile = { id: string; name: string; revision: number; provider: string; endpoint: string; model: string; identity_kind: string; config_digest: string; credential_status: "worker_unverified"; settings: { temperature: number; top_p: number; max_output_tokens: number }; capabilities: string[] };
 type Step = { name: string; kind: "preprocess" | "model"; transform: "identity" | "strip" | "lowercase"; profile_id: string | null; prompt: string; output_contract: "text" | "json"; profile_digest?: string };
 type Flow = { id: string; name: string; revision: number; config_digest: string; definition: { steps: Step[] } };
 type Operation = { id: string; status: string; epoch: number };
@@ -75,7 +75,7 @@ export function ProcessWorkspace({ namespace, dataset, csrf, writable }: { names
       if (!alive.current) return;
       setProfileRevision(result.revision); setCredentialRef("");
       await cache.invalidateQueries({ queryKey: ["model-profiles", namespace] });
-      setMessage(`Model profile ${result.name} revision ${result.revision} saved. ${result.credential_configured ? "Operator credential configured." : "Operator credential is not configured."}`);
+      setMessage(`Model profile ${result.name} revision ${result.revision} saved. Worker credential status is unverified.`);
     });
   }
   async function saveFlow(event: FormEvent) {
@@ -111,7 +111,7 @@ export function ProcessWorkspace({ namespace, dataset, csrf, writable }: { names
     {readError && <p role="alert">Saved process details may be stale: {readError.message} <button onClick={() => { void profiles.refetch(); void flows.refetch(); void runs.refetch(); void candidates.refetch(); void versions.refetch(); if (runId) void detail.refetch(); }}>Refresh process details</button></p>}
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     <details><summary>Model profiles</summary>
-      <ul>{profiles.data?.items.map(p => <li key={p.id}>{p.name} · revision {p.revision} · {p.provider}/{p.model} · {p.identity_kind === "mutable_alias" ? "Mutable alias: provider may change this model" : "Exact identifier declared"} · credential {p.credential_configured ? "configured" : "unconfigured"}<br /><span className="identifier">{p.config_digest}</span> · {p.endpoint}
+      <ul>{profiles.data?.items.map(p => <li key={p.id}>{p.name} · revision {p.revision} · {p.provider}/{p.model} · {p.identity_kind === "mutable_alias" ? "Mutable alias: provider may change this model" : "Exact identifier declared"} · worker credential unverified<br /><span className="identifier">{p.config_digest}</span> · {p.endpoint}
         {writable && <button onClick={() => { setProfileName(p.name); setProfileRevision(p.revision); setProvider(p.provider); setModel(p.model); setIdentityKind(p.identity_kind); setTemperature(p.settings.temperature); setTopP(p.settings.top_p); setTokens(p.settings.max_output_tokens); setJson(p.capabilities.includes("json")); setCredentialRef(""); }}>Version {p.name} r{p.revision}</button>}</li>)}</ul>
       {profiles.hasNextPage && <button disabled={profiles.isFetchingNextPage} onClick={() => void profiles.fetchNextPage()}>More model profiles</button>}
       {writable && <form onSubmit={event => void saveProfile(event)}><fieldset disabled={busy || stale}><legend>Save immutable model profile</legend>

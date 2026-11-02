@@ -30,7 +30,7 @@ def profile(provider="gemini", **patch):
         settings={},
         capabilities=["text", "json"],
         config_digest="a" * 64,
-        credential_configured=True,
+        credential_status="worker_unverified",
         **patch,
     )
 
@@ -189,14 +189,15 @@ def test_profile_versions_digest_alias_and_backend_only_reference(
         credential_ref="VERDANT_MODEL_SECRET_FIXTURE",
     )
     first = service.create(actor, ns, command)
-    assert not first.credential_configured
+    assert first.credential_status == "worker_unverified"
     assert "credential_ref" not in first.model_dump()
     assert first.identity_kind == "mutable_alias"
     monkeypatch.setenv(command.credential_ref, "synthetic")
     second = service.create(
         actor, ns, command.model_copy(update={"expected_revision": 1, "model": "glm-4-plus"})
     )
-    assert second.credential_configured and first.config_digest != second.config_digest
+    assert second.credential_status == "worker_unverified"
+    assert first.config_digest != second.config_digest
     assert service.get(actor, ns, first.id).model == "glm-4"
     with pytest.raises(Conflict):
         service.create(actor, ns, command)
@@ -313,3 +314,87 @@ def test_gemini_thought_parts_never_enter_normalized_output(monkeypatch):
         output_contract="text",
     )
     assert result.text == "public answer" and "hidden" not in result.model_dump_json()
+
+
+def test_profile_creation_rechecks_revocation_after_blocking_namespace_lock(registry, sessions):
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from sqlalchemy import func, select, text
+
+    from verdant.identity import IdentityService
+    from verdant.persistence import ModelProfileRow, NamespaceRow
+
+    _, actor, ns = registry
+    service = ModelProfileService(sessions)
+    command = ProfileCreate(
+        name="Blocked",
+        provider="glm",
+        model="glm-4",
+        identity_kind="mutable_alias",
+        credential_ref="VERDANT_MODEL_SECRET_FIXTURE",
+    )
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with sessions.begin() as holding:
+            holding.scalar(
+                select(NamespaceRow).where(NamespaceRow.id == ns).with_for_update(key_share=True)
+            )
+            holder_pid = holding.scalar(text("SELECT pg_backend_pid()"))
+            future = pool.submit(service.create, actor, ns, command)
+            deadline = time.monotonic() + 10
+            while True:
+                with sessions() as observer:
+                    blocked = observer.scalar(
+                        text(
+                            "SELECT EXISTS(SELECT 1 FROM pg_stat_activity "
+                            "WHERE :pid = ANY(pg_blocking_pids(pid)))"
+                        ),
+                        {"pid": holder_pid},
+                    )
+                if blocked:
+                    break
+                assert time.monotonic() < deadline, "Profile writer did not wait on namespace lock"
+                time.sleep(0.02)
+            IdentityService(sessions).revoke_grant(actor.id, ns)
+        with pytest.raises(Forbidden):
+            future.result(timeout=10)
+    with sessions() as session:
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(ModelProfileRow)
+                .where(ModelProfileRow.namespace_id == ns)
+            )
+            == 0
+        )
+
+
+def test_trickle_stream_deadline_is_checked_before_chunk_coalescing(monkeypatch):
+    import verdant.model_profiles as models
+
+    monkeypatch.setenv("VERDANT_MODEL_SECRET_FIXTURE", "synthetic")
+    now = [0.0]
+    monkeypatch.setattr(models.time, "monotonic", lambda: now[0])
+
+    class Trickle(httpx.SyncByteStream):
+        reads = 0
+
+        def __iter__(self):
+            for _ in range(40):
+                self.reads += 1
+                now[0] += 4
+                yield b" "
+
+    body = Trickle()
+    adapter = ModelAdapter(
+        transport=httpx.MockTransport(lambda _: model_response(200, stream=body))
+    )
+    with pytest.raises(ModelCallError, match="provider_time_budget") as caught:
+        adapter.generate(
+            profile("glm"),
+            "VERDANT_MODEL_SECRET_FIXTURE",
+            ModelInput(text="private"),
+            prompt="private",
+            output_contract="text",
+        )
+    assert caught.value.uncertain and body.reads == 8

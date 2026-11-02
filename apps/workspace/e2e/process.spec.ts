@@ -92,9 +92,10 @@ test("SSO flow versioning, profile switching, native Prefect/DataChain run, dura
     const nativeId = detail.attempts.find((a: any) => a.epoch === 2).provider_run_id;
     expect(nativeId).toBeTruthy();
     const nativeResponse = await fetch(`http://127.0.0.1:19100/api/flow_runs/${nativeId}`);
-    expect(nativeResponse.ok).toBeTruthy(); const nativeRun = await nativeResponse.json();
+    expect(nativeResponse.ok).toBeTruthy(); let nativeRun = await nativeResponse.json();
     expect(nativeRun.idempotency_key).toContain(run.id);
     await expect.poll(async () => (await (await fetch(`http://127.0.0.1:19100/api/flow_runs/${nativeId}`)).json()).state_type, { timeout: 30_000 }).toBe("COMPLETED");
+    nativeRun = await (await fetch(`http://127.0.0.1:19100/api/flow_runs/${nativeId}`)).json();
     expect(detail.outputs).toHaveLength(6); expect(detail.input.generation_id).toBeTruthy();
     expect(detail.outputs.filter((o: any) => o.step_position === 1).map((o: any) => o.result.text).sort()).toEqual(["safe process text 0", "safe process text 1", "safe process text 2"]);
     expect(detail.outputs.every((o: any) => o.accepted_epoch === 2 && o.receipt_id && o.output_digest)).toBeTruthy();
@@ -104,7 +105,7 @@ test("SSO flow versioning, profile switching, native Prefect/DataChain run, dura
     await region.getByLabel("Model identifier", { exact: true }).fill("gemini-2.0-flash-001");
     await region.getByLabel("Operator credential reference").fill("VERDANT_MODEL_SECRET_FIXTURE");
     const gemini = await response(page, "/model-profiles", () => region.getByRole("button", { name: "Save profile version" }).click());
-    expect(gemini.credential_configured).toBe(false); expect(gemini.credential_ref).toBeUndefined();
+    expect(gemini.credential_status).toBe("worker_unverified"); expect(gemini.credential_ref).toBeUndefined();
     await region.getByLabel("Provider", { exact: true }).selectOption("glm");
     await region.getByLabel("Model identifier", { exact: true }).fill("glm-4");
     await region.getByLabel("Reproducibility").selectOption("mutable_alias");
