@@ -975,6 +975,7 @@ class AnnotationCohortRow(Base):
     __table_args__ = (
         ForeignKeyConstraint(["namespace_id"], ["namespaces.id"]),
         UniqueConstraint("browser_origin", name="uq_annotation_cohort_origin"),
+        UniqueConstraint("machine_origin", name="uq_annotation_cohort_machine_origin"),
         UniqueConstraint("namespace_id", "id", name="uq_annotation_cohort_namespace"),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)

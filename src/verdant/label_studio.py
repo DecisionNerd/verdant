@@ -176,7 +176,7 @@ class LabelStudioClient:
                 if isinstance(selected["completed_by"], dict):
                     selected["completed_by"] = selected["completed_by"].get("id")
                 if isinstance(selected.get("updated_by"), dict):
-                    selected["updated_by"] = selected["updated_by"].get("id")
+                    selected["updated_by"] = selected["updated_by"]["id"]
                 annotation = NativeAnnotation.model_validate(selected)
                 if annotation.task != task_id:
                     raise ValueError

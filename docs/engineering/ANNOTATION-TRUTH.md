@@ -25,8 +25,10 @@ origin. Credentials never enter the browser or a registry snapshot.
 
 Each Community instance is one shared-trust cohort. Projects do not isolate
 contributors or provide blind annotation. Separate trust cohorts require separate
-instances, data, credentials and media access. A cohort origin can be admitted to
-only one Verdant namespace. Namespace access is checked before rows/counts and
+instances, data, credentials and media access. Browser and machine origins cannot overlap any admitted cohort origin, including
+cross-role aliases. Admission is globally serialized; each origin column is
+unique in PostgreSQL. One actual native instance must never be relabeled as
+separate namespace cohorts through a browser alias. Namespace access is checked before rows/counts and
 again at serialized command boundaries. Current contributor namespace admission
 is checked before imports. Native Keycloak admission/offboarding must also be
 operated externally; removing a Verdant grant does not erase data already visible
@@ -78,8 +80,12 @@ behavior; automatic project prediction features must remain disabled.
 
 Strict positive integer native author/modifier IDs (including expanded objects)
 resolve through admitted mappings. Changes create immutable original revisions;
-cancellation/deletion appends history. A content reversion creates a new revision
-even if its digest matches an older original. Duplicate imports commit no extra
+cancellation/deletion appends history. Native skip/cancel originals count as
+abstentions; later native deletion appends a separate missing-record tombstone. A content reversion creates a new revision
+even if its digest matches an older original. The public latest-by-native-ID view retains up to 1,000 identities, including
+tombstones, consistently with the 1,000-revision history bound. Complete native
+result/provenance contracts are validated before any immutable original commits.
+Duplicate imports commit no extra
 effects. Stale counts, changed schemas/tasks/authors, unknown contributors and
 ambiguous multiple active originals fail atomically.
 
@@ -148,8 +154,25 @@ migration and combined schema-readiness revision.
 
 Focused proof: `tests/test_annotations.py`, `tests/test_label_studio.py`, workspace
 component tests, and `apps/workspace/e2e/truth.spec.ts`. The browser fixture owns
-only project `verdant-truth-bc0aaa6b` and ports 192xx, a fresh PostgreSQL `_test`
+only its persisted `verdant-truth-*` project and ports 192xx, a fresh PostgreSQL `_test`
 database, S3, HTTPS Keycloak, and the installed qualified native image. Generated
 secrets/CA/session material stay ignored under `e2e/truth/.local`; traces are off.
 The existing lifecycle spec is unchanged. See `docs/proofs/epic-5/` for the actual
 run receipt and any unresolved acceptance limits.
+
+
+Run the native workflow explicitly with:
+
+```sh
+pnpm --filter @verdant/workspace exec playwright test --config playwright.truth.config.ts
+```
+
+The command starts the owned deployment on every run, upgrades Alembic heads,
+and seeds a fresh run dataset and native project within the retained admitted
+cohort namespace. It preserves prior data and private per-run receipts. Fresh
+checkouts use a path-scoped stable Compose project name; prepared environments
+reuse their recorded name, avoiding takeover of another checkout's containers.
+The browser fixture stops its own API/Vite child processes on success or failure.
+Its Compose services/data are retained for operator inspection; release the native
+window with `docker compose ... stop`, preserving containers/volumes. A later run
+starts those same services automatically. Never use `down -v` on retained proof.

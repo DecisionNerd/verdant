@@ -3,7 +3,7 @@
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import select, text
@@ -831,3 +831,360 @@ def test_prior_test_entering_training_requires_explicit_disclosure(fixture, sess
     assert declared.payload["reused_test_samples"] == [str(members[3].sample_id)]
     assert declared.payload["exploratory_test_reuse"] is True
     assert declared.payload["evaluation_use_declaration"] == "not_declared"
+
+
+@pytest.mark.parametrize("which", ["machine", "browser", "cross_browser", "cross_machine", "swap"])
+def test_shared_native_origin_cannot_be_admitted_into_another_namespace(fixture, sessions, which):
+    (
+        service,
+        native,
+        registry,
+        owner,
+        editor,
+        outsider,
+        ns,
+        dataset,
+        cohort,
+        members,
+        assignments,
+    ) = fixture
+    from verdant.persistence import NamespaceRow
+
+    second_namespace = uuid4()
+    with sessions.begin() as session:
+        session.add(NamespaceRow(id=second_namespace, name="Must remain isolated"))
+    current = native.settings
+    fresh_browser = f"https://browser-{uuid4()}.example.test"
+    fresh_machine = f"https://machine-{uuid4()}.example.test"
+    browser, machine = {
+        "machine": (fresh_browser, current.machine_origin),
+        "browser": (current.browser_origin, fresh_machine),
+        "cross_browser": (current.machine_origin, fresh_machine),
+        "cross_machine": (fresh_browser, current.browser_origin),
+        "swap": (current.machine_origin, current.browser_origin),
+    }[which]
+    with pytest.raises(Conflict, match="native instance|origins"):
+        service.admit_cohort(
+            second_namespace,
+            name="Cannot fake a separate cohort",
+            settings=LabelStudioSettings(browser, machine, current.image),
+            issuer="https://test-issuer",
+            reason="Adversarial admission",
+        )
+    assert (
+        service.admit_cohort(
+            ns,
+            name="Trusted cohort",
+            settings=current,
+            issuer="https://test-issuer",
+            reason="Idempotent repeat",
+        )
+        == cohort
+    )
+
+
+def test_concurrent_origin_alias_admission_is_globally_serialized(registry, sessions):
+    _, owner, ns = registry
+    from verdant.persistence import NamespaceRow
+
+    second_namespace = uuid4()
+    with sessions.begin() as session:
+        session.add(NamespaceRow(id=second_namespace, name="Second namespace"))
+    machine = f"https://machine-{uuid4()}.example.test"
+    barrier = Barrier(2)
+
+    def run(namespace):
+        barrier.wait()
+        try:
+            return AnnotationService(sessions).admit_cohort(
+                namespace,
+                name="One actual instance",
+                settings=LabelStudioSettings(
+                    f"https://browser-{uuid4()}.example.test", machine, SETTINGS.image
+                ),
+                issuer="https://test-issuer",
+                reason="Concurrent admission",
+            )
+        except Conflict:
+            return "conflict"
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        results = list(workers.map(run, [ns, second_namespace]))
+    assert sum(result == "conflict" for result in results) == 1
+    assert sum(isinstance(result, UUID) for result in results) == 1
+
+
+def test_database_enforces_machine_origin_uniqueness(fixture, sessions):
+    (
+        service,
+        native,
+        registry,
+        owner,
+        editor,
+        outsider,
+        ns,
+        dataset,
+        cohort,
+        members,
+        assignments,
+    ) = fixture
+    from verdant.persistence import AnnotationCohortRow
+
+    with sessions.begin() as session:
+        session.add(
+            AnnotationCohortRow(
+                namespace_id=ns,
+                name="Aliased shared machine",
+                browser_origin=f"https://different-{uuid4()}.example.test",
+                machine_origin=native.settings.machine_origin,
+                image=SETTINGS.image,
+                issuer="https://test-issuer",
+                reason="Must fail at database boundary",
+            )
+        )
+        with pytest.raises(IntegrityError) as error:
+            session.flush()
+        assert error.value.orig.diag.constraint_name == "uq_annotation_cohort_machine_origin"
+
+
+def test_native_extra_fields_are_rejected_before_any_original_is_committed(fixture, sessions):
+    (
+        service,
+        native,
+        registry,
+        owner,
+        editor,
+        outsider,
+        ns,
+        dataset,
+        cohort,
+        members,
+        assignments,
+    ) = fixture
+    invalid = annotation().model_dump()
+    invalid["result"][0]["unexpected"] = "unsupported native field"
+    native.rows[1] = [NativeAnnotation.model_validate(invalid)]
+    with pytest.raises(Conflict, match="supported contract"):
+        service.import_native(
+            owner, ns, dataset.id, assignments[0].id, a.ImportRequest(expected_original_count=0)
+        )
+    detail = service.detail(owner, ns, dataset.id, assignments[0].id)
+    assert detail.originals == []
+    assert a.AssignmentDetailResponse.model_validate(detail.model_dump(mode="json")).originals == []
+    native.rows[1] = [annotation()]
+    accepted = service.import_native(
+        owner, ns, dataset.id, assignments[0].id, a.ImportRequest(expected_original_count=0)
+    )
+    assert (
+        len(a.AssignmentDetailResponse.model_validate(accepted.model_dump(mode="json")).originals)
+        == 1
+    )
+
+
+def test_deleted_native_identity_rotation_remains_within_public_detail_contract(fixture):
+    (
+        service,
+        native,
+        registry,
+        owner,
+        editor,
+        outsider,
+        ns,
+        dataset,
+        cohort,
+        members,
+        assignments,
+    ) = fixture
+    assignment = assignments[0]
+    count = 0
+    for native_id in range(1, 102):
+        native.rows[1] = [annotation(native_id, 101)]
+        detail = service.import_native(
+            owner, ns, dataset.id, assignment.id, a.ImportRequest(expected_original_count=count)
+        )
+        count += 1
+        if native_id < 101:
+            native.rows[1] = []
+            detail = service.import_native(
+                owner, ns, dataset.id, assignment.id, a.ImportRequest(expected_original_count=count)
+            )
+            count += 1
+    assert count == len(detail.originals) == 201
+    assert len(detail.latest) == 101
+    assert sum(row.payload.get("native_deleted", False) for row in detail.latest) == 100
+    public = a.AssignmentDetailResponse.model_validate(detail.model_dump(mode="json"))
+    assert len(public.latest) == 101
+    assert public.model_dump(mode="json", by_alias=True, exclude_unset=True) == detail.model_dump(
+        mode="json"
+    )
+
+
+def test_native_skip_is_abstention_while_deleted_original_is_missing(fixture):
+    (
+        service,
+        native,
+        registry,
+        owner,
+        editor,
+        outsider,
+        ns,
+        dataset,
+        cohort,
+        members,
+        assignments,
+    ) = fixture
+    assignment = assignments[0]
+    native.rows[1] = [annotation(cancelled=True, label=None)]
+    detail = service.import_native(
+        owner, ns, dataset.id, assignment.id, a.ImportRequest(expected_original_count=0)
+    )
+    assert detail.originals[0].payload["state"] == "cancelled"
+    assert detail.missing_contributors == [editor.id]
+    report = service.report(
+        owner,
+        ns,
+        dataset.id,
+        a.ReportCreate(request_key="native-skip", assignment_ids=[assignment.id]),
+    )
+    assert report.payload["counts"]["abstained"] == 1
+    assert report.payload["counts"]["missing"] == 1
+    native.rows[1] = []
+    deleted = service.import_native(
+        owner, ns, dataset.id, assignment.id, a.ImportRequest(expected_original_count=1)
+    )
+    assert len(deleted.originals) == 2
+    after = service.report(
+        owner,
+        ns,
+        dataset.id,
+        a.ReportCreate(request_key="native-deleted", assignment_ids=[assignment.id]),
+    )
+    assert after.payload["counts"]["missing"] == 2
+
+
+def test_fresh_confirmation_assigns_new_content_groups_and_retains_old_holdout(fixture, sessions):
+    (
+        service,
+        native,
+        registry,
+        owner,
+        editor,
+        outsider,
+        ns,
+        dataset,
+        cohort,
+        members,
+        assignments,
+    ) = fixture
+    reviews = canonicals(fixture, imported(fixture))
+    truth = TruthService(sessions)
+    initial = [
+        a.TruthMember(
+            sample_id=member.sample_id,
+            partition="production" if index == 4 else "test" if index == 3 else "train",
+            canonical_id=None if index == 4 else reviews[index].id,
+        )
+        for index, member in enumerate(members)
+    ]
+    first = truth.publish(
+        owner,
+        ns,
+        dataset.id,
+        a.TruthPublish(
+            request_key="before-confirmation",
+            expected_revision=5,
+            expected_truth_id=None,
+            members=initial,
+        ),
+    )
+    content = b"New untouched confirmation source"
+    fresh = registry.create_sample(
+        owner,
+        ns,
+        c.SampleCreate(
+            source_key="fresh-confirmation",
+            modality="text",
+            sha256=hashlib.sha256(content).hexdigest(),
+            object_key="qualification/" + str(uuid4()),
+            size_bytes=len(content),
+            metadata={"group_id": "fresh-confirmation-group"},
+        ),
+    )
+    registry.set_membership(
+        owner,
+        ns,
+        dataset.id,
+        fresh.sample_id,
+        c.MembershipWrite(expected_revision=6, sample_revision_id=fresh.id, split="production"),
+    )
+    native.data[6] = {"text": content.decode(), "verdant_revision_id": str(fresh.id)}
+    assigned = service.create(
+        owner,
+        ns,
+        dataset.id,
+        a.AssignmentCreate(
+            request_key="fresh-task",
+            expected_revision=7,
+            cohort_id=cohort,
+            sample_id=fresh.sample_id,
+            sample_revision_id=fresh.id,
+            native_project_id=1,
+            native_task_id=6,
+            task_schema=SCHEMA,
+            contributors=[owner.id, editor.id],
+        ),
+    )
+    native.rows[6] = [annotation(11, 101, 6), annotation(12, 102, 6)]
+    service.import_native(
+        owner, ns, dataset.id, assigned.id, a.ImportRequest(expected_original_count=0)
+    )
+    report = service.report(
+        owner,
+        ns,
+        dataset.id,
+        a.ReportCreate(request_key="fresh-report", assignment_ids=[assigned.id]),
+    )
+    canonical = service.adjudicate(
+        owner,
+        ns,
+        dataset.id,
+        a.Adjudicate(
+            request_key="fresh-review",
+            report_id=report.id,
+            assignment_id=assigned.id,
+            expected_canonical_id=None,
+            label="positive",
+            rationale="Reviewed new confirmation source",
+        ),
+    )
+    proposed = [
+        a.TruthMember(
+            sample_id=UUID(m["sample_id"]),
+            partition="production" if m["partition"] == "test" else m["partition"],
+            canonical_id=UUID(m["canonical_id"])
+            if m["canonical_id"] and m["partition"] != "test"
+            else None,
+        )
+        for m in first.payload["members"]
+    ]
+    proposed.append(
+        a.TruthMember(sample_id=fresh.sample_id, partition="test", canonical_id=canonical.id)
+    )
+    confirmed = truth.publish(
+        owner,
+        ns,
+        dataset.id,
+        a.TruthPublish(
+            request_key="fresh-confirmation",
+            expected_revision=7,
+            expected_truth_id=first.id,
+            confirmation_of=first.id,
+            members=proposed,
+        ),
+    )
+    assert confirmed.payload["confirmation_of"] == {"id": str(first.id), "digest": first.digest}
+    assert confirmed.payload["exploratory_test_reuse"] is False
+    assert [m["sample_id"] for m in confirmed.payload["members"] if m["partition"] == "test"] == [
+        str(fresh.sample_id)
+    ]
+    assert truth.get(owner, ns, dataset.id, first.id) == first

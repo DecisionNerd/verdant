@@ -1,0 +1,50 @@
+{
+  "environment": "fresh-HTTPS-issuer-two-real-apps",
+  "assertions": [
+    "Independent authorization-code SSO in Verdant, no test auth bypass",
+    "UI assignments verify exact native schema/instructions/content/source revision and admitted contributor pins",
+    "Both humans enter stock editor through shared HTTPS issuer SSO, click categories and independently submit native annotations",
+    "Persisted exact pre-adjudication report plus side-by-side disagreement queue and authorized rationale-bearing immutable canonical reviews",
+    "Browser version correction retains exact old report and canonical review identities",
+    "UI publishes typed train/validation/test/production with deterministic validation derivation and exact canonical/schema/review membership pins",
+    "Reviewed production audit records stratum/probability/source truth/review pins, remains production, preserves unchanged holdout without declaring evaluation reuse, preserves old immutable truth and registry revision"
+  ],
+  "image": "localhost:5001/label-studio-oidc@sha256:d7f8aac5ddee20155a967d91927d7278d0ed5f0f99ccbf9fdb4818cf653a1cea",
+  "source": "cc81a17bb2a077664083979dbdbb6e685228e08f",
+  "assignments": [
+    "d1f745d0-bba3-4823-b569-eb72211e8728",
+    "0827c218-9f0e-404d-9c67-42a9d7c67283",
+    "a8a947b6-362a-4718-9f56-9a37ba242a06",
+    "51afd191-8309-454a-ad49-11ff563a9a87",
+    "ed5f67bb-cc4e-4067-a786-2b97bc1ae195"
+  ],
+  "native_export": {
+    "tasks": 5,
+    "annotation_count": 10
+  },
+  "native_user_ids": [
+    3,
+    4
+  ],
+  "report": {
+    "id": "64e88ed4-eb60-4854-bd11-4f933d31229b",
+    "digest": "95de459e4bbd8a2aed6cabbb8b7470b57fd56888b12381f0ec1cec68469e9781"
+  },
+  "canonical_ids": [
+    "7990d467-616b-42a4-a4bf-4421195f9064",
+    "688b0917-ba40-4529-aa63-5b0165094db5",
+    "f3b8a400-2d1f-4954-b661-69e5f7dd0656",
+    "0d66178e-b17c-4f90-abe5-4e2a92bee253",
+    "e93000f0-1f17-427d-95fb-d64d58eb9f14"
+  ],
+  "truth_before_audit": {
+    "id": "7dce13ad-bf93-4c14-bc49-33d389aec9a9",
+    "digest": "520585eb8b12984527a1bce8b4a4a979937a4384d72c5b019ddad45f8c84497c",
+    "pinned_revision": 6
+  },
+  "truth_after_audit": {
+    "id": "1bd5f774-3f05-4df5-b932-700468210b30",
+    "digest": "06aa7d21b0e9e535b49957417d9a789fbcc543767cc70a247aeb4bc24721f9ed"
+  },
+  "status": "passed"
+}

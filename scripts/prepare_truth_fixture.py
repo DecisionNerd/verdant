@@ -5,6 +5,7 @@ certificates and runtime configuration stay under ignored e2e/truth/.local (0700
 """
 
 import copy
+import hashlib
 import ipaddress
 import json
 import os
@@ -28,7 +29,7 @@ IMAGE = (
     "localhost:5001/label-studio-oidc@sha256:"
     "d7f8aac5ddee20155a967d91927d7278d0ed5f0f99ccbf9fdb4818cf653a1cea"
 )
-PROJECT = "verdant-truth-bc0aaa6b"
+PROJECT = "verdant-truth-" + hashlib.sha256(str(ROOT).encode()).hexdigest()[:12]
 
 
 def write(name, content, mode=0o600):

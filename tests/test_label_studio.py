@@ -225,3 +225,58 @@ def test_paginated_annotations_require_a_complete_bounded_page(change):
                 adapter.task_annotations(7, 8, DIGEST)
     finally:
         adapter.close()
+
+
+def test_compressed_response_is_rejected_before_read_or_decompression():
+    class NeverRead(httpx.SyncByteStream):
+        def __iter__(self):
+            raise AssertionError("Compressed body must never be consumed")
+            yield b""
+
+    adapter = client(
+        lambda request: httpx.Response(
+            200, headers={"Content-Encoding": "gzip"}, stream=NeverRead()
+        )
+    )
+    try:
+        with pytest.raises(LabelStudioUnavailable, match="encoding"):
+            adapter.project_schema(7)
+    finally:
+        adapter.close()
+
+
+@pytest.mark.parametrize(
+    "modifier", [True, 0, -1, "42", {"id": True}, {"email": "not-an-identity@example.test"}]
+)
+def test_native_modifier_identity_is_strict_and_never_email_linked(modifier):
+    def handler(request):
+        if request.url.path == "/api/projects/7/":
+            return response(
+                200,
+                json={
+                    "id": 7,
+                    "label_config": SCHEMA,
+                    "evaluate_predictions_automatically": False,
+                    "show_collab_predictions": False,
+                },
+            )
+        return response(
+            200,
+            json=[
+                {
+                    "id": 9,
+                    "task": 8,
+                    "completed_by": 42,
+                    "updated_by": modifier,
+                    "result": [],
+                    "was_cancelled": False,
+                }
+            ],
+        )
+
+    adapter = client(handler)
+    try:
+        with pytest.raises(LabelStudioConflict):
+            adapter.task_annotations(7, 8, DIGEST)
+    finally:
+        adapter.close()

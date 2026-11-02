@@ -23,3 +23,7 @@ The existing Label Studio pilot uses `https://keycloak.localhost:8443/realms/lab
 Service credentials belong in the private deployment secret process. No browser token, shared human login, automatic email linking or user-supplied external origin is part of this integration.
 
 The dedicated native list excludes cancelled annotations. Missing native rows never authorize deletion of prior canonical annotations or publication evidence. The importer must append status/provenance revisions where the supported contract requires them.
+
+The implemented assignment, import, agreement, adjudication and truth workflow
+is documented in [ANNOTATION-TRUTH.md](ANNOTATION-TRUTH.md). Actual Verdant/browser
+acceptance is recorded separately in [the epic 5 proof](../proofs/epic-5/README.md).

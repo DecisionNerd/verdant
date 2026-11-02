@@ -274,7 +274,7 @@ class OriginalResponse(Contract):
 class AssignmentDetailResponse(Contract):
     assignment: Assignment
     originals: list[OriginalResponse] = Field(max_length=1000)
-    latest: list[OriginalResponse] = Field(max_length=100)
+    latest: list[OriginalResponse] = Field(max_length=1000)
     missing_contributors: list[UUID] = Field(max_length=10)
     canonical_id: UUID | None
 

@@ -9,7 +9,8 @@ import json
 from itertools import combinations
 from uuid import UUID, uuid4
 
-from sqlalchemy import exists, select, text
+from pydantic import ValidationError
+from sqlalchemy import exists, or_, select, text
 from sqlalchemy.orm import aliased
 
 from verdant import annotation_contracts as a
@@ -123,6 +124,10 @@ def original_view(row):
 
 
 def normalize(annotation, schema):
+    try:
+        a.NativeResult.model_validate(annotation.model_dump(mode="json"))
+    except ValidationError:
+        raise Conflict("Native categorical result does not match the supported contract") from None
     label = None
     assistance = "unknown"
     seen = set()
@@ -248,13 +253,22 @@ class AnnotationService:
         with self.sessions.begin() as session:
             session.execute(
                 text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
-                {"key": "annotation-cohort:" + settings.browser_origin},
+                {"key": "annotation-cohort-origins"},
             )
-            row = session.scalar(
-                select(AnnotationCohortRow).where(
-                    AnnotationCohortRow.browser_origin == settings.browser_origin,
+            origins = (settings.browser_origin, settings.machine_origin)
+            overlaps = session.scalars(
+                select(AnnotationCohortRow)
+                .where(
+                    or_(
+                        AnnotationCohortRow.browser_origin.in_(origins),
+                        AnnotationCohortRow.machine_origin.in_(origins),
+                    )
                 )
-            )
+                .limit(5)
+            ).all()
+            if len(overlaps) > 1:
+                raise Conflict("Native browser/machine origins overlap admitted trust cohorts")
+            row = overlaps[0] if overlaps else None
             values = dict(
                 namespace_id=ns,
                 name=name,
@@ -616,7 +630,7 @@ class AnnotationService:
                 UUID(p)
                 for p in assignment.contributors
                 if not any(
-                    str(row.principal_id) == p and row.payload["state"] != "cancelled"
+                    str(row.principal_id) == p and not row.payload.get("native_deleted", False)
                     for row in latest
                 )
             ],
@@ -721,6 +735,12 @@ class AnnotationService:
                             "Multiple active native originals from one contributor are ambiguous"
                         )
                     active_authors.add(binding.principal_id)
+                try:
+                    a.OriginalPayload.model_validate(payload)
+                except ValidationError:
+                    raise Conflict(
+                        "Native original provenance does not match the supported contract"
+                    ) from None
                 digest = a.digest(payload)
                 if old is None or old.digest != digest:
                     pending.append(
@@ -734,7 +754,7 @@ class AnnotationService:
                     )
             native_ids = {row.id for row in native}
             for native_id, old in latest.items():
-                if native_id not in native_ids and old.payload["state"] != "cancelled":
+                if native_id not in native_ids and not old.payload.get("native_deleted", False):
                     payload = old.payload | {"state": "cancelled", "native_deleted": True}
                     pending.append(
                         (
@@ -809,8 +829,22 @@ class AnnotationService:
                 ]
                 if len(active) > 1:
                     raise Conflict("Contributor originals are ambiguous")
-                if active:
-                    row = active[0]
+                skipped = [
+                    row
+                    for row in latest
+                    if str(row.principal_id) == principal
+                    and row.payload["state"] == "cancelled"
+                    and not row.payload.get("native_deleted", False)
+                ]
+                selected = (
+                    active[0]
+                    if active
+                    else max(skipped, key=lambda row: row.sequence)
+                    if skipped
+                    else None
+                )
+                if selected:
+                    row = selected
                     contributors[principal] = {
                         "original_id": str(row.id),
                         "digest": row.digest,
@@ -818,8 +852,12 @@ class AnnotationService:
                         "native_user_id": row.native_user_id,
                         "issuer": row.payload["issuer"],
                         "subject": row.payload["subject"],
-                        "label": row.payload["label"],
-                        "state": row.payload["state"],
+                        "label": row.payload["label"]
+                        if row.payload["state"] != "cancelled"
+                        else None,
+                        "state": row.payload["state"]
+                        if row.payload["state"] != "cancelled"
+                        else "abstained",
                         "assistance": row.payload["assistance"],
                     }
                 else:

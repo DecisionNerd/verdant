@@ -38,7 +38,7 @@ COMPOSE = [
     "--env-file",
     str(DIRECTORY / "compose.env"),
     "-p",
-    "verdant-truth-bc0aaa6b",
+    "VERDANT_TRUTH_PROJECT",
     "-f",
     str(DIRECTORY.parent / "compose.yaml"),
 ]
@@ -80,6 +80,13 @@ def native_shell(code):
 def main():
     os.umask(0o077)
     environment = json.loads((DIRECTORY / "environment.json").read_text())
+    project = environment["COMPOSE_PROJECT_NAME"]
+    if (
+        not project.startswith("verdant-truth-")
+        or not project.removeprefix("verdant-truth-").isalnum()
+    ):
+        raise RuntimeError("Refusing an unowned Compose project")
+    COMPOSE[5] = project
     os.environ.update(environment)
     target = make_url(environment["VERDANT_DATABASE_URL"])
     if (
@@ -89,13 +96,32 @@ def main():
     ):
         raise RuntimeError("Truth fixture can seed only its isolated owned PostgreSQL database")
     output = Path(sys.argv[1]) if len(sys.argv) > 1 else DIRECTORY / "fixture.json"
+    command.upgrade(Config(str(ROOT / "alembic.ini")), "heads")
     if output.exists():
-        print("Existing truth fixture receipt retained; no seed changes made.")
+        print("Existing truth fixture receipt retained; schema upgraded without data changes.")
         return
-    command.upgrade(Config(str(ROOT / "alembic.ini")), "head")
     sessions = make_sessions(environment["VERDANT_DATABASE_URL"])
-    progress_file = DIRECTORY / "seed-progress.json"
+    output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    progress_file = output.parent / "seed-progress.json"
     progress = json.loads(progress_file.read_text()) if progress_file.exists() else {}
+    if "run_id" not in progress:
+        progress["run_id"] = uuid4().hex
+        private_write(progress_file, progress)
+    run_id = progress["run_id"]
+    # Admission is deployment-scoped; every run gets new data within this namespace.
+    admission_file = DIRECTORY / "admission.json"
+    admission = json.loads(admission_file.read_text()) if admission_file.exists() else {}
+    if not admission:
+        legacy = DIRECTORY / "seed-progress.json"
+        if legacy.exists():
+            original = json.loads(legacy.read_text())
+            if original.get("namespace_id"):
+                admission["namespace_id"] = original["namespace_id"]
+        original_receipt = DIRECTORY / "fixture.json"
+        if not admission and original_receipt.exists():
+            admission["namespace_id"] = json.loads(original_receipt.read_text())["namespace_id"]
+    if admission:
+        progress["namespace_id"] = admission["namespace_id"]
     identities = IdentityService(sessions)
     issuer = environment["VERDANT_OIDC_ISSUER"]
     if not progress.get("namespace_id"):
@@ -105,6 +131,8 @@ def main():
         progress["namespace_id"] = str(ns)
         private_write(progress_file, progress)
     ns = UUID(progress["namespace_id"])
+    admission["namespace_id"] = str(ns)
+    private_write(admission_file, admission)
     actors = []
     for subject in SUBJECTS:
         principal = identities.provision(issuer, subject, kind="human")
@@ -118,7 +146,7 @@ def main():
             ns,
             DatasetCreate(
                 name="Automated truth qualification",
-                slug="automated-truth",
+                slug="automated-truth-" + run_id,
                 modality="text",
             ),
         )
@@ -137,15 +165,15 @@ def main():
             actor,
             ns,
             UploadRequest(
-                request_key=f"truth-seed-{ns}-{index}",
+                request_key=f"truth-seed-{run_id}-{index}",
                 items=[
                     UploadDeclaration(
-                        source_key=f"truth-{index}",
+                        source_key=f"truth-{run_id}-{index}",
                         modality="text",
                         sha256=hashlib.sha256(body).hexdigest(),
                         size_bytes=len(body),
                         metadata={
-                            "group_id": f"independent-group-{index}",
+                            "group_id": f"independent-group-{run_id}-{index}",
                             "label": "POISON_ANSWER_METADATA_MUST_NOT_ENTER_MODEL_INPUT",
                             "answer": {"target": "never-send-to-model"},
                         },
@@ -279,7 +307,7 @@ print(json.dumps({"people": people, "service_user_id": service.pk, "service_toke
             response = http.post(
                 "/api/projects/",
                 json={
-                    "title": "Isolated Verdant categorical truth",
+                    "title": "Isolated Verdant categorical truth " + run_id[:12],
                     "label_config": schema.native_xml(),
                     "evaluate_predictions_automatically": False,
                     "show_collab_predictions": False,
@@ -310,7 +338,11 @@ print(json.dumps({"people": people, "service_user_id": service.pk, "service_toke
         )
         exported.raise_for_status()
         assert len(exported.json()) == 5
+    admission["cohort_id"] = str(cohort_id)
+    private_write(admission_file, admission)
     result = {
+        "run_id": run_id,
+        "compose_project": project,
         "environment": "isolated-owned-real-https-keycloak-native-postgresql-s3",
         "namespace_id": str(ns),
         "dataset_id": str(dataset_id),

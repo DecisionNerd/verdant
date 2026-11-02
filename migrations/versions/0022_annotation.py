@@ -48,6 +48,7 @@ def upgrade():
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("browser_origin", name="uq_annotation_cohort_origin"),
+        sa.UniqueConstraint("machine_origin", name="uq_annotation_cohort_machine_origin"),
         sa.UniqueConstraint("namespace_id", "id", name="uq_annotation_cohort_namespace"),
     )
     op.create_table(
