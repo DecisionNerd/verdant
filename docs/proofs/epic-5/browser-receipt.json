@@ -9,14 +9,18 @@
     "UI publishes typed train/validation/test/production with deterministic validation derivation and exact canonical/schema/review membership pins",
     "Reviewed production audit records stratum/probability/source truth/review pins, remains production, preserves unchanged holdout without declaring evaluation reuse, preserves old immutable truth and registry revision"
   ],
+  "run_id": "c4ba233d6a6a40fc8c606edc1c3d017d",
+  "dataset_id": "8e087596-44ae-44a8-b4ac-b46a2eb0cd47",
+  "namespace_id": "a35c5ffe-3caa-43d3-8f19-0ab0ca218071",
+  "compose_project": "verdant-truth-6abf50cfe8b8",
   "image": "localhost:5001/label-studio-oidc@sha256:d7f8aac5ddee20155a967d91927d7278d0ed5f0f99ccbf9fdb4818cf653a1cea",
   "source": "cc81a17bb2a077664083979dbdbb6e685228e08f",
   "assignments": [
-    "d1f745d0-bba3-4823-b569-eb72211e8728",
-    "0827c218-9f0e-404d-9c67-42a9d7c67283",
-    "a8a947b6-362a-4718-9f56-9a37ba242a06",
-    "51afd191-8309-454a-ad49-11ff563a9a87",
-    "ed5f67bb-cc4e-4067-a786-2b97bc1ae195"
+    "8275cd4b-30e6-426a-b90e-fd0b632131d6",
+    "df5a5e7b-7bed-487f-80c3-c405a18a46a7",
+    "11dc9835-67bb-4faa-8980-3bfe3c29190c",
+    "1269d76b-a814-4369-9cff-983ff098bd44",
+    "a65d6e05-7d1f-4ecc-9f29-0ddc3a324952"
   ],
   "native_export": {
     "tasks": 5,
@@ -27,24 +31,24 @@
     4
   ],
   "report": {
-    "id": "64e88ed4-eb60-4854-bd11-4f933d31229b",
-    "digest": "95de459e4bbd8a2aed6cabbb8b7470b57fd56888b12381f0ec1cec68469e9781"
+    "id": "9d2c972e-9c54-40e2-8881-c0f929e7945d",
+    "digest": "efc9750d3d60bd94b421a80b9d6c055cb46894f9ddfdc4d22af4f84cb4f6c234"
   },
   "canonical_ids": [
-    "7990d467-616b-42a4-a4bf-4421195f9064",
-    "688b0917-ba40-4529-aa63-5b0165094db5",
-    "f3b8a400-2d1f-4954-b661-69e5f7dd0656",
-    "0d66178e-b17c-4f90-abe5-4e2a92bee253",
-    "e93000f0-1f17-427d-95fb-d64d58eb9f14"
+    "938faaa8-91c0-49bf-b2e3-00ed350865de",
+    "fbc6bd42-2a12-4f35-ad6b-7f595b6f16d7",
+    "ab475502-5301-4b47-b985-adc556a0a8f8",
+    "a2ddc1db-2759-4ab0-b52e-21466306ab8b",
+    "a94b35c4-771e-4ecc-a958-e33449cf36f5"
   ],
   "truth_before_audit": {
-    "id": "7dce13ad-bf93-4c14-bc49-33d389aec9a9",
-    "digest": "520585eb8b12984527a1bce8b4a4a979937a4384d72c5b019ddad45f8c84497c",
+    "id": "fb1c2e55-ff34-41f8-ae0b-d1c6377ebf4e",
+    "digest": "a90df7ba6ca021da17f2cb63f101bfb2705e02abd0e4febe8b8ec5bba52c7213",
     "pinned_revision": 6
   },
   "truth_after_audit": {
-    "id": "1bd5f774-3f05-4df5-b932-700468210b30",
-    "digest": "06aa7d21b0e9e535b49957417d9a789fbcc543767cc70a247aeb4bc24721f9ed"
+    "id": "fdafc10d-8b41-47de-a6e7-e7a6dabb1b88",
+    "digest": "c569d7010d81f6309c5441775dae656f445bf294542fa5decc35448f008fc892"
   },
   "status": "passed"
 }

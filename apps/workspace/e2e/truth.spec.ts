@@ -78,6 +78,12 @@ async function nativeSubmit(page: Page, category: string, task: number, person: 
   }
   const listed = await nativeApi(page, `/api/tasks/${task}/annotations/`);
   expect(listed.status).toBe(200);
+  // The stock editor initializes its annotation tabs asynchronously after Htx
+  // exists. Wait for fetched server annotations before choosing a new draft;
+  // otherwise a late owner-tab load can replace the editor's selection.
+  for (const annotation of listed.body.filter((row: any) => !row.was_cancelled)) {
+    await expect(page.locator(`[data-annotation-id="${annotation.id}"]`).first()).toBeAttached();
+  }
   const existing = listed.body.find((row: any) => (typeof row.completed_by === "object" ? row.completed_by.id : row.completed_by) === person && !row.was_cancelled);
   if (existing) {
     await page.locator(`[data-annotation-id="${existing.id}"]`).first().click();
@@ -87,15 +93,21 @@ async function nativeSubmit(page: Page, category: string, task: number, person: 
       const current = (window as any).Htx.annotationStore.selected;
       return { pk: current.pk, completedBy: current.completed_by, userId: current.user?.id };
     });
-    if (selected.pk || (selected.completedBy !== person && selected.userId !== person)) {
+    if (selected.pk || (Number(selected.completedBy) !== person && Number(selected.userId) !== person)) {
       await page.getByLabel("Create an annotation", { exact: true }).click();
       await page.waitForFunction(() => !(window as any).Htx.annotationStore.selected.pk);
     }
   }
   async function commit() {
-    const submit = page.getByText(/^(Submit|Update)$/, { exact: true }).first();
+    if (existing) {
+      await page.waitForFunction(id => String((window as any).Htx.annotationStore.selected.pk) === String(id), existing.id);
+    } else {
+      await page.waitForFunction(() => !(window as any).Htx.annotationStore.selected.pk);
+    }
+    const submit = page.getByText(existing ? "Update" : "Submit", { exact: true }).first();
     await expect(submit).toBeEnabled();
-    const pending = page.waitForResponse(r => /\/api\/(?:tasks\/\d+\/annotations\/?|annotations\/\d+\/?)$/.test(new URL(r.url()).pathname) && ["POST", "PATCH"].includes(r.request().method()), { timeout: 45_000 });
+    const expectedPath = existing ? `/api/annotations/${existing.id}` : `/api/tasks/${task}/annotations`;
+    const pending = page.waitForResponse(r => new URL(r.url()).pathname.replace(/\/$/, "") === expectedPath && r.request().method() === (existing ? "PATCH" : "POST"), { timeout: 45_000 });
     await submit.click(); const result = await pending;
     if (!result.ok()) {
       nativeFailure = { status: result.status(), path: new URL(result.url()).pathname,

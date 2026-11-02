@@ -1,26 +1,57 @@
 ---
 title: Getting started
-description: Readiness and the first dataset lifecycle.
+description: Run the delivered dataset workspace and understand its qualification limits.
 ---
 
-## Readiness
+Verdant has a React/Vite workspace and FastAPI/FastMCP backend with PostgreSQL,
+S3-compatible artifacts and organizational Keycloak identity. The accepted target
+also includes later experiment/evaluation capabilities; the complete platform is
+not yet production-qualified.
 
-These docs describe the accepted target architecture. The React/Vite + FastAPI/FastMCP dataset platform is not declared implemented by this documentation change. Existing Compose, CLI and web commands may still run the earlier document-digestion tool; they are not a platform installation recipe.
+## Local registry and identity
 
-## Target prerequisites
+From the repository checkout, with Docker Compose v2, Python and uv installed:
 
-A deployment will need an OIDC/OAuth 2.0 provider, PostgreSQL, S3-compatible storage, the Python control plane/workers, Prefect/DataChain execution, the static React/Vite frontend, and OpenTelemetry with Grafana OSS, Mimir, Loki and Tempo. Label Studio, MLflow and Evidently integrations are introduced as their lifecycle slices pass acceptance. Supported versions, provider topology and environment-variable names must be established with implementation.
+```sh
+python3 infrastructure/compose/bootstrap.py
+docker compose config --quiet
+docker compose up -d --build
+uv run --locked python scripts/qualify_compose.py
+```
+
+The root composition runs the dataset registry/identity stack. Open
+`http://127.0.0.1:18800` and follow the
+[local provisioning and recovery runbook](https://github.com/DecisionNerd/verdant/blob/main/infrastructure/compose/README.md).
+It starts without human accounts. Existing legacy digestion data is separate;
+never reset or point the new stack at legacy volumes as a migration.
 
 ## First lifecycle
 
-Create a dataset → register source objects → ingest into a draft → inspect sample revisions → validate against a policy → publish an immutable manifest → consume that exact version from another authorized client. Attach annotations and experiments to dataset versions rather than creating dataset identity inside those systems.
+Create a dataset, upload/register source objects, inspect revisions, capture a frozen
+candidate, validate a versioned policy and publish an immutable manifest. Exact
+versions retain verified downloads and recorded lineage when the draft changes or
+the dataset is archived. Clients share the same current authorization.
 
-Before availability is claimed, verify digest integrity, unauthorized denial, repeated idempotent requests, worker restart/recovery and unchanged old versions after edits. The repository's `docs/engineering/IMPLEMENTATION.md` defines the delivery plan.
+The workspace also supports versioned process flows and model profiles, native
+Prefect/DataChain text execution and durable pause/recovery. Gemini/GLM protocol
+fixtures are qualified; actual provider calls remain disabled until credentials and
+a live request budget are explicitly authorized.
 
-## Preview these docs
+Annotation uses a qualified pinned external Label Studio Community image with
+individual Keycloak SSO. It retains the stock editor; paid embedding and Enterprise
+SSO are not prerequisites for this qualified external contract. Configure it using
+the [annotation runbook](https://github.com/DecisionNerd/verdant/blob/main/docs/engineering/ANNOTATION-TRUTH.md).
+Community instances are shared-trust cohorts; project names are not access isolation.
+Independent/blind access requires isolated instances, data and credentials.
 
-With the repository's pnpm dependencies installed, run `pnpm --filter @verdant/docs dev` from the repo root. The Astro development server reports its address. `pnpm --filter @verdant/docs build` verifies the static site. These are documentation commands only.
+## Verification and scope
 
-## Local deployment target
+Automated browser tests exercise actual Keycloak, native Prefect/DataChain and the
+qualified stock labeling editor. PostgreSQL/S3 tests cover integrity, denial,
+idempotency, retained versions, recovery, leakage and input isolation. Exact source,
+image, environment and fixture/live limits are retained in the
+[proof tree](https://github.com/DecisionNerd/verdant/tree/main/docs/proofs).
+These are bounded local qualifications, not a cloud capacity or full-cluster claim.
 
-Docker Compose and Kubernetes are self-hosted internal organizational targets with Keycloak as the common identity authority. The root Compose file currently runs the earlier digestion stack, so target-platform local availability is not yet established. Repository `docs/infra/docker-compose.md` defines bootstrap, persistent dependencies, real login and end-to-end restart/recovery acceptance; `docs/infra/local-auth.md` defines the canonical browser/container issuer and client setup. No SaaS identity provider is required. Full dashboard SSO still requires compatible self-hosted editions/plugins: Label Studio currently has a documented Enterprise SSO prerequisite; Grafana OSS uses built-in Keycloak OAuth without a paid SSO dependency. The core can run with unqualified optional dashboards disabled; that is not full-cluster SSO.
+`pnpm --filter @verdant/docs dev` previews these operator docs;
+`pnpm --filter @verdant/docs build` builds the static site only.
