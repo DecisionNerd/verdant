@@ -191,6 +191,7 @@ class ProcessService:
 
     @observed("process")
     def create_flow(self, actor, ns, dataset_id, command: FlowCreate):
+        command = FlowCreate.model_validate(command.model_dump())
         with self.sessions.begin() as session:
             current_principal(session, actor.id).require(ns, write=True)
             dataset = session.scalar(
@@ -218,6 +219,7 @@ class ProcessService:
             steps = []
             for step in command.steps:
                 pinned = step.model_dump(mode="json")
+                pinned["profile_digest"] = None
                 if step.profile_id:
                     profile = session.get(ModelProfileRow, step.profile_id)
                     if profile is None or profile.namespace_id != ns:
@@ -274,6 +276,7 @@ class ProcessService:
 
     @observed("process")
     def start(self, actor, ns, dataset_id, command: ProcessStart):
+        command = ProcessStart.model_validate(command.model_dump())
         with self.sessions.begin() as session:
             current_principal(session, actor.id).require(ns, write=True)
             # Shared lock serializes new admissions against dataset archival.
@@ -384,6 +387,7 @@ class ProcessService:
 
     @observed("process")
     def action(self, actor, ns, operation_id, command: ProcessAction):
+        command = ProcessAction.model_validate(command.model_dump())
         if command.action == "reconcile":
             return self.operations.request_reconcile(actor, ns, operation_id, command.epoch)
         with self.sessions.begin() as session:

@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from provider_fixtures import model_response
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
@@ -73,6 +74,11 @@ def test_actual_datachain_two_step_run_pins_outputs_and_idempotent_admission(
 ):
     actor, ns, dataset, candidate, storage = process_fixture
     service, flow, command, operation = make_flow(sessions, process_fixture)
+    from verdant.model_profiles import config_digest
+
+    assert (
+        config_digest(flow.definition.model_dump(mode="json", by_alias=True)) == flow.config_digest
+    )
     assert service.start(actor, ns, dataset.id, command).id == operation.id
     runner = ProcessRunner(sessions, storage)
     assert runner.run(actor, ns, operation.id, 1, limit=1).status == "running"
@@ -155,7 +161,7 @@ def test_model_call_receipts_switch_and_heldout_metadata_never_enter_calls(
         assert body["messages"][1]["content"].strip().startswith("SAFE")
         assert "HELD-OUT-SECRET" not in request.content.decode()
         assert "truth" not in request.content.decode()
-        return httpx.Response(
+        return model_response(
             200,
             json={
                 "id": str(uuid4()),
@@ -215,7 +221,7 @@ def test_confirmed_rejection_recovers_same_receipts_and_new_epoch(
     service, flow, command, operation = make_flow(sessions, process_fixture, profile.id)
     monkeypatch.setenv("VERDANT_MODEL_SECRET_FIXTURE", "fixture-only")
     rejected = ModelAdapter(
-        transport=httpx.MockTransport(lambda r: httpx.Response(429)), sleep=lambda _: None
+        transport=httpx.MockTransport(lambda r: model_response(429)), sleep=lambda _: None
     )
     assert (
         ProcessRunner(sessions, storage, adapter=rejected).run(actor, ns, operation.id, 1).status
@@ -231,7 +237,7 @@ def test_confirmed_rejection_recovers_same_receipts_and_new_epoch(
     assert recovered.epoch == 2
     good = ModelAdapter(
         transport=httpx.MockTransport(
-            lambda r: httpx.Response(
+            lambda r: model_response(
                 200, json={"choices": [{"finish_reason": "stop", "message": {"content": "done"}}]}
             )
         )
@@ -266,7 +272,7 @@ def test_inflight_confirmed_rejection_preserves_user_intent(
         assert pending.status == (
             "pause_requested" if intent == "pause" else "cancellation_requested"
         )
-        return httpx.Response(400)
+        return model_response(400)
 
     runner = ProcessRunner(
         sessions, storage, adapter=ModelAdapter(transport=httpx.MockTransport(handler))

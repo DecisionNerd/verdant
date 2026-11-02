@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from provider_fixtures import model_response
 from pydantic import ValidationError
 
 from verdant.domain import Conflict, Forbidden
@@ -106,7 +107,7 @@ def test_normalized_protocol_fixed_origin_missing_usage_and_no_secret_errors(pro
         if provider == "gemini":
             assert request.url.host == "generativelanguage.googleapis.com"
             assert body["contents"] == [{"role": "user", "parts": [{"text": "only content"}]}]
-            return httpx.Response(
+            return model_response(
                 200,
                 json={
                     "candidates": [
@@ -117,7 +118,7 @@ def test_normalized_protocol_fixed_origin_missing_usage_and_no_secret_errors(pro
             )
         assert request.url.host == "open.bigmodel.cn"
         assert body["messages"][1] == {"role": "user", "content": "only content"}
-        return httpx.Response(
+        return model_response(
             200,
             json={
                 "id": "call-1",
@@ -143,7 +144,7 @@ def test_429_is_bounded_and_read_timeout_is_never_replayed(monkeypatch):
 
     def rate_limit(request):
         calls.append(1)
-        return httpx.Response(
+        return model_response(
             429, headers={"retry-after": "500"}, json={"private": "never surface"}
         )
 
@@ -221,7 +222,7 @@ def test_profile_versions_digest_alias_and_backend_only_reference(
 )
 def test_malformed_accepted_output_is_safe_uncertain_error(raw, monkeypatch):
     monkeypatch.setenv("VERDANT_MODEL_SECRET_FIXTURE", "synthetic")
-    adapter = ModelAdapter(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=raw)))
+    adapter = ModelAdapter(transport=httpx.MockTransport(lambda _: model_response(200, json=raw)))
     with pytest.raises(ModelCallError) as caught:
         adapter.generate(
             profile("glm"),
@@ -250,7 +251,7 @@ def test_rejects_compression_and_oversized_declaration_before_reading(headers, m
 
     def handler(request):
         assert request.headers["accept-encoding"] == "identity"
-        return httpx.Response(200, headers=headers, stream=body)
+        return model_response(200, headers=headers, stream=body)
 
     with pytest.raises(ModelCallError) as caught:
         ModelAdapter(transport=httpx.MockTransport(handler)).generate(
@@ -285,3 +286,30 @@ def test_process_openapi_has_typed_pages_and_detail_for_sdk_generation():
     ):
         assert name in schema["components"]["schemas"]
     assert "credential_ref" not in schema["components"]["schemas"]["Profile"]["properties"]
+
+
+def test_gemini_thought_parts_never_enter_normalized_output(monkeypatch):
+    monkeypatch.setenv("VERDANT_MODEL_SECRET_FIXTURE", "synthetic")
+    raw = {
+        "candidates": [
+            {
+                "finishReason": "STOP",
+                "content": {
+                    "parts": [
+                        {"text": "hidden private reasoning", "thought": True},
+                        {"text": "public answer"},
+                    ]
+                },
+            }
+        ]
+    }
+    result = ModelAdapter(
+        transport=httpx.MockTransport(lambda _: model_response(200, json=raw))
+    ).generate(
+        profile(),
+        "VERDANT_MODEL_SECRET_FIXTURE",
+        ModelInput(text="private"),
+        prompt="private",
+        output_contract="text",
+    )
+    assert result.text == "public answer" and "hidden" not in result.model_dump_json()

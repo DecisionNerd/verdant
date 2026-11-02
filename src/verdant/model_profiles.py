@@ -117,6 +117,7 @@ class ModelProfileService:
 
     @observed("models")
     def create(self, actor, namespace_id, command: ProfileCreate):
+        command = ProfileCreate.model_validate(command.model_dump())
         with self.sessions.begin() as session:
             current_principal(session, actor.id).require(namespace_id, write=True)
             session.scalar(
@@ -282,7 +283,7 @@ class ModelAdapter:
                         if length is not None and (not length.isdecimal() or int(length) > 262144):
                             raise ModelCallError("provider_response_too_large", uncertain=True)
                         chunks, size = [], 0
-                        for chunk in response.iter_bytes():
+                        for chunk in response.iter_raw(chunk_size=16384):
                             if time.monotonic() >= deadline:
                                 raise ModelCallError("provider_time_budget", uncertain=True)
                             size += len(chunk)
@@ -294,9 +295,18 @@ class ModelAdapter:
                         candidate = raw["candidates"][0]
                         if candidate.get("finishReason") != "STOP":
                             raise ModelCallError("provider_output_incomplete", uncertain=True)
+                        parts = candidate["content"]["parts"]
+                        if any(
+                            set(part) - {"text", "thought", "thoughtSignature"} for part in parts
+                        ):
+                            raise ModelCallError("provider_output_unsupported", uncertain=True)
                         text = "".join(
-                            part.get("text", "") for part in candidate["content"]["parts"]
+                            part["text"]
+                            for part in parts
+                            if not part.get("thought") and "text" in part
                         )
+                        if not text:
+                            raise ModelCallError("provider_output_missing", uncertain=True)
                         usage = raw.get("usageMetadata") or {}
                         result = ModelResult(
                             text=text,
@@ -324,6 +334,16 @@ class ModelAdapter:
                     return result
                 except ModelCallError:
                     raise
-                except (httpx.HTTPError, ValueError, TypeError, KeyError, IndexError):
+                except (
+                    httpx.HTTPError,
+                    httpx.StreamError,
+                    ValueError,
+                    TypeError,
+                    KeyError,
+                    IndexError,
+                    AttributeError,
+                    RecursionError,
+                    OverflowError,
+                ):
                     raise ModelCallError("provider_outcome_unknown", uncertain=True) from None
         raise AssertionError("Bounded provider loop exhausted")
