@@ -106,12 +106,16 @@ test("SSO flow versioning, profile switching, native Prefect/DataChain run, dura
     await region.getByLabel("Operator credential reference").fill("VERDANT_MODEL_SECRET_FIXTURE");
     const gemini = await response(page, "/model-profiles", () => region.getByRole("button", { name: "Save profile version" }).click());
     expect(gemini.credential_status).toBe("worker_unverified"); expect(gemini.credential_ref).toBeUndefined();
-    await region.getByLabel("Provider", { exact: true }).selectOption("glm");
+    const refreshProcess = region.getByRole("button", { name: "Refresh process details" });
+    if (await refreshProcess.isVisible()) await refreshProcess.click();
+    await expect(region.getByRole("combobox", { name: "Provider", exact: true })).toBeEnabled();
+    await region.getByRole("combobox", { name: "Provider", exact: true }).selectOption("glm");
     await region.getByLabel("Model identifier", { exact: true }).fill("glm-4");
     await region.getByLabel("Reproducibility").selectOption("mutable_alias");
     await region.getByLabel("Operator credential reference").fill("VERDANT_MODEL_SECRET_FIXTURE");
     const glm = await response(page, "/model-profiles", () => region.getByRole("button", { name: "Save profile version" }).click());
     expect(glm.revision).toBe(2); expect(glm.identity_kind).toBe("mutable_alias");
+    await region.getByLabel("Saved flow version").selectOption(flow1.id);
     await region.getByRole("button", { name: "Load selected flow for versioning" }).click();
     await region.getByLabel("Step type").nth(1).selectOption("model");
     await region.getByLabel("Step model profile").selectOption(gemini.id);
@@ -122,6 +126,7 @@ test("SSO flow versioning, profile switching, native Prefect/DataChain run, dura
     expect(flow3.definition.steps[1].profile_digest).toBe(glm.config_digest);
     expect(flow2.config_digest).not.toBe(flow3.config_digest);
     expect(detail.flow.id).toBe(flow1.id); // Original run retains original flow after switching.
+    await region.getByLabel("Pinned input").selectOption(fixture.candidate_id);
     const disabled = await response(page, "/process-runs", () => region.getByRole("button", { name: "Start pinned run", exact: true }).click());
     python("scripts/process_native_fixture.py", "dispatch", fixturePath);
     await expect(selected).toContainText("Status: failed", { timeout: 120_000 });

@@ -18,3 +18,7 @@ are implemented, not claimed as passed. Fixture execution is serialized with the
 parent's annotation qualification; owned191xx resources have been stopped/released.
 Paid provider calls:zero. Live Gemini/GLM qualification requires actual authorized
 credentials/budget and remains a parent-owned external gate.
+
+Subsequent native/browser acceptance passed; see [acceptance](acceptance.md) and its
+retained native receipt/screenshot. The checkpoint's original pending statement above
+is historical and does not supersede that later evidence.
