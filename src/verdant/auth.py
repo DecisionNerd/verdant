@@ -364,7 +364,11 @@ class IdentityRuntime:
 
         from verdant.mcp_server import create_mcp_app
 
-        mcp_app = create_mcp_app(self, storage=getattr(app.state, "storage", None))
+        mcp_app = create_mcp_app(
+            self,
+            storage=getattr(app.state, "storage", None),
+            annotation_services=getattr(app.state, "annotation_services", None),
+        )
         previous_lifespan = app.router.lifespan_context
 
         @asynccontextmanager

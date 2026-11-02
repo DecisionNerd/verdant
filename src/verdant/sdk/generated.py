@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid as uuid
 
+import verdant.annotation_contracts as verdant_annotation_contracts
 import verdant.consumption as verdant_consumption
 import verdant.contracts as verdant_contracts
 import verdant.ingestion as verdant_ingestion
@@ -19,6 +20,295 @@ from verdant.sdk.transport import Transport
 
 
 class GeneratedClient(Transport):
+    def integration(
+        self, *, namespace_id: uuid.UUID
+    ) -> verdant_annotation_contracts.IntegrationResponse:
+        """Call the integration OpenAPI operation."""
+        return self._request(
+            "GET",
+            (f"/api/v1/namespaces/{self._segment(namespace_id)}/annotation-integration"),
+            params={},
+            body=None,
+            model=verdant_annotation_contracts.IntegrationResponse,
+        )
+
+    def assignments(
+        self,
+        *,
+        namespace_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        after: uuid.UUID | None = None,
+        limit: int = 25,
+    ) -> verdant_annotation_contracts.AssignmentPage:
+        """Call the assignments OpenAPI operation."""
+        return self._request(
+            "GET",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/annotations"
+            ),
+            params={"after": after, "limit": limit},
+            body=None,
+            model=verdant_annotation_contracts.AssignmentPage,
+        )
+
+    def create_assignment(
+        self,
+        *,
+        namespace_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        command: verdant_annotation_contracts.AssignmentCreate,
+    ) -> verdant_annotation_contracts.Assignment:
+        """Call the create_assignment OpenAPI operation."""
+        return self._request(
+            "POST",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/annotations"
+            ),
+            params={},
+            body=command,
+            model=verdant_annotation_contracts.Assignment,
+        )
+
+    def assignment(
+        self, *, namespace_id: uuid.UUID, dataset_id: uuid.UUID, assignment_id: uuid.UUID
+    ) -> verdant_annotation_contracts.AssignmentDetailResponse:
+        """Call the assignment OpenAPI operation."""
+        return self._request(
+            "GET",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/annotations"
+                f"/{self._segment(assignment_id)}"
+            ),
+            params={},
+            body=None,
+            model=verdant_annotation_contracts.AssignmentDetailResponse,
+        )
+
+    def import_annotations(
+        self,
+        *,
+        namespace_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        assignment_id: uuid.UUID,
+        command: verdant_annotation_contracts.ImportRequest,
+    ) -> verdant_annotation_contracts.AssignmentDetailResponse:
+        """Call the import_annotations OpenAPI operation."""
+        return self._request(
+            "POST",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/annotations"
+                f"/{self._segment(assignment_id)}"
+                "/import"
+            ),
+            params={},
+            body=command,
+            model=verdant_annotation_contracts.AssignmentDetailResponse,
+        )
+
+    def agreement(
+        self,
+        *,
+        namespace_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        command: verdant_annotation_contracts.ReportCreate,
+    ) -> verdant_annotation_contracts.ReportEvidence:
+        """Call the agreement OpenAPI operation."""
+        return self._request(
+            "POST",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/agreement"
+            ),
+            params={},
+            body=command,
+            model=verdant_annotation_contracts.ReportEvidence,
+        )
+
+    def report(
+        self, *, namespace_id: uuid.UUID, dataset_id: uuid.UUID, report_id: uuid.UUID
+    ) -> verdant_annotation_contracts.ReportEvidence:
+        """Call the report OpenAPI operation."""
+        return self._request(
+            "GET",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/agreement"
+                f"/{self._segment(report_id)}"
+            ),
+            params={},
+            body=None,
+            model=verdant_annotation_contracts.ReportEvidence,
+        )
+
+    def adjudicate(
+        self,
+        *,
+        namespace_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        command: verdant_annotation_contracts.Adjudicate,
+    ) -> verdant_annotation_contracts.CanonicalEvidence:
+        """Call the adjudicate OpenAPI operation."""
+        return self._request(
+            "POST",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/adjudications"
+            ),
+            params={},
+            body=command,
+            model=verdant_annotation_contracts.CanonicalEvidence,
+        )
+
+    def canonical(
+        self, *, namespace_id: uuid.UUID, dataset_id: uuid.UUID, canonical_id: uuid.UUID
+    ) -> verdant_annotation_contracts.CanonicalEvidence:
+        """Call the canonical OpenAPI operation."""
+        return self._request(
+            "GET",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/adjudications"
+                f"/{self._segment(canonical_id)}"
+            ),
+            params={},
+            body=None,
+            model=verdant_annotation_contracts.CanonicalEvidence,
+        )
+
+    def truth_workspace(
+        self, *, namespace_id: uuid.UUID, dataset_id: uuid.UUID
+    ) -> verdant_annotation_contracts.TruthWorkspace:
+        """Call the truth_workspace OpenAPI operation."""
+        return self._request(
+            "GET",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/truth-workspace"
+            ),
+            params={},
+            body=None,
+            model=verdant_annotation_contracts.TruthWorkspace,
+        )
+
+    def truths(
+        self,
+        *,
+        namespace_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        after: uuid.UUID | None = None,
+        limit: int = 25,
+    ) -> verdant_annotation_contracts.TruthPage:
+        """Call the truths OpenAPI operation."""
+        return self._request(
+            "GET",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/truth"
+            ),
+            params={"after": after, "limit": limit},
+            body=None,
+            model=verdant_annotation_contracts.TruthPage,
+        )
+
+    def truth_version(
+        self, *, namespace_id: uuid.UUID, dataset_id: uuid.UUID, truth_id: uuid.UUID
+    ) -> verdant_annotation_contracts.TruthEvidence:
+        """Call the truth_version OpenAPI operation."""
+        return self._request(
+            "GET",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/truth"
+                f"/{self._segment(truth_id)}"
+            ),
+            params={},
+            body=None,
+            model=verdant_annotation_contracts.TruthEvidence,
+        )
+
+    def publish_truth(
+        self,
+        *,
+        namespace_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        command: verdant_annotation_contracts.TruthPublish,
+    ) -> verdant_annotation_contracts.TruthEvidence:
+        """Call the publish_truth OpenAPI operation."""
+        return self._request(
+            "POST",
+            (
+                "/api"
+                "/v1"
+                "/namespaces"
+                f"/{self._segment(namespace_id)}"
+                "/datasets"
+                f"/{self._segment(dataset_id)}"
+                "/truth"
+            ),
+            params={},
+            body=command,
+            model=verdant_annotation_contracts.TruthEvidence,
+        )
+
     def create_model_profile(
         self, *, namespace_id: uuid.UUID, command: verdant_model_profiles.ProfileCreate
     ) -> verdant_model_profiles.Profile:

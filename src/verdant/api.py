@@ -107,7 +107,7 @@ def create_app(
             response.headers["X-Verdant-Contract-Version"] = str(c.CONTRACT_VERSION)
         return response
 
-    install_annotation_routes(app, sessions, verified_principal)
+    app.state.annotation_services = install_annotation_routes(app, sessions, verified_principal)
     app.state.storage = storage
     from verdant.process_routes import install_process_routes
 

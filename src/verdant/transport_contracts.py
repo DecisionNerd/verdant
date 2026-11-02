@@ -19,6 +19,9 @@ class PlatformCapabilities(Contract):
         "operation",
         "process_flow",
         "model_profile",
+        "annotation",
+        "agreement",
+        "truth",
     )
     experiments: Literal["not_implemented"] = "not_implemented"
     max_page_size: int = 500

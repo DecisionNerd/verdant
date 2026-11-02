@@ -1,6 +1,494 @@
 {
   "components": {
     "schemas": {
+      "Adjudicate": {
+        "additionalProperties": false,
+        "properties": {
+          "assignment_id": {
+            "format": "uuid",
+            "title": "Assignment Id",
+            "type": "string"
+          },
+          "expected_canonical_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Canonical Id"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "rationale": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "report_id": {
+            "format": "uuid",
+            "title": "Report Id",
+            "type": "string"
+          },
+          "request_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Request Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_key",
+          "report_id",
+          "assignment_id",
+          "expected_canonical_id",
+          "rationale"
+        ],
+        "title": "Adjudicate",
+        "type": "object"
+      },
+      "AgreementCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "abstained": {
+            "title": "Abstained",
+            "type": "integer"
+          },
+          "assisted": {
+            "title": "Assisted",
+            "type": "integer"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "integer"
+          },
+          "submitted": {
+            "title": "Submitted",
+            "type": "integer"
+          },
+          "unknown": {
+            "title": "Unknown",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "submitted",
+          "abstained",
+          "missing",
+          "assisted",
+          "unknown"
+        ],
+        "title": "AgreementCounts",
+        "type": "object"
+      },
+      "AgreementPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "cohort_id": {
+            "format": "uuid",
+            "title": "Cohort Id",
+            "type": "string"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/AgreementCounts"
+          },
+          "disagreement_queue": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Disagreement Queue",
+            "type": "array"
+          },
+          "format": {
+            "const": "verdant.agreement.v1",
+            "title": "Format",
+            "type": "string"
+          },
+          "limits": {
+            "title": "Limits",
+            "type": "string"
+          },
+          "pairs": {
+            "items": {
+              "$ref": "#/components/schemas/PairAgreement"
+            },
+            "maxItems": 45,
+            "title": "Pairs",
+            "type": "array"
+          },
+          "schema_digest": {
+            "title": "Schema Digest",
+            "type": "string"
+          },
+          "task_schema": {
+            "$ref": "#/components/schemas/CategoricalSchema"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/AgreementUnit"
+            },
+            "maxItems": 100,
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "format",
+          "task_schema",
+          "schema_digest",
+          "cohort_id",
+          "units",
+          "counts",
+          "pairs",
+          "disagreement_queue",
+          "limits"
+        ],
+        "title": "AgreementPayload",
+        "type": "object"
+      },
+      "AgreementUnit": {
+        "additionalProperties": false,
+        "properties": {
+          "assignment_id": {
+            "format": "uuid",
+            "title": "Assignment Id",
+            "type": "string"
+          },
+          "contributors": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ContributorResult"
+            },
+            "title": "Contributors",
+            "type": "object"
+          },
+          "original_history": {
+            "items": {
+              "$ref": "#/components/schemas/OriginalReference"
+            },
+            "maxItems": 1000,
+            "title": "Original History",
+            "type": "array"
+          },
+          "sample_id": {
+            "format": "uuid",
+            "title": "Sample Id",
+            "type": "string"
+          },
+          "sample_revision_id": {
+            "format": "uuid",
+            "title": "Sample Revision Id",
+            "type": "string"
+          },
+          "schema_digest": {
+            "title": "Schema Digest",
+            "type": "string"
+          },
+          "source_revision": {
+            "title": "Source Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "assignment_id",
+          "sample_id",
+          "sample_revision_id",
+          "source_revision",
+          "schema_digest",
+          "contributors",
+          "original_history"
+        ],
+        "title": "AgreementUnit",
+        "type": "object"
+      },
+      "Assignment": {
+        "additionalProperties": false,
+        "properties": {
+          "cohort_id": {
+            "format": "uuid",
+            "title": "Cohort Id",
+            "type": "string"
+          },
+          "contributors": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Contributors",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dataset_id": {
+            "format": "uuid",
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "editor_url": {
+            "title": "Editor Url",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "native_project_id": {
+            "title": "Native Project Id",
+            "type": "integer"
+          },
+          "native_task_id": {
+            "title": "Native Task Id",
+            "type": "integer"
+          },
+          "sample_id": {
+            "format": "uuid",
+            "title": "Sample Id",
+            "type": "string"
+          },
+          "sample_revision_id": {
+            "format": "uuid",
+            "title": "Sample Revision Id",
+            "type": "string"
+          },
+          "schema_digest": {
+            "title": "Schema Digest",
+            "type": "string"
+          },
+          "source_revision": {
+            "title": "Source Revision",
+            "type": "integer"
+          },
+          "task_schema": {
+            "$ref": "#/components/schemas/CategoricalSchema"
+          }
+        },
+        "required": [
+          "id",
+          "dataset_id",
+          "cohort_id",
+          "sample_id",
+          "sample_revision_id",
+          "source_revision",
+          "native_project_id",
+          "native_task_id",
+          "task_schema",
+          "schema_digest",
+          "contributors",
+          "editor_url",
+          "created_at"
+        ],
+        "title": "Assignment",
+        "type": "object"
+      },
+      "AssignmentCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "cohort_id": {
+            "format": "uuid",
+            "title": "Cohort Id",
+            "type": "string"
+          },
+          "contributors": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Contributors",
+            "type": "array"
+          },
+          "expected_revision": {
+            "maximum": 9.223372036854776e+18,
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "native_project_id": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9.223372036854776e+18,
+            "title": "Native Project Id",
+            "type": "integer"
+          },
+          "native_task_id": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9.223372036854776e+18,
+            "title": "Native Task Id",
+            "type": "integer"
+          },
+          "request_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Request Key",
+            "type": "string"
+          },
+          "sample_id": {
+            "format": "uuid",
+            "title": "Sample Id",
+            "type": "string"
+          },
+          "sample_revision_id": {
+            "format": "uuid",
+            "title": "Sample Revision Id",
+            "type": "string"
+          },
+          "task_schema": {
+            "$ref": "#/components/schemas/CategoricalSchema"
+          }
+        },
+        "required": [
+          "request_key",
+          "expected_revision",
+          "cohort_id",
+          "sample_id",
+          "sample_revision_id",
+          "native_project_id",
+          "native_task_id",
+          "task_schema",
+          "contributors"
+        ],
+        "title": "AssignmentCreate",
+        "type": "object"
+      },
+      "AssignmentDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "assignment": {
+            "$ref": "#/components/schemas/Assignment"
+          },
+          "canonical_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Id"
+          },
+          "latest": {
+            "items": {
+              "$ref": "#/components/schemas/OriginalResponse"
+            },
+            "maxItems": 100,
+            "title": "Latest",
+            "type": "array"
+          },
+          "missing_contributors": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Missing Contributors",
+            "type": "array"
+          },
+          "originals": {
+            "items": {
+              "$ref": "#/components/schemas/OriginalResponse"
+            },
+            "maxItems": 1000,
+            "title": "Originals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "assignment",
+          "originals",
+          "latest",
+          "missing_contributors",
+          "canonical_id"
+        ],
+        "title": "AssignmentDetailResponse",
+        "type": "object"
+      },
+      "AssignmentPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Assignment"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_after": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next After"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AssignmentPage",
+        "type": "object"
+      },
+      "AuditSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "inclusion_probability": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Inclusion Probability",
+            "type": "number"
+          },
+          "selection_method": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Selection Method",
+            "type": "string"
+          },
+          "source_truth_id": {
+            "format": "uuid",
+            "title": "Source Truth Id",
+            "type": "string"
+          },
+          "stratum": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Stratum",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_truth_id",
+          "stratum",
+          "inclusion_probability",
+          "selection_method"
+        ],
+        "title": "AuditSelection",
+        "type": "object"
+      },
       "Candidate": {
         "additionalProperties": false,
         "properties": {
@@ -170,6 +658,440 @@
           "mode"
         ],
         "title": "CandidateSelection",
+        "type": "object"
+      },
+      "CanonicalEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/CanonicalPayload"
+          }
+        },
+        "required": [
+          "id",
+          "digest",
+          "payload",
+          "created_at"
+        ],
+        "title": "CanonicalEvidence",
+        "type": "object"
+      },
+      "CanonicalLabel": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "accepted",
+              "abstained"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "originals": {
+            "items": {
+              "$ref": "#/components/schemas/OriginalReference"
+            },
+            "maxItems": 10,
+            "title": "Originals",
+            "type": "array"
+          },
+          "prior_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prior Id"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "report_digest": {
+            "title": "Report Digest",
+            "type": "string"
+          },
+          "report_id": {
+            "format": "uuid",
+            "title": "Report Id",
+            "type": "string"
+          },
+          "reviewer_id": {
+            "format": "uuid",
+            "title": "Reviewer Id",
+            "type": "string"
+          },
+          "sample_revision_id": {
+            "format": "uuid",
+            "title": "Sample Revision Id",
+            "type": "string"
+          },
+          "schema_digest": {
+            "title": "Schema Digest",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sample_revision_id",
+          "schema_digest",
+          "label",
+          "decision",
+          "reviewer_id",
+          "rationale",
+          "report_id",
+          "report_digest",
+          "originals",
+          "prior_id"
+        ],
+        "title": "CanonicalLabel",
+        "type": "object"
+      },
+      "CanonicalPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "annotation": {
+            "$ref": "#/components/schemas/CanonicalPin"
+          },
+          "review": {
+            "$ref": "#/components/schemas/CanonicalReview"
+          },
+          "task_schema": {
+            "$ref": "#/components/schemas/CategoricalSchemaPin"
+          },
+          "unresolved": {
+            "title": "Unresolved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "annotation",
+          "task_schema",
+          "review",
+          "unresolved"
+        ],
+        "title": "CanonicalPayload",
+        "type": "object"
+      },
+      "CanonicalPin": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "const": "verdant.canonical-annotation.v1",
+            "title": "Format",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/CanonicalLabel"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "format",
+          "payload",
+          "sha256"
+        ],
+        "title": "CanonicalPin",
+        "type": "object"
+      },
+      "CanonicalReview": {
+        "additionalProperties": false,
+        "properties": {
+          "annotation_digest": {
+            "title": "Annotation Digest",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "accepted",
+              "abstained"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "annotation_digest",
+          "decision",
+          "rationale"
+        ],
+        "title": "CanonicalReview",
+        "type": "object"
+      },
+      "CategoricalSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "instruction_revision": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Instruction Revision",
+            "type": "string"
+          },
+          "instructions": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Instructions",
+            "type": "string"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "minItems": 2,
+            "title": "Labels",
+            "type": "array"
+          },
+          "task": {
+            "const": "single_categorical_text.v1",
+            "default": "single_categorical_text.v1",
+            "title": "Task",
+            "type": "string"
+          }
+        },
+        "required": [
+          "labels",
+          "instruction_revision",
+          "instructions"
+        ],
+        "title": "CategoricalSchema",
+        "type": "object"
+      },
+      "CategoricalSchemaPin": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "const": "verdant.categorical-schema.v1",
+            "title": "Format",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/CategoricalSchema"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "format",
+          "payload",
+          "sha256"
+        ],
+        "title": "CategoricalSchemaPin",
+        "type": "object"
+      },
+      "CohortView": {
+        "additionalProperties": false,
+        "properties": {
+          "contributors": {
+            "items": {
+              "$ref": "#/components/schemas/ContributorAdmission"
+            },
+            "maxItems": 100,
+            "title": "Contributors",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "image": {
+            "title": "Image",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "origin",
+          "image",
+          "contributors"
+        ],
+        "title": "CohortView",
+        "type": "object"
+      },
+      "ContributorAdmission": {
+        "additionalProperties": false,
+        "properties": {
+          "native_user_id": {
+            "title": "Native User Id",
+            "type": "integer"
+          },
+          "principal_id": {
+            "format": "uuid",
+            "title": "Principal Id",
+            "type": "string"
+          },
+          "reviewer": {
+            "title": "Reviewer",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "principal_id",
+          "native_user_id",
+          "reviewer"
+        ],
+        "title": "ContributorAdmission",
+        "type": "object"
+      },
+      "ContributorResult": {
+        "additionalProperties": false,
+        "properties": {
+          "assistance": {
+            "enum": [
+              "independent",
+              "assisted",
+              "unknown"
+            ],
+            "title": "Assistance",
+            "type": "string"
+          },
+          "digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest"
+          },
+          "issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "native_annotation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Native Annotation Id"
+          },
+          "native_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Native User Id"
+          },
+          "original_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Id"
+          },
+          "state": {
+            "enum": [
+              "missing",
+              "submitted",
+              "abstained"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          }
+        },
+        "required": [
+          "label",
+          "state",
+          "assistance"
+        ],
+        "title": "ContributorResult",
         "type": "object"
       },
       "Dataset": {
@@ -812,6 +1734,22 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "ImportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_original_count": {
+            "maximum": 9.223372036854776e+18,
+            "minimum": 0.0,
+            "title": "Expected Original Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_original_count"
+        ],
+        "title": "ImportRequest",
+        "type": "object"
+      },
       "IngestionBatch": {
         "additionalProperties": false,
         "properties": {
@@ -1017,6 +1955,39 @@
           "payload"
         ],
         "title": "InlineEvidence",
+        "type": "object"
+      },
+      "IntegrationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "cohorts": {
+            "items": {
+              "$ref": "#/components/schemas/CohortView"
+            },
+            "maxItems": 50,
+            "title": "Cohorts",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "shared_trust": {
+            "title": "Shared Trust",
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "reason",
+          "cohorts",
+          "shared_trust"
+        ],
+        "title": "IntegrationResponse",
         "type": "object"
       },
       "InterpretationPins": {
@@ -1426,6 +2397,36 @@
         "title": "ModelSettings",
         "type": "object"
       },
+      "Modifier": {
+        "additionalProperties": false,
+        "properties": {
+          "issuer": {
+            "title": "Issuer",
+            "type": "string"
+          },
+          "native_user_id": {
+            "title": "Native User Id",
+            "type": "integer"
+          },
+          "principal_id": {
+            "format": "uuid",
+            "title": "Principal Id",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "principal_id",
+          "issuer",
+          "subject",
+          "native_user_id"
+        ],
+        "title": "Modifier",
+        "type": "object"
+      },
       "Namespace": {
         "additionalProperties": false,
         "properties": {
@@ -1478,6 +2479,130 @@
           "items"
         ],
         "title": "NamespacePage",
+        "type": "object"
+      },
+      "NativeChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "from_name": {
+            "enum": [
+              "label",
+              "assistance"
+            ],
+            "title": "From Name",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin"
+          },
+          "to_name": {
+            "const": "text",
+            "title": "To Name",
+            "type": "string"
+          },
+          "type": {
+            "const": "choices",
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/NativeChoiceValue"
+          }
+        },
+        "required": [
+          "from_name",
+          "to_name",
+          "type",
+          "value"
+        ],
+        "title": "NativeChoice",
+        "type": "object"
+      },
+      "NativeChoiceValue": {
+        "additionalProperties": false,
+        "properties": {
+          "choices": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1,
+            "minItems": 1,
+            "title": "Choices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "choices"
+        ],
+        "title": "NativeChoiceValue",
+        "type": "object"
+      },
+      "NativeResult": {
+        "additionalProperties": false,
+        "properties": {
+          "completed_by": {
+            "title": "Completed By",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "result": {
+            "items": {
+              "$ref": "#/components/schemas/NativeChoice"
+            },
+            "maxItems": 2,
+            "title": "Result",
+            "type": "array"
+          },
+          "task": {
+            "title": "Task",
+            "type": "integer"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "was_cancelled": {
+            "title": "Was Cancelled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "task",
+          "completed_by",
+          "result",
+          "was_cancelled"
+        ],
+        "title": "NativeResult",
         "type": "object"
       },
       "Operation": {
@@ -1639,6 +2764,285 @@
         "title": "OperationPage",
         "type": "object"
       },
+      "OriginalPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "assistance": {
+            "enum": [
+              "independent",
+              "assisted",
+              "unknown"
+            ],
+            "title": "Assistance",
+            "type": "string"
+          },
+          "declared_assistance": {
+            "enum": [
+              "independent",
+              "assisted",
+              "unknown"
+            ],
+            "title": "Declared Assistance",
+            "type": "string"
+          },
+          "independence": {
+            "enum": [
+              "self_declared",
+              "modifier_unknown",
+              "cross_author_edit"
+            ],
+            "title": "Independence",
+            "type": "string"
+          },
+          "issuer": {
+            "title": "Issuer",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "modifier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Modifier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "native": {
+            "$ref": "#/components/schemas/NativeResult"
+          },
+          "native_deleted": {
+            "default": false,
+            "title": "Native Deleted",
+            "type": "boolean"
+          },
+          "schema_digest": {
+            "title": "Schema Digest",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "cancelled",
+              "abstained",
+              "submitted"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "native",
+          "label",
+          "assistance",
+          "state",
+          "issuer",
+          "subject",
+          "schema_digest",
+          "declared_assistance",
+          "independence",
+          "modifier"
+        ],
+        "title": "OriginalPayload",
+        "type": "object"
+      },
+      "OriginalReference": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "digest"
+        ],
+        "title": "OriginalReference",
+        "type": "object"
+      },
+      "OriginalResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "native_annotation_id": {
+            "title": "Native Annotation Id",
+            "type": "integer"
+          },
+          "native_user_id": {
+            "title": "Native User Id",
+            "type": "integer"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/OriginalPayload"
+          },
+          "principal_id": {
+            "format": "uuid",
+            "title": "Principal Id",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "principal_id",
+          "native_annotation_id",
+          "native_user_id",
+          "sequence",
+          "digest",
+          "payload"
+        ],
+        "title": "OriginalResponse",
+        "type": "object"
+      },
+      "PairAgreement": {
+        "additionalProperties": false,
+        "properties": {
+          "agreed": {
+            "title": "Agreed",
+            "type": "integer"
+          },
+          "agreement_95_wilson": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agreement 95 Wilson"
+          },
+          "cohen_kappa": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohen Kappa"
+          },
+          "confusion": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Confusion",
+            "type": "object"
+          },
+          "declared_independent_overlap": {
+            "title": "Declared Independent Overlap",
+            "type": "integer"
+          },
+          "kappa_undefined_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "no overlap",
+                  "constant identical marginals"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kappa Undefined Reason"
+          },
+          "left": {
+            "format": "uuid",
+            "title": "Left",
+            "type": "string"
+          },
+          "observed_agreement": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Agreement"
+          },
+          "overlap": {
+            "title": "Overlap",
+            "type": "integer"
+          },
+          "prevalence_left": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Prevalence Left",
+            "type": "object"
+          },
+          "prevalence_right": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Prevalence Right",
+            "type": "object"
+          },
+          "right": {
+            "format": "uuid",
+            "title": "Right",
+            "type": "string"
+          }
+        },
+        "required": [
+          "left",
+          "right",
+          "overlap",
+          "agreed",
+          "declared_independent_overlap",
+          "observed_agreement",
+          "agreement_95_wilson",
+          "cohen_kappa",
+          "kappa_undefined_reason",
+          "confusion",
+          "prevalence_left",
+          "prevalence_right"
+        ],
+        "title": "PairAgreement",
+        "type": "object"
+      },
       "PinnedFlowStep": {
         "additionalProperties": false,
         "properties": {
@@ -1730,7 +3134,10 @@
               "version",
               "operation",
               "process_flow",
-              "model_profile"
+              "model_profile",
+              "annotation",
+              "agreement",
+              "truth"
             ],
             "items": {
               "type": "string"
@@ -2867,6 +4274,63 @@
         "title": "Report",
         "type": "object"
       },
+      "ReportCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "assignment_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Assignment Ids",
+            "type": "array"
+          },
+          "request_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Request Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_key",
+          "assignment_ids"
+        ],
+        "title": "ReportCreate",
+        "type": "object"
+      },
+      "ReportEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/AgreementPayload"
+          }
+        },
+        "required": [
+          "id",
+          "digest",
+          "payload",
+          "created_at"
+        ],
+        "title": "ReportEvidence",
+        "type": "object"
+      },
       "ReportPage": {
         "additionalProperties": false,
         "properties": {
@@ -3588,6 +5052,610 @@
         "title": "TransformationPin",
         "type": "object"
       },
+      "TruthAuditPin": {
+        "additionalProperties": false,
+        "properties": {
+          "canonical_digest": {
+            "title": "Canonical Digest",
+            "type": "string"
+          },
+          "canonical_id": {
+            "format": "uuid",
+            "title": "Canonical Id",
+            "type": "string"
+          },
+          "inclusion_probability": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Inclusion Probability",
+            "type": "number"
+          },
+          "reviewer_id": {
+            "format": "uuid",
+            "title": "Reviewer Id",
+            "type": "string"
+          },
+          "selection_method": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Selection Method",
+            "type": "string"
+          },
+          "source_truth_digest": {
+            "title": "Source Truth Digest",
+            "type": "string"
+          },
+          "source_truth_id": {
+            "format": "uuid",
+            "title": "Source Truth Id",
+            "type": "string"
+          },
+          "stratum": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Stratum",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_truth_id",
+          "stratum",
+          "inclusion_probability",
+          "selection_method",
+          "source_truth_digest",
+          "canonical_id",
+          "canonical_digest",
+          "reviewer_id"
+        ],
+        "title": "TruthAuditPin",
+        "type": "object"
+      },
+      "TruthEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/TruthPayload"
+          }
+        },
+        "required": [
+          "id",
+          "digest",
+          "payload",
+          "created_at"
+        ],
+        "title": "TruthEvidence",
+        "type": "object"
+      },
+      "TruthInterpretation": {
+        "additionalProperties": false,
+        "properties": {
+          "annotation_revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CanonicalPin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "review_evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CanonicalReview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schema": {
+            "const": "verdant.membership.v1",
+            "title": "Schema",
+            "type": "string"
+          },
+          "task_schema_revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CategoricalSchemaPin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transformation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TransformationPin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "schema",
+          "annotation_revision",
+          "task_schema_revision",
+          "review_evidence"
+        ],
+        "title": "TruthInterpretation",
+        "type": "object"
+      },
+      "TruthMember": {
+        "additionalProperties": false,
+        "properties": {
+          "audit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuditSelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canonical_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Id"
+          },
+          "partition": {
+            "enum": [
+              "train",
+              "validation",
+              "test",
+              "production"
+            ],
+            "title": "Partition",
+            "type": "string"
+          },
+          "sample_id": {
+            "format": "uuid",
+            "title": "Sample Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sample_id",
+          "partition"
+        ],
+        "title": "TruthMember",
+        "type": "object"
+      },
+      "TruthPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TruthEvidence"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_after": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next After"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "TruthPage",
+        "type": "object"
+      },
+      "TruthPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmation_of": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TruthReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluation_use_declaration": {
+            "enum": [
+              "not_declared",
+              "exploratory_test_reuse"
+            ],
+            "title": "Evaluation Use Declaration",
+            "type": "string"
+          },
+          "exploratory_test_reuse": {
+            "title": "Exploratory Test Reuse",
+            "type": "boolean"
+          },
+          "format": {
+            "const": "verdant.truth.v1",
+            "title": "Format",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "limits": {
+            "title": "Limits",
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/TruthPinnedMember"
+            },
+            "maxItems": 500,
+            "title": "Members",
+            "type": "array"
+          },
+          "pinned_revision": {
+            "title": "Pinned Revision",
+            "type": "integer"
+          },
+          "reused_test_samples": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Reused Test Samples",
+            "type": "array"
+          },
+          "source_revision": {
+            "title": "Source Revision",
+            "type": "integer"
+          },
+          "validation_derivation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Derivation"
+          },
+          "validation_derived": {
+            "title": "Validation Derived",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "format",
+          "id",
+          "source_revision",
+          "pinned_revision",
+          "members",
+          "validation_derived",
+          "validation_derivation",
+          "exploratory_test_reuse",
+          "evaluation_use_declaration",
+          "reused_test_samples",
+          "confirmation_of",
+          "limits"
+        ],
+        "title": "TruthPayload",
+        "type": "object"
+      },
+      "TruthPinnedMember": {
+        "additionalProperties": false,
+        "properties": {
+          "audit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TruthAuditPin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canonical_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Digest"
+          },
+          "canonical_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Id"
+          },
+          "content_digest": {
+            "title": "Content Digest",
+            "type": "string"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "interpretation": {
+            "$ref": "#/components/schemas/TruthInterpretation"
+          },
+          "partition": {
+            "enum": [
+              "train",
+              "validation",
+              "test",
+              "production"
+            ],
+            "title": "Partition",
+            "type": "string"
+          },
+          "sample_id": {
+            "format": "uuid",
+            "title": "Sample Id",
+            "type": "string"
+          },
+          "sample_revision_id": {
+            "format": "uuid",
+            "title": "Sample Revision Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sample_id",
+          "sample_revision_id",
+          "content_digest",
+          "group",
+          "partition",
+          "canonical_id",
+          "canonical_digest",
+          "interpretation",
+          "audit"
+        ],
+        "title": "TruthPinnedMember",
+        "type": "object"
+      },
+      "TruthPublish": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmation_of": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Of"
+          },
+          "evaluation_use_declaration": {
+            "default": "not_declared",
+            "enum": [
+              "not_declared",
+              "exploratory_test_reuse"
+            ],
+            "title": "Evaluation Use Declaration",
+            "type": "string"
+          },
+          "expected_revision": {
+            "maximum": 9.223372036854776e+18,
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "expected_truth_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Truth Id"
+          },
+          "exploratory_test_reuse": {
+            "default": false,
+            "title": "Exploratory Test Reuse",
+            "type": "boolean"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/TruthMember"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Members",
+            "type": "array"
+          },
+          "request_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Request Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_key",
+          "expected_revision",
+          "expected_truth_id",
+          "members"
+        ],
+        "title": "TruthPublish",
+        "type": "object"
+      },
+      "TruthReference": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "digest"
+        ],
+        "title": "TruthReference",
+        "type": "object"
+      },
+      "TruthWorkspace": {
+        "additionalProperties": false,
+        "properties": {
+          "draft_revision": {
+            "title": "Draft Revision",
+            "type": "integer"
+          },
+          "latest_truth_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Truth Id"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/TruthWorkspaceMember"
+            },
+            "maxItems": 500,
+            "title": "Members",
+            "type": "array"
+          }
+        },
+        "required": [
+          "draft_revision",
+          "latest_truth_id",
+          "members"
+        ],
+        "title": "TruthWorkspace",
+        "type": "object"
+      },
+      "TruthWorkspaceMember": {
+        "additionalProperties": false,
+        "properties": {
+          "canonical_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Id"
+          },
+          "canonical_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Label"
+          },
+          "content_digest": {
+            "title": "Content Digest",
+            "type": "string"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "partition": {
+            "title": "Partition",
+            "type": "string"
+          },
+          "sample_id": {
+            "format": "uuid",
+            "title": "Sample Id",
+            "type": "string"
+          },
+          "sample_revision_id": {
+            "format": "uuid",
+            "title": "Sample Revision Id",
+            "type": "string"
+          },
+          "unresolved": {
+            "title": "Unresolved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sample_id",
+          "sample_revision_id",
+          "partition",
+          "content_digest",
+          "group_id",
+          "canonical_id",
+          "canonical_label",
+          "unresolved"
+        ],
+        "title": "TruthWorkspaceMember",
+        "type": "object"
+      },
       "UploadDeclaration": {
         "additionalProperties": false,
         "properties": {
@@ -4268,6 +6336,51 @@
         "summary": "Get Namespace"
       }
     },
+    "/api/v1/namespaces/{namespace_id}/annotation-integration": {
+      "get": {
+        "operationId": "integration_api_v1_namespaces__namespace_id__annotation_integration_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Integration"
+      }
+    },
     "/api/v1/namespaces/{namespace_id}/datasets": {
       "get": {
         "operationId": "list_datasets_api_v1_namespaces__namespace_id__datasets_get",
@@ -4566,6 +6679,553 @@
           }
         ],
         "summary": "Update Dataset"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/adjudications": {
+      "post": {
+        "operationId": "adjudicate_api_v1_namespaces__namespace_id__datasets__dataset_id__adjudications_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Adjudicate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalEvidence"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Adjudicate"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/adjudications/{canonical_id}": {
+      "get": {
+        "operationId": "canonical_api_v1_namespaces__namespace_id__datasets__dataset_id__adjudications__canonical_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "canonical_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Canonical Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalEvidence"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Canonical"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/agreement": {
+      "post": {
+        "operationId": "agreement_api_v1_namespaces__namespace_id__datasets__dataset_id__agreement_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportEvidence"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Agreement"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/agreement/{report_id}": {
+      "get": {
+        "operationId": "report_api_v1_namespaces__namespace_id__datasets__dataset_id__agreement__report_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportEvidence"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Report"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/annotations": {
+      "get": {
+        "operationId": "assignments_api_v1_namespaces__namespace_id__datasets__dataset_id__annotations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Assignments"
+      },
+      "post": {
+        "operationId": "create_assignment_api_v1_namespaces__namespace_id__datasets__dataset_id__annotations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignmentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Assignment"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Assignment"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/annotations/{assignment_id}": {
+      "get": {
+        "operationId": "assignment_api_v1_namespaces__namespace_id__datasets__dataset_id__annotations__assignment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Assignment"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/annotations/{assignment_id}/import": {
+      "post": {
+        "operationId": "import_annotations_api_v1_namespaces__namespace_id__datasets__dataset_id__annotations__assignment_id__import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Annotations"
       }
     },
     "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/availability": {
@@ -6746,6 +9406,273 @@
           }
         ],
         "summary": "Advance Quality Validation"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/truth": {
+      "get": {
+        "operationId": "truths_api_v1_namespaces__namespace_id__datasets__dataset_id__truth_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TruthPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Truths"
+      },
+      "post": {
+        "operationId": "publish_truth_api_v1_namespaces__namespace_id__datasets__dataset_id__truth_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TruthPublish"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TruthEvidence"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Publish Truth"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/truth-workspace": {
+      "get": {
+        "operationId": "truth_workspace_api_v1_namespaces__namespace_id__datasets__dataset_id__truth_workspace_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TruthWorkspace"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Truth Workspace"
+      }
+    },
+    "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/truth/{truth_id}": {
+      "get": {
+        "operationId": "truth_version_api_v1_namespaces__namespace_id__datasets__dataset_id__truth__truth_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Namespace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "truth_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Truth Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TruthEvidence"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Truth Version"
       }
     },
     "/api/v1/namespaces/{namespace_id}/datasets/{dataset_id}/versions": {

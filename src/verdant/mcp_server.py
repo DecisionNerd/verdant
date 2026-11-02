@@ -16,6 +16,7 @@ from verdant import contracts as c
 from verdant import publication as p
 from verdant import quality_service as q
 from verdant.access_tokens import InvalidAccessToken
+from verdant.annotation_mcp import install_annotation_tools
 from verdant.application import RegistryService
 from verdant.contracts import SAMPLE_INGESTION_KINDS, DatasetCreate, DatasetUpdate
 from verdant.domain import DomainError, Forbidden, Principal
@@ -26,6 +27,7 @@ from verdant.ingestion import (
     UploadPartRequest,
     UploadRequest,
 )
+from verdant.label_studio import LabelStudioConflict, LabelStudioUnavailable
 from verdant.operations import OperationService, VerificationRequest
 from verdant.preview import PreviewService
 from verdant.process_mcp import install_process_tools
@@ -64,7 +66,7 @@ class RegistryTokenVerifier(TokenVerifier):
         )
 
 
-def create_mcp_app(runtime, *, storage=None):
+def create_mcp_app(runtime, *, storage=None, annotation_services=None):
     mcp = FastMCP("Verdant", auth=RegistryTokenVerifier(runtime))
     service = RegistryService(runtime.sessions)
     operations = OperationService(runtime.sessions)
@@ -94,6 +96,8 @@ def create_mcp_app(runtime, *, storage=None):
         try:
             return await run_in_threadpool(method, actor(), *args, **kwargs)
         except DomainError as exc:
+            raise ToolError(str(exc)) from None
+        except (LabelStudioConflict, LabelStudioUnavailable) as exc:
             raise ToolError(str(exc)) from None
         except ObjectMissing:
             raise ToolError("Retained bytes are missing; restore a verified copy") from None
@@ -520,4 +524,6 @@ def create_mcp_app(runtime, *, storage=None):
         return await invoke(service.create_dataset, namespace_id, command)
 
     install_process_tools(mcp, runtime.sessions, invoke)
+    if annotation_services is not None:
+        install_annotation_tools(mcp, annotation_services, invoke)
     return mcp.http_app(path="/", stateless_http=True, json_response=True)
