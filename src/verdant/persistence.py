@@ -374,7 +374,7 @@ class OperationRow(Base):
         ForeignKeyConstraint(["creator_id"], ["principals.id"]),
         CheckConstraint(
             "status IN ('queued','running','cancellation_requested','cancelled',"
-            "'failed','succeeded','reconciliation_needed')",
+            "'failed','succeeded','reconciliation_needed','pause_requested','paused')",
             name="ck_operation_status",
         ),
         CheckConstraint("epoch >= 1 AND revision >= 0", name="ck_operation_revision"),
@@ -528,7 +528,9 @@ def make_sessions(database_url: str) -> sessionmaker[Session]:
 
     if make_url(database_url).get_backend_name() != "postgresql":
         raise ValueError("The platform requires PostgreSQL")
-    engine = create_engine(database_url, pool_pre_ping=True, pool_size=5, max_overflow=0)
+    engine = create_engine(
+        database_url, pool_pre_ping=True, pool_size=5, max_overflow=0, hide_parameters=True
+    )
     if engine.dialect.name != "postgresql":
         raise ValueError("The platform requires PostgreSQL")
     return sessionmaker(engine, expire_on_commit=False)
@@ -841,3 +843,294 @@ class RegistryRepository:
         if after is not None:
             statement = statement.where(MembershipRow.sample_id > after)
         return list(self.session.scalars(statement))
+
+
+class ModelProfileRow(Base):
+    __tablename__ = "model_profiles"
+    __table_args__ = (
+        UniqueConstraint("namespace_id", "id", name="uq_model_profile_namespace"),
+        UniqueConstraint("namespace_id", "name", "revision", name="uq_model_profile_revision"),
+        ForeignKeyConstraint(["namespace_id"], ["namespaces.id"]),
+        ForeignKeyConstraint(["creator_id"], ["principals.id"]),
+        CheckConstraint("revision >= 1", name="ck_model_profile_revision"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    name: Mapped[str] = mapped_column(String(100))
+    revision: Mapped[int] = mapped_column(BigInteger)
+    definition: Mapped[dict] = mapped_column(JSONB)
+    credential_ref: Mapped[str] = mapped_column(String(110))
+    config_digest: Mapped[str] = mapped_column(String(64))
+    creator_id: Mapped[UUID]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProcessFlowRow(Base):
+    __tablename__ = "process_flows"
+    __table_args__ = (
+        UniqueConstraint("namespace_id", "id", name="uq_process_flow_namespace"),
+        UniqueConstraint(
+            "namespace_id", "dataset_id", "name", "revision", name="uq_process_flow_revision"
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "dataset_id"], ["datasets.namespace_id", "datasets.id"]
+        ),
+        ForeignKeyConstraint(["creator_id"], ["principals.id"]),
+        CheckConstraint("revision >= 1", name="ck_process_flow_revision"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    dataset_id: Mapped[UUID]
+    name: Mapped[str] = mapped_column(String(100))
+    revision: Mapped[int] = mapped_column(BigInteger)
+    definition: Mapped[dict] = mapped_column(JSONB)
+    config_digest: Mapped[str] = mapped_column(String(64))
+    creator_id: Mapped[UUID]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProcessRunRow(Base):
+    __tablename__ = "process_runs"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "flow_id"], ["process_flows.namespace_id", "process_flows.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "dataset_id"], ["datasets.namespace_id", "datasets.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "generation_id"],
+            ["publication_candidates.namespace_id", "publication_candidates.generation_id"],
+        ),
+        ForeignKeyConstraint(["version_id"], ["dataset_versions.id"]),
+        ForeignKeyConstraint(["candidate_id"], ["publication_candidates.id"]),
+        CheckConstraint(
+            "member_count BETWEEN 1 AND 1000 AND completed_count BETWEEN 0 AND member_count",
+            name="ck_process_progress",
+        ),
+    )
+    operation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    namespace_id: Mapped[UUID]
+    dataset_id: Mapped[UUID]
+    flow_id: Mapped[UUID]
+    candidate_id: Mapped[UUID]
+    version_id: Mapped[UUID | None]
+    generation_id: Mapped[UUID]
+    member_count: Mapped[int] = mapped_column(Integer)
+    completed_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    cursor: Mapped[UUID | None]
+    trial_of: Mapped[UUID | None]
+
+
+class ProcessOutputRow(Base):
+    __tablename__ = "process_outputs"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+        ForeignKeyConstraint(["receipt_id"], ["effect_receipts.id"]),
+        ForeignKeyConstraint(["profile_id"], ["model_profiles.id"]),
+        CheckConstraint(
+            "step_position BETWEEN 0 AND 7 AND accepted_epoch >= 1",
+            name="ck_process_output_position",
+        ),
+    )
+    operation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    sample_id: Mapped[UUID] = mapped_column(primary_key=True)
+    step_position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    namespace_id: Mapped[UUID]
+    sample_revision_id: Mapped[UUID]
+    receipt_id: Mapped[UUID]
+    accepted_epoch: Mapped[int] = mapped_column(BigInteger)
+    input_digest: Mapped[str] = mapped_column(String(64))
+    output_digest: Mapped[str] = mapped_column(String(64))
+    result: Mapped[dict] = mapped_column(JSONB)
+    profile_id: Mapped[UUID | None]
+    profile_digest: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProcessAttemptRow(Base):
+    __tablename__ = "process_attempts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "operation_id"], ["operations.namespace_id", "operations.id"]
+        ),
+    )
+    operation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    epoch: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    namespace_id: Mapped[UUID]
+    status: Mapped[str] = mapped_column(String(30))
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AnnotationCohortRow(Base):
+    """One OSS instance is one shared-trust cohort; admitted by a private operator."""
+
+    __tablename__ = "annotation_cohorts"
+    __table_args__ = (
+        ForeignKeyConstraint(["namespace_id"], ["namespaces.id"]),
+        UniqueConstraint("browser_origin", name="uq_annotation_cohort_origin"),
+        UniqueConstraint("machine_origin", name="uq_annotation_cohort_machine_origin"),
+        UniqueConstraint("namespace_id", "id", name="uq_annotation_cohort_namespace"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    name: Mapped[str] = mapped_column(String(200))
+    browser_origin: Mapped[str] = mapped_column(String(500))
+    machine_origin: Mapped[str] = mapped_column(String(500))
+    image: Mapped[str] = mapped_column(String(500))
+    issuer: Mapped[str] = mapped_column(String(500))
+    reason: Mapped[str] = mapped_column(String(2000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class NativeContributorRow(Base):
+    __tablename__ = "annotation_contributors"
+    __table_args__ = (
+        ForeignKeyConstraint(["cohort_id"], ["annotation_cohorts.id"]),
+        ForeignKeyConstraint(["principal_id"], ["principals.id"]),
+        UniqueConstraint("cohort_id", "native_user_id", name="uq_annotation_native_user"),
+        UniqueConstraint("cohort_id", "principal_id", name="uq_annotation_principal"),
+        UniqueConstraint("cohort_id", "issuer", "subject", name="uq_annotation_subject"),
+        CheckConstraint("native_user_id > 0", name="ck_annotation_native_user"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    cohort_id: Mapped[UUID]
+    principal_id: Mapped[UUID]
+    native_user_id: Mapped[int] = mapped_column(BigInteger)
+    issuer: Mapped[str] = mapped_column(String(500))
+    subject: Mapped[str] = mapped_column(String(255))
+    reviewer: Mapped[bool] = mapped_column(Boolean, default=False)
+    reason: Mapped[str] = mapped_column(String(2000))
+
+
+class AnnotationAssignmentRow(Base):
+    __tablename__ = "annotation_assignments"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "dataset_id"], ["datasets.namespace_id", "datasets.id"]
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "cohort_id"],
+            ["annotation_cohorts.namespace_id", "annotation_cohorts.id"],
+        ),
+        ForeignKeyConstraint(
+            ["namespace_id", "sample_id", "sample_revision_id"],
+            ["sample_revisions.namespace_id", "sample_revisions.sample_id", "sample_revisions.id"],
+        ),
+        UniqueConstraint("cohort_id", "native_task_id", name="uq_annotation_native_task"),
+        UniqueConstraint("namespace_id", "creator_id", "request_key", name="uq_assignment_request"),
+        CheckConstraint("source_revision >= 0", name="ck_assignment_source_revision"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    dataset_id: Mapped[UUID]
+    cohort_id: Mapped[UUID]
+    sample_id: Mapped[UUID]
+    sample_revision_id: Mapped[UUID]
+    source_revision: Mapped[int] = mapped_column(BigInteger)
+    native_project_id: Mapped[int] = mapped_column(BigInteger)
+    native_task_id: Mapped[int] = mapped_column(BigInteger)
+    task_schema: Mapped[dict] = mapped_column(JSONB)
+    schema_digest: Mapped[str] = mapped_column(String(64))
+    native_schema_digest: Mapped[str] = mapped_column(String(64))
+    content_digest: Mapped[str] = mapped_column(String(64))
+    contributors: Mapped[list] = mapped_column(JSONB)
+    creator_id: Mapped[UUID]
+    request_key: Mapped[str] = mapped_column(String(200))
+    request_digest: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AnnotationOriginalRow(Base):
+    """Each changed/cancelled native annotation creates another immutable original."""
+
+    __tablename__ = "annotation_originals"
+    __table_args__ = (
+        ForeignKeyConstraint(["assignment_id"], ["annotation_assignments.id"]),
+        ForeignKeyConstraint(["principal_id"], ["principals.id"]),
+        UniqueConstraint("assignment_id", "sequence", name="uq_original_sequence"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    assignment_id: Mapped[UUID]
+    principal_id: Mapped[UUID]
+    native_annotation_id: Mapped[int] = mapped_column(BigInteger)
+    native_user_id: Mapped[int] = mapped_column(BigInteger)
+    sequence: Mapped[int] = mapped_column(BigInteger)
+    digest: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AnnotationReportRow(Base):
+    __tablename__ = "annotation_reports"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "dataset_id"], ["datasets.namespace_id", "datasets.id"]
+        ),
+        UniqueConstraint("namespace_id", "creator_id", "request_key", name="uq_agreement_request"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    dataset_id: Mapped[UUID]
+    creator_id: Mapped[UUID]
+    request_key: Mapped[str] = mapped_column(String(200))
+    request_digest: Mapped[str] = mapped_column(String(64))
+    digest: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CanonicalAnnotationRow(Base):
+    __tablename__ = "canonical_annotations"
+    __table_args__ = (
+        ForeignKeyConstraint(["report_id"], ["annotation_reports.id"]),
+        ForeignKeyConstraint(["prior_id"], ["canonical_annotations.id"]),
+        ForeignKeyConstraint(["reviewer_id"], ["principals.id"]),
+        ForeignKeyConstraint(
+            ["namespace_id", "sample_id", "sample_revision_id"],
+            ["sample_revisions.namespace_id", "sample_revisions.sample_id", "sample_revisions.id"],
+        ),
+        UniqueConstraint("namespace_id", "reviewer_id", "request_key", name="uq_canonical_request"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    dataset_id: Mapped[UUID]
+    sample_id: Mapped[UUID]
+    sample_revision_id: Mapped[UUID]
+    report_id: Mapped[UUID]
+    prior_id: Mapped[UUID | None]
+    reviewer_id: Mapped[UUID]
+    request_key: Mapped[str] = mapped_column(String(200))
+    request_digest: Mapped[str] = mapped_column(String(64))
+    digest: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TruthVersionRow(Base):
+    __tablename__ = "truth_versions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_id", "dataset_id"], ["datasets.namespace_id", "datasets.id"]
+        ),
+        ForeignKeyConstraint(["prior_id"], ["truth_versions.id"]),
+        UniqueConstraint("namespace_id", "creator_id", "request_key", name="uq_truth_request"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    namespace_id: Mapped[UUID]
+    dataset_id: Mapped[UUID]
+    prior_id: Mapped[UUID | None]
+    source_revision: Mapped[int] = mapped_column(BigInteger)
+    pinned_revision: Mapped[int] = mapped_column(BigInteger)
+    creator_id: Mapped[UUID]
+    request_key: Mapped[str] = mapped_column(String(200))
+    request_digest: Mapped[str] = mapped_column(String(64))
+    digest: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

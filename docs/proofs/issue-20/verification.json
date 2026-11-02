@@ -1,0 +1,107 @@
+{
+  "date": "2026-11-02",
+  "base": "cf2b74cf01f46a226b7d32cd6b3d8a60e87c2ab3",
+  "initial_tree_equals_base": "a58cebc5a761175a353cbee4db2424699fc32e80",
+  "product_source": "9a9c968",
+  "native_browser_proof_commit": "66b5f427208e70514a698cf875d5b48f8530db51",
+  "runtime": {
+    "python": "3.12.11",
+    "os": "macOS26.6 arm64",
+    "prefect": "3.9.0",
+    "datachain": "0.58.3",
+    "httpx": "0.28.1",
+    "sqlalchemy": "2.0.55"
+  },
+  "checks": [
+    {
+      "command": "pnpm --filter @verdant/workspace exec playwright test --config playwright.process.config.ts",
+      "result": "1 passed (1.3m)",
+      "kind": "real Keycloak SSO/PostgreSQL/S3/native Prefect/process worker/DataChain"
+    },
+    {
+      "command": "scripts/test_process.sh tests/test_model_profiles.py tests/test_process_flow.py tests/test_process_memory.py tests/test_operations.py tests/test_dispatch.py tests/test_registry.py -q --tb=short --basetemp=/tmp/verdant-process-final-proof",
+      "result": "84 passed in111.78s",
+      "kind": "actual PostgreSQL/S3/DataChain; explicit HTTP provider fixtures"
+    },
+    {
+      "command": "alembic check (owned19132 database)",
+      "result": "No new upgrade operations detected"
+    },
+    {
+      "command": "pnpm --filter @verdant/workspace test",
+      "result": "96 passed"
+    },
+    {
+      "command": "pnpm --filter @verdant/workspace build",
+      "result": "passed TypeScript + Vite; existing TanStack use-client bundler warnings"
+    },
+    {
+      "command": "pnpm --filter @verdant/workspace exec tsc -p tsconfig.e2e.json",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --locked --group workflows ruff check src migrations tests scripts infrastructure/compose",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --locked --group workflows ruff format --check src migrations tests scripts infrastructure/compose",
+      "result": "121 files already formatted"
+    }
+  ],
+  "memory_receipt": "bounded-memory.json",
+  "native_browser_receipt": "native-browser-receipt.json",
+  "paid_provider_calls": 0,
+  "remaining_gates": [
+    "Parent-owned authorized live Gemini/GLM qualification: actual credentials/budget absent in child",
+    "Parent combined SDK/MCP/auth/annotation acceptance, including FlowDefinition default alias serialization fix and merged migration head"
+  ],
+  "resources_released": {
+    "browser_project": "verdant-process-browser-63267",
+    "integration_project": "verdant-process-proof",
+    "other_stacks_touched": false
+  },
+  "changed_files": [
+    "apps/workspace/e2e/process-compose.yaml",
+    "apps/workspace/e2e/process-realm.json",
+    "apps/workspace/e2e/process-vite.config.ts",
+    "apps/workspace/e2e/process.spec.ts",
+    "apps/workspace/playwright.process.config.ts",
+    "apps/workspace/src/dataset.tsx",
+    "apps/workspace/src/operations.tsx",
+    "apps/workspace/src/process.test.tsx",
+    "apps/workspace/src/process.tsx",
+    "docs/engineering/IMPLEMENTATION.md",
+    "docs/engineering/PROCESS-FLOWS.md",
+    "docs/proofs/issue-20/acceptance.md",
+    "docs/proofs/issue-20/bounded-memory.json",
+    "docs/proofs/issue-20/browser/process.png",
+    "docs/proofs/issue-20/checkpoint.md",
+    "docs/proofs/issue-20/native-browser-receipt.json",
+    "docs/proofs/issue-20/verification.json",
+    "infrastructure/compose/workflows.yaml",
+    "migrations/versions/0022_process.py",
+    "pyproject.toml",
+    "scripts/process_native_fixture.py",
+    "scripts/seed_process_browser.py",
+    "scripts/test_process.sh",
+    "src/verdant/api.py",
+    "src/verdant/contracts.py",
+    "src/verdant/dispatch.py",
+    "src/verdant/flows.py",
+    "src/verdant/model_inputs.py",
+    "src/verdant/model_profiles.py",
+    "src/verdant/model_qualification.py",
+    "src/verdant/operations.py",
+    "src/verdant/persistence.py",
+    "src/verdant/prefect_submission.py",
+    "src/verdant/process_flow.py",
+    "src/verdant/process_routes.py",
+    "src/verdant/process_runner.py",
+    "src/verdant/workflow_runtime.py",
+    "tests/provider_fixtures.py",
+    "tests/test_model_profiles.py",
+    "tests/test_process_flow.py",
+    "tests/test_process_memory.py",
+    "uv.lock"
+  ]
+}

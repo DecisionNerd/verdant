@@ -72,3 +72,14 @@ version/manifest reads, verified previews/downloads, recorded lineage and
 revision-checked archive/deprecation controls. These slices have separate qualification receipts and an automated authenticated
 [full lifecycle regression](docs/proofs/issue-15/automated-browser.md). They do not
 establish complete-platform or production capacity qualification.
+
+The [process-flow guide](docs/engineering/PROCESS-FLOWS.md) covers immutable flow
+and model profiles, bounded Prefect/DataChain execution, pinned outputs and safe
+pause/cancel/recovery. Gemini/GLM protocol fixtures are qualified; paid calls remain
+disabled until an operator supplies credentials and authorizes live qualification.
+The [annotation and truth guide](docs/engineering/ANNOTATION-TRUTH.md) covers the
+external OSS stock editor, independent contributor provenance, agreement,
+adjudication and immutable truth/audit partitions. Its qualified native deployment
+uses individual Keycloak SSO and explicitly disclosed shared-trust cohorts.
+The [Python SDK/MCP guide](docs/engineering/PYTHON-SDK.md) covers typed public
+contracts and digest-verified consumption across transports.

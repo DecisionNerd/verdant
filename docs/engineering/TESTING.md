@@ -90,3 +90,40 @@ The `lifecycle-browser` CI job runs this command automatically. Failure screensh
 and a bounded identity/digest receipt are retained as workflow artifacts. Auth
 tracing and HAR capture are disabled; signed download URLs, cookies and tokens
 are not written to the receipt.
+
+## Process and annotation acceptance
+
+`pnpm --filter @verdant/workspace test:e2e:process` owns a unique 191xx Compose
+project plus native Prefect/API/Vite process groups. It logs into actual Keycloak,
+versions flows and Gemini/GLM profiles, executes fixed preprocessing through actual
+Prefect and DataChain, restarts the API, resumes a paused attempt, verifies every
+accepted output/receipt/profile pin and exercises disabled-provider recovery.
+It makes zero paid model calls. The `process-browser` CI job runs this automatically.
+The original `test:e2e` command selects only `lifecycle.spec.ts`.
+
+`pnpm --filter @verdant/workspace test:e2e:truth` requires the exact qualified external
+OSS image recorded in the [annotation runbook](ANNOTATION-TRUTH.md). It prepares its
+own HTTPS CA/issuer/workspace/native/S3 environment, verifies independent human SSO
+in both applications, submits through the stock editor, verifies native exports and
+imports, and completes agreement/adjudication/truth/audit in the workspace. No browser
+handoff is needed. Its Compose identity is scoped to the checkout and saved in the
+ignored `.local/environment.json`; it never takes over a sibling's fixture. Every
+run starts the retained deployment, upgrades schema and creates a fresh dataset and
+native project inside that deployment's admitted namespace/cohort. Old receipts,
+annotations and truth versions remain retained. Host API/Vite ports must be free,
+and readiness requires the newly owned processes to remain alive.
+
+After truth testing, stop only the project named by that ignored environment's
+`COMPOSE_PROJECT_NAME`, using its generated `compose.env` and `e2e/truth/compose.yaml`.
+Stopping retains database/object/identity data. Never substitute another worktree's
+project or use a global cleanup. The external image is locally qualified; hosted CI
+does not claim to pull that private local registry image. PostgreSQL and native
+protocol regressions run in ordinary CI; the actual two-application proof is retained
+under `docs/proofs/epic-5/`.
+
+The merged schema head is `0023_flows_truth`, joining additive process and annotation
+migrations over accepted schema21. Fresh/populated PostgreSQL upgrade, drift checks,
+actual S3 retention and SDK/MCP/human/service authorization are qualified together.
+`tests/test_truth_model_input_boundary.py` must run without skips in this checkout:
+it verifies actual artifact bytes and excludes truth/answer/group/audit metadata from
+model input. `tests/test_process_memory.py` measures actual bounded DataChain/S3 work.

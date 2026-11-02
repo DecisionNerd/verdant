@@ -5,6 +5,8 @@ x-worker-env: &worker-env
   PREFECT_API_URL: http://prefect:4200/api
   PREFECT_API_AUTH_STRING: ${WORKFLOW_API_AUTH:?Run bootstrap-workflows.py}
   PREFECT_SERVER_ANALYTICS_ENABLED: 'false'
+  DATACHAIN_NO_ANALYTICS: '1'
+  VERDANT_MODEL_CALLS_ENABLED: ${VERDANT_MODEL_CALLS_ENABLED:-0}
   VERDANT_DATABASE_URL: postgresql+psycopg://registry:${REGISTRY_PASSWORD:?}@database:5432/registry
   VERDANT_OIDC_ISSUER: ${VERDANT_OIDC_ISSUER:?}
   VERDANT_WORKER_CLIENT_ID: verdant-worker

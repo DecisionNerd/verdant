@@ -171,3 +171,5 @@ __pycache__/
 # Isolated browser regression artifacts (never include auth traces)
 /apps/workspace/test-results/
 /apps/workspace/playwright-report/
+/apps/workspace/e2e/truth/.local/
+/TASKS.md

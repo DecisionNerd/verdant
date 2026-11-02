@@ -5,6 +5,9 @@ Verdant's target is a modular Python dataset platform. Existing runtime code is 
 - [Verified ingestion transport](INGESTION.md): implemented backend commands, limits and remaining execution/UI gates.
 - [Identity qualification](IDENTITY-QUALIFICATION.md): implementation, measured proof and remaining gates.
 - [Python foundation](PLATFORM-FOUNDATION.md): current backend setup, contracts and proof limits.
+- [Python SDK and MCP](PYTHON-SDK.md): generated typed client, identity parity and verified downloads.
+- [Process flows](PROCESS-FLOWS.md): immutable profiles, Prefect/DataChain execution and recovery.
+- [Annotation and truth](ANNOTATION-TRUTH.md): stock-editor handoff, agreement, adjudication and partitions.
 - [Architecture](ARCHITECTURE.md): ownership, canonical entities, flows and invariants.
 - [Supplied reference](REFERENCE-BASELINE.md): preserved source and truncation notice.
 - [Implementation plan](IMPLEMENTATION.md): tracer bullet, later slices, research questions.

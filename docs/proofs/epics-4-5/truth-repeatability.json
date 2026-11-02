@@ -1,0 +1,16 @@
+{
+  "schema_revision": "0023_flows_truth",
+  "machine_origin_constraint": "uq_annotation_cohort_machine_origin",
+  "same_admitted_namespace": "a35c5ffe-3caa-43d3-8f19-0ab0ca218071",
+  "distinct_datasets": [
+    "88044e0d-023c-4501-948e-5af55c9fc046",
+    "8e087596-44ae-44a8-b4ac-b46a2eb0cd47"
+  ],
+  "distinct_run_ids": [
+    "0f572a64483e4f6f900c6183d6401a99",
+    "c4ba233d6a6a40fc8c606edc1c3d017d"
+  ],
+  "both_prior_truth_rows_retained": true,
+  "application_source_commit": "a3598b6ed11f9db6a7aced465864af7f19e86dce",
+  "note": "Application source unchanged during these final runs; harness and docs refinements are recorded separately."
+}

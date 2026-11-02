@@ -1,20 +1,54 @@
 ---
 title: Web UI
-description: The target dataset workspace in React and Vite.
+description: Dataset curation, recoverable flows and trustworthy annotation in the workspace.
 ---
 
-The target frontend uses React, TypeScript and Vite. TanStack Query manages API cache state, TanStack Table presents large collections, and React Flow renders lineage. The shared backend remains authoritative.
+The React/TypeScript/Vite workspace uses TanStack Query/Table over the authorized
+backend. Start with dataset discovery, then inspect metadata, source uploads, draft
+members, frozen candidates, quality policies, published versions and operations.
+Exact-version lineage includes a graph and a text alternative; its scope is the
+loaded page, not a claim that every external lineage record is present.
 
-Navigate from dataset discovery to a workspace containing ownership/policy, drafts, published versions, samples/annotations, quality, lineage, experiments and operations. Choose an exact version to inspect reproducible content. Label Studio provides the labeling editor rather than a duplicate annotation UI.
+## Publish and consume
 
-Before publication, inspect the frozen candidate revision, schema/policy versions, quality result, splits and manifest digest. Failed gates require correction and revalidation. Published versions have no edit-in-place action: create a new draft/version.
+Capture a candidate while the draft keeps changing. Preparation resumes from its
+checkpoint and freezes sample/schema/annotation/review/split/transformation pins.
+Inspect the selected and latest draft revisions, validate a policy, then publish the
+passing candidate. Explicit current-draft mode conflicts if the draft advanced.
 
-Operation views distinguish queued/running/cancellation requested/cancelled/succeeded/failed, retain operation IDs, and show actionable failures. Reconnect by reading durable status; do not mistake a lost SSE connection for success.
+Published versions have no edit-in-place action. Exact manifests and downloads retain
+their digests through archive/unarchive. Archive pauses new admission while preserving
+existing checkpoints and authorized exact reads. Deletion is a separate concern.
 
-All actions are keyboard reachable with clear focus, accessible dialogs/status, non-color states and a text alternative to lineage graphs. Active namespace and permission context stay visible. These are target experience requirements, not a description of the current legacy screen.
+## Run process flows
 
-Publishing uses a sealed candidate generation and a short guarded commit. The UI must not report success from Prefect status alone: only the committed Operations result is authoritative.
+In **Process flows**, save sequential supported text steps and immutable model/flow
+versions. Select a sealed candidate or exact version, start a pinned run, and inspect
+attempts, native invocation and accepted step outputs. Pause/resume/cancel/retry use
+durable state; refresh details after a disconnected request. A native Prefect success
+alone does not establish accepted domain outputs.
 
-Deprecation warns consumers; archive hides items from default discovery and preserves authorized exact-version reads. An archived dataset pauses new work/publication while retaining in-flight checkpoints. Unarchive restores availability. Deletion is separate. Display stale search or unavailable integrations clearly and let unrelated work continue.
+Profiles disclose exact-requested identifiers or mutable aliases and report worker
+credentials as unverified. Actual secrets are configured only in the worker. Paid
+provider calls default to disabled; missing configuration is a visible failure.
+The [process guide](https://github.com/DecisionNerd/verdant/blob/main/docs/engineering/PROCESS-FLOWS.md)
+records limits and recovery behavior.
 
-Publish a selected frozen candidate while the working draft keeps changing; show both revision numbers. Only an explicit “publish current draft” action requires a latest-revision match. Workflow retries reuse completed logical effects across attempts. Publication promotes already-verified retention protection in a short transaction; bulk workers have bounded resource budgets to preserve interactive responsiveness.
+## Annotate and publish truth
+
+**Annotations and agreement** creates/selects verified assignments and opens the
+allowed stock-editor origin in a separate tab. Each person signs in as their own
+identity. Return to import authoritative native results, inspect provenance and
+agreement/disagreements, and adjudicate with an immutable rationale/review record.
+Original annotations and old reports remain available after corrections.
+
+**Truth partitions and audit** pins canonical truth/schema/review evidence to train,
+validation, test or production. It derives validation from independent train groups
+when absent, rejects group/duplicate leakage, and discloses exploratory test reuse.
+Audited production remains production with selection stratum/probability provenance;
+old truth and memberships stay immutable. These controls do not certify unseen test
+labels or estimate population quality from declared sampling metadata.
+
+Unavailable optional labeling does not block unrelated dataset work. Shared-trust
+limitations and current namespace/permission context remain visible. The later
+experiment engine and full production capacity are outside this delivered slice.

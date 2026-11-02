@@ -744,3 +744,65 @@ def test_service_client_environment_normalization(monkeypatch, value, valid):
     else:
         with pytest.raises(ValueError):
             IdentitySettings.from_env()
+
+
+def test_mcp_mount_preserves_prior_lifespan_and_cleanup(monkeypatch):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from fastapi import Request
+
+    from verdant.api import verified_principal
+    from verdant.auth import IdentityRuntime
+    from verdant.persistence import make_sessions
+
+    monkeypatch.delenv("VERDANT_OIDC_ISSUER", raising=False)
+    sessions = make_sessions("postgresql+psycopg://localhost/offline_lifespan_test")
+    app = create_app(sessions, storage=SimpleNamespace(settings=SimpleNamespace(bucket="offline")))
+    events = []
+
+    @asynccontextmanager
+    async def resource_lifespan(application):
+        events.append("opened")
+        try:
+            yield {"retained": "previous-resource-state"}
+        finally:
+            events.append("closed")
+
+    app.router.lifespan_context = resource_lifespan
+    settings = IdentitySettings(
+        issuer="https://issuer.test/realms/v",
+        client_id="browser",
+        client_secret="synthetic",
+        app_url="https://workspace.test",
+        admission_group="/users",
+        audience="api",
+        service_clients=frozenset({"worker"}),
+    )
+    IdentityRuntime(sessions, settings).install(app, verified_principal)
+
+    @app.get("/lifespan-probe")
+    def probe(request: Request):
+        return {"state": request.state.retained}
+
+    try:
+        with TestClient(app, base_url=settings.app_url) as client:
+            assert events == ["opened"]
+            assert client.get("/lifespan-probe").json() == {"state": "previous-resource-state"}
+        assert events == ["opened", "closed"]
+    finally:
+        sessions.kw["bind"].dispose()
+
+
+def test_identity_client_kind_lists_cannot_overlap():
+    with pytest.raises(ValueError, match="configuration"):
+        IdentitySettings(
+            issuer="https://issuer.test/realms/v",
+            client_id="browser",
+            client_secret="synthetic",
+            app_url="https://workspace.test",
+            admission_group="/users",
+            audience="api",
+            service_clients=frozenset({"same-client"}),
+            human_clients=frozenset({"same-client"}),
+        )

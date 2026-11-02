@@ -12,9 +12,11 @@ from pydantic import Field
 from starlette.concurrency import run_in_threadpool
 
 from verdant import consumption as read
+from verdant import contracts as c
 from verdant import publication as p
 from verdant import quality_service as q
 from verdant.access_tokens import InvalidAccessToken
+from verdant.annotation_mcp import install_annotation_tools
 from verdant.application import RegistryService
 from verdant.contracts import SAMPLE_INGESTION_KINDS, DatasetCreate, DatasetUpdate
 from verdant.domain import DomainError, Forbidden, Principal
@@ -25,10 +27,13 @@ from verdant.ingestion import (
     UploadPartRequest,
     UploadRequest,
 )
+from verdant.label_studio import LabelStudioConflict, LabelStudioUnavailable
 from verdant.operations import OperationService, VerificationRequest
 from verdant.preview import PreviewService
+from verdant.process_mcp import install_process_tools
 from verdant.publication_runner import PublicationRunner
 from verdant.storage import ObjectCorrupt, ObjectMissing, StorageError, configured_storage
+from verdant.transport_contracts import PlatformCapabilities, capabilities
 from verdant.versioning import (
     CandidateCapture,
     CandidatePrepare,
@@ -48,12 +53,7 @@ class RegistryTokenVerifier(TokenVerifier):
     async def verify_token(self, token: str) -> AccessToken | None:
         try:
             claims = await self.runtime.tokens.verify_async(token)
-            actor = await run_in_threadpool(
-                self.runtime.identities.resolve,
-                claims["iss"],
-                claims["sub"],
-                kind="service",
-            )
+            actor = await run_in_threadpool(self.runtime.token_principal, claims)
         except (InvalidAccessToken, Forbidden):
             return None
         return AccessToken(
@@ -66,7 +66,7 @@ class RegistryTokenVerifier(TokenVerifier):
         )
 
 
-def create_mcp_app(runtime, *, storage=None):
+def create_mcp_app(runtime, *, storage=None, annotation_services=None):
     mcp = FastMCP("Verdant", auth=RegistryTokenVerifier(runtime))
     service = RegistryService(runtime.sessions)
     operations = OperationService(runtime.sessions)
@@ -89,7 +89,7 @@ def create_mcp_app(runtime, *, storage=None):
     def actor() -> Principal:
         token = get_access_token()
         if token is None:
-            raise ToolError("Verified service identity required")
+            raise ToolError("Verified identity required")
         return Principal(UUID(token.claims["verdant_principal_id"]), transport="mcp")
 
     async def invoke(method, *args, **kwargs):
@@ -97,12 +97,28 @@ def create_mcp_app(runtime, *, storage=None):
             return await run_in_threadpool(method, actor(), *args, **kwargs)
         except DomainError as exc:
             raise ToolError(str(exc)) from None
+        except (LabelStudioConflict, LabelStudioUnavailable) as exc:
+            raise ToolError(str(exc)) from None
         except ObjectMissing:
             raise ToolError("Retained bytes are missing; restore a verified copy") from None
         except ObjectCorrupt:
             raise ToolError("Retained bytes failed digest verification") from None
         except StorageError:
             raise ToolError("Required artifact storage is unavailable") from None
+
+    @mcp.tool()
+    async def platform_capabilities() -> PlatformCapabilities:
+        actor()
+        return capabilities()
+
+    @mcp.resource("verdant://capabilities")
+    async def platform_contract_resource() -> dict:
+        actor()
+        return capabilities().model_dump(mode="json")
+
+    @mcp.tool()
+    async def namespace_get(namespace_id: UUID):
+        return await invoke(service.get_namespace, namespace_id)
 
     @mcp.tool()
     async def versions_list(
@@ -411,6 +427,54 @@ def create_mcp_app(runtime, *, storage=None):
         ).model_dump(mode="json")
 
     @mcp.tool()
+    async def sample_revision_get(
+        namespace_id: UUID, sample_id: UUID, revision_id: UUID
+    ) -> c.SampleRevision:
+        return await invoke(service.get_sample_revision, namespace_id, sample_id, revision_id)
+
+    @mcp.tool()
+    async def sample_create(namespace_id: UUID, command: c.SampleCreate) -> c.SampleRevision:
+        """Register revision metadata; this does not claim unverified bytes are accepted."""
+        return await invoke(service.create_sample, namespace_id, command)
+
+    @mcp.tool()
+    async def sample_revise(
+        namespace_id: UUID, sample_id: UUID, command: c.SampleRevise
+    ) -> c.SampleRevision:
+        return await invoke(service.revise_sample, namespace_id, sample_id, command)
+
+    @mcp.tool()
+    async def draft_member_set(
+        namespace_id: UUID, dataset_id: UUID, sample_id: UUID, command: c.MembershipWrite
+    ) -> c.DraftChange:
+        return await invoke(service.set_membership, namespace_id, dataset_id, sample_id, command)
+
+    @mcp.tool()
+    async def draft_member_remove(
+        namespace_id: UUID, dataset_id: UUID, sample_id: UUID, expected_revision: c.Revision
+    ) -> c.DraftChange:
+        return await invoke(
+            service.remove_membership, namespace_id, dataset_id, sample_id, expected_revision
+        )
+
+    @mcp.tool()
+    async def draft_members_list(
+        namespace_id: UUID,
+        dataset_id: UUID,
+        revision: Annotated[int | None, Field(ge=0)] = None,
+        after: UUID | None = None,
+        limit: Annotated[int, Field(ge=1, le=500)] = 100,
+    ) -> c.DraftPage:
+        return await invoke(
+            service.list_memberships,
+            namespace_id,
+            dataset_id,
+            revision=revision,
+            after=after,
+            limit=limit,
+        )
+
+    @mcp.tool()
     async def samples_list(namespace_id: UUID, after: UUID | None = None, limit: int = 50):
         return (await invoke(service.list_samples, namespace_id, after, limit)).model_dump(
             mode="json"
@@ -459,4 +523,7 @@ def create_mcp_app(runtime, *, storage=None):
         """Create a dataset and revision-zero draft in an authorized namespace."""
         return await invoke(service.create_dataset, namespace_id, command)
 
+    install_process_tools(mcp, runtime.sessions, invoke)
+    if annotation_services is not None:
+        install_annotation_tools(mcp, annotation_services, invoke)
     return mcp.http_app(path="/", stateless_http=True, json_response=True)

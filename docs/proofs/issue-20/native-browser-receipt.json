@@ -1,0 +1,433 @@
+{
+  "scenario": "real SSO + native Prefect process + actual DataChain",
+  "run": {
+    "id": "c902b54d-333e-43ae-977b-1bd50dd6d884",
+    "namespace_id": "ef4d32ac-169a-4a9e-bf5e-9a8c5ad27dc7",
+    "creator_id": "1f6545bb-ff30-4325-a233-a37d1353b4a5",
+    "kind": "process_flow",
+    "status": "queued",
+    "epoch": 1,
+    "revision": 0,
+    "created_at": "2026-11-02T20:33:04.202455Z"
+  },
+  "detail": {
+    "operation": {
+      "id": "c902b54d-333e-43ae-977b-1bd50dd6d884",
+      "namespace_id": "ef4d32ac-169a-4a9e-bf5e-9a8c5ad27dc7",
+      "creator_id": "1f6545bb-ff30-4325-a233-a37d1353b4a5",
+      "kind": "process_flow",
+      "status": "succeeded",
+      "epoch": 2,
+      "revision": 24,
+      "created_at": "2026-11-02T20:33:04.202455Z"
+    },
+    "flow": {
+      "id": "8a45cb35-8011-444b-a367-800e1c6f42aa",
+      "namespace_id": "ef4d32ac-169a-4a9e-bf5e-9a8c5ad27dc7",
+      "dataset_id": "3f3ce1ec-01a9-43ab-af4d-1b2eb16d46a6",
+      "name": "Text processing",
+      "revision": 1,
+      "definition": {
+        "schema": "verdant.process.v1",
+        "steps": [
+          {
+            "name": "Clean text",
+            "kind": "preprocess",
+            "transform": "strip",
+            "prompt": "",
+            "output_contract": "text",
+            "profile_id": null,
+            "profile_digest": null
+          },
+          {
+            "name": "Step 2",
+            "kind": "preprocess",
+            "transform": "lowercase",
+            "prompt": "",
+            "output_contract": "text",
+            "profile_id": null,
+            "profile_digest": null
+          }
+        ]
+      },
+      "config_digest": "929155c925c66df2afdf1268aee59337cd525356837c0ebab27ea6ae1a27a9ad",
+      "created_at": "2026-11-02T20:33:04.071364Z"
+    },
+    "input": {
+      "dataset_id": "3f3ce1ec-01a9-43ab-af4d-1b2eb16d46a6",
+      "candidate_id": "97dc7ef5-105d-43d3-a431-77379e5ccfd2",
+      "version_id": null,
+      "generation_id": "63fafef7-4431-46a1-b7d2-0040a91e798e",
+      "member_count": 3,
+      "completed_count": 3,
+      "trial_of": null
+    },
+    "needs_reconciliation": false,
+    "attempts": [
+      {
+        "epoch": 2,
+        "status": "succeeded",
+        "error_code": null,
+        "provider_run_id": "b8d90e2f-c37c-40d1-9b94-76bbc2809d86",
+        "invocation_key": "verdant:ef4d32ac-169a-4a9e-bf5e-9a8c5ad27dc7:c902b54d-333e-43ae-977b-1bd50dd6d884:2"
+      },
+      {
+        "epoch": 1,
+        "status": "paused",
+        "error_code": null,
+        "provider_run_id": null,
+        "invocation_key": null
+      }
+    ],
+    "outputs": [
+      {
+        "sample_id": "0482c303-e394-4c81-b0af-35a8f733b583",
+        "sample_revision_id": "187b3c40-8011-40b6-871b-a06b2e3b1433",
+        "step_position": 0,
+        "receipt_id": "b7f64ff3-ee23-4a19-9139-0a4d8e35c7e5",
+        "accepted_epoch": 2,
+        "input_digest": "9be7a559e8e8e31e9630d08f2b49eaf5b8a9f240e438497a40a71a2e882541c9",
+        "output_digest": "8981baef6e90d490c693054156b1d08d2b2d112f70b8e7e56fae70a2ef6a481a",
+        "profile_id": null,
+        "profile_digest": null,
+        "result": {
+          "text": "Safe process text 1",
+          "provider_reference": null,
+          "resolved_model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cost": null
+        }
+      },
+      {
+        "sample_id": "0482c303-e394-4c81-b0af-35a8f733b583",
+        "sample_revision_id": "187b3c40-8011-40b6-871b-a06b2e3b1433",
+        "step_position": 1,
+        "receipt_id": "172a5cbd-6350-4350-a39b-66d1ab8472a3",
+        "accepted_epoch": 2,
+        "input_digest": "115727d40a6bab573e90f5af39d1719d9d23b42be7764b41fdcd56fa5da29abd",
+        "output_digest": "c8f3fbd09b73027da2953e01d0db2ad989f5c044f2d2b1f625b290180218f7b2",
+        "profile_id": null,
+        "profile_digest": null,
+        "result": {
+          "text": "safe process text 1",
+          "provider_reference": null,
+          "resolved_model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cost": null
+        }
+      },
+      {
+        "sample_id": "47976e6f-a399-4497-b15c-00e54e0fc23f",
+        "sample_revision_id": "ea877b88-7d9b-4706-a496-b5b302591eb9",
+        "step_position": 0,
+        "receipt_id": "8ab566c4-3477-4ccf-8fb4-d48aac79e89b",
+        "accepted_epoch": 2,
+        "input_digest": "4e2fbe627f67796a4db8904f2dc2bfde480df2065e6abb62561153f5793c2a3c",
+        "output_digest": "9294a2a781eac9093f34acbc36a697d75b1b409d2ad8615aaecf0994c22ca51b",
+        "profile_id": null,
+        "profile_digest": null,
+        "result": {
+          "text": "Safe process text 0",
+          "provider_reference": null,
+          "resolved_model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cost": null
+        }
+      },
+      {
+        "sample_id": "47976e6f-a399-4497-b15c-00e54e0fc23f",
+        "sample_revision_id": "ea877b88-7d9b-4706-a496-b5b302591eb9",
+        "step_position": 1,
+        "receipt_id": "5a6650dd-5294-4f73-97e0-44dd3bdf7ce7",
+        "accepted_epoch": 2,
+        "input_digest": "21537113ab87bd5734bd91aa16146cf32639af1011a39f522a61e0c859a2dd7c",
+        "output_digest": "b3c264b25c2a462f7676f34c4752004ab43a47129efc7ae5abb7257784b4de51",
+        "profile_id": null,
+        "profile_digest": null,
+        "result": {
+          "text": "safe process text 0",
+          "provider_reference": null,
+          "resolved_model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cost": null
+        }
+      },
+      {
+        "sample_id": "67f55d4a-86d2-4639-9387-c00116da1f64",
+        "sample_revision_id": "88da1d2e-db48-4e9f-9bbe-816307b8a857",
+        "step_position": 0,
+        "receipt_id": "0f2e25db-0648-4a33-bdf8-98ad71b145ce",
+        "accepted_epoch": 2,
+        "input_digest": "6eabc1d4c779337954c7f8c95dc0bab26cdb0b42d0a3f33f161cb87737c493c0",
+        "output_digest": "ac8e244493d70940307e52a175f206188f52d4d9a63623a4c5dd55b38a926cdf",
+        "profile_id": null,
+        "profile_digest": null,
+        "result": {
+          "text": "Safe process text 2",
+          "provider_reference": null,
+          "resolved_model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cost": null
+        }
+      },
+      {
+        "sample_id": "67f55d4a-86d2-4639-9387-c00116da1f64",
+        "sample_revision_id": "88da1d2e-db48-4e9f-9bbe-816307b8a857",
+        "step_position": 1,
+        "receipt_id": "83a8d952-2f01-4891-a3c7-64463a3d9218",
+        "accepted_epoch": 2,
+        "input_digest": "ba9da36324c026e8b854219d0c801c6b518e9a2d8ebfe3de5f4ff973721dc6a3",
+        "output_digest": "79a7231f6fc76d00cbff15873441cd63e9de4dd0b9a9ed3c09e7fe5b0b1a732a",
+        "profile_id": null,
+        "profile_digest": null,
+        "result": {
+          "text": "safe process text 2",
+          "provider_reference": null,
+          "resolved_model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cost": null
+        }
+      }
+    ],
+    "next_after": null
+  },
+  "native_run": {
+    "id": "b8d90e2f-c37c-40d1-9b94-76bbc2809d86",
+    "created": "2026-11-02T20:33:23.936704Z",
+    "updated": "2026-11-02T20:33:31.419000Z",
+    "name": "olive-carp",
+    "flow_id": "b383cde3-ca1d-4d16-a3cd-cf35bf0a9fd1",
+    "state_id": "01a19df7-9713-7c34-b524-082a125028c9",
+    "deployment_id": "50811b4f-4bd3-4779-a5cc-c67e569c9255",
+    "deployment_version": "9a9c9682",
+    "work_queue_id": "328834ba-4659-4985-a8d4-025ece97f54c",
+    "work_queue_name": "default",
+    "flow_version": "63813e665283b8e5a7b43e54f6cd10a2",
+    "parameters": {
+      "namespace_id": "ef4d32ac-169a-4a9e-bf5e-9a8c5ad27dc7",
+      "operation_id": "c902b54d-333e-43ae-977b-1bd50dd6d884",
+      "epoch": 2
+    },
+    "idempotency_key": "verdant:ef4d32ac-169a-4a9e-bf5e-9a8c5ad27dc7:c902b54d-333e-43ae-977b-1bd50dd6d884:2",
+    "context": {},
+    "empirical_policy": {
+      "max_retries": 0,
+      "retry_delay_seconds": 0,
+      "retries": 0,
+      "retry_delay": 0,
+      "pause_keys": [],
+      "resuming": false,
+      "retry_type": null
+    },
+    "tags": [],
+    "labels": {
+      "prefect.flow.id": "b383cde3-ca1d-4d16-a3cd-cf35bf0a9fd1",
+      "prefect.deployment.id": "50811b4f-4bd3-4779-a5cc-c67e569c9255",
+      "prefect.worker.name": "ProcessWorker 621bcd01-35f5-4550-b34e-31b3aed14bc2",
+      "prefect.worker.type": "process",
+      "prefect.work-pool.name": "verdant-process-e2e",
+      "prefect.work-pool.id": "83b6453c-ca97-4895-b1a9-e60fcaff11c8"
+    },
+    "parent_task_run_id": null,
+    "state_type": "COMPLETED",
+    "state_name": "Completed",
+    "run_count": 1,
+    "expected_start_time": "2026-11-02T20:33:23.904132Z",
+    "next_scheduled_start_time": null,
+    "start_time": "2026-11-02T20:33:29.350791Z",
+    "end_time": "2026-11-02T20:33:31.411515Z",
+    "total_run_time": 2.060724,
+    "estimated_run_time": 2.060724,
+    "estimated_start_time_delta": 5.446659,
+    "auto_scheduled": false,
+    "infrastructure_document_id": null,
+    "infrastructure_pid": "63671",
+    "created_by": null,
+    "work_pool_id": "83b6453c-ca97-4895-b1a9-e60fcaff11c8",
+    "work_pool_name": "verdant-process-e2e",
+    "state": {
+      "id": "01a19df7-9713-7c34-b524-082a125028c9",
+      "type": "COMPLETED",
+      "name": "Completed",
+      "timestamp": "2026-11-02T20:33:31.411515Z",
+      "message": null,
+      "data": null,
+      "state_details": {
+        "flow_run_id": "b8d90e2f-c37c-40d1-9b94-76bbc2809d86",
+        "task_run_id": null,
+        "child_flow_run_id": null,
+        "scheduled_time": null,
+        "cache_key": null,
+        "cache_expiration": null,
+        "deferred": null,
+        "untrackable_result": true,
+        "pause_timeout": null,
+        "pause_reschedule": false,
+        "pause_key": null,
+        "run_input_keyset": null,
+        "refresh_cache": null,
+        "retriable": null,
+        "transition_id": "cad7f95b-cd1f-488a-8a2f-5d136dca6f2c",
+        "task_parameters_id": null,
+        "traceparent": null,
+        "deployment_concurrency_lease_id": null
+      }
+    },
+    "job_variables": null
+  },
+  "profile_versions": [
+    {
+      "id": "cab68d62-d191-4e85-a40e-3429a9a4eb08",
+      "name": "Comparison",
+      "revision": 1,
+      "provider": "gemini",
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta",
+      "model": "gemini-2.0-flash-001",
+      "identity_kind": "exact",
+      "settings": {
+        "temperature": 0,
+        "top_p": 1,
+        "max_output_tokens": 256
+      },
+      "capabilities": [
+        "text"
+      ],
+      "config_digest": "e9a01d4cdf28e6276c940ed933c5273fa8f03627f16375de2c00cdcb7ee28558",
+      "credential_status": "worker_unverified"
+    },
+    {
+      "id": "2d9ea860-a864-477f-9fd5-6f8b5e6f406f",
+      "name": "Comparison",
+      "revision": 2,
+      "provider": "glm",
+      "endpoint": "https://open.bigmodel.cn/api/paas/v4",
+      "model": "glm-4",
+      "identity_kind": "mutable_alias",
+      "settings": {
+        "temperature": 0,
+        "top_p": 1,
+        "max_output_tokens": 256
+      },
+      "capabilities": [
+        "text"
+      ],
+      "config_digest": "983974d2c7112e06495afb8180e34142ff2952803e3e247e67d94a623314534c",
+      "credential_status": "worker_unverified"
+    }
+  ],
+  "flow_versions": [
+    {
+      "id": "8a45cb35-8011-444b-a367-800e1c6f42aa",
+      "namespace_id": "ef4d32ac-169a-4a9e-bf5e-9a8c5ad27dc7",
+      "dataset_id": "3f3ce1ec-01a9-43ab-af4d-1b2eb16d46a6",
+      "name": "Text processing",
+      "revision": 1,
+      "definition": {
+        "schema": "verdant.process.v1",
+        "steps": [
+          {
+            "name": "Clean text",
+            "kind": "preprocess",
+            "transform": "strip",
+            "prompt": "",
+            "output_contract": "text",
+            "profile_id": null,
+            "profile_digest": null
+          },
+          {
+            "name": "Step 2",
+            "kind": "preprocess",
+            "transform": "lowercase",
+            "prompt": "",
+            "output_contract": "text",
+            "profile_id": null,
+            "profile_digest": null
+          }
+        ]
+      },
+      "config_digest": "929155c925c66df2afdf1268aee59337cd525356837c0ebab27ea6ae1a27a9ad",
+      "created_at": "2026-11-02T20:33:04.071364Z"
+    },
+    {
+      "id": "edc886c6-d33c-4cd1-ac96-40457b6f912b",
+      "namespace_id": "ef4d32ac-169a-4a9e-bf5e-9a8c5ad27dc7",
+      "dataset_id": "3f3ce1ec-01a9-43ab-af4d-1b2eb16d46a6",
+      "name": "Text processing",
+      "revision": 2,
+      "definition": {
+        "schema": "verdant.process.v1",
+        "steps": [
+          {
+            "name": "Clean text",
+            "kind": "preprocess",
+            "transform": "strip",
+            "prompt": "",
+            "output_contract": "text",
+            "profile_id": null,
+            "profile_digest": null
+          },
+          {
+            "name": "Step 2",
+            "kind": "model",
+            "transform": "identity",
+            "prompt": "Describe the text.",
+            "output_contract": "text",
+            "profile_id": "cab68d62-d191-4e85-a40e-3429a9a4eb08",
+            "profile_digest": "e9a01d4cdf28e6276c940ed933c5273fa8f03627f16375de2c00cdcb7ee28558"
+          }
+        ]
+      },
+      "config_digest": "9a86e267109b6348cb792c234e0c275a7a334fac872de4f32014f37f8ece4ae4",
+      "created_at": "2026-11-02T20:33:33.283618Z"
+    },
+    {
+      "id": "086d2fe0-f002-4cd8-819d-0da7432cc68a",
+      "namespace_id": "ef4d32ac-169a-4a9e-bf5e-9a8c5ad27dc7",
+      "dataset_id": "3f3ce1ec-01a9-43ab-af4d-1b2eb16d46a6",
+      "name": "Text processing",
+      "revision": 3,
+      "definition": {
+        "schema": "verdant.process.v1",
+        "steps": [
+          {
+            "name": "Clean text",
+            "kind": "preprocess",
+            "transform": "strip",
+            "prompt": "",
+            "output_contract": "text",
+            "profile_id": null,
+            "profile_digest": null
+          },
+          {
+            "name": "Step 2",
+            "kind": "model",
+            "transform": "identity",
+            "prompt": "Describe the text.",
+            "output_contract": "text",
+            "profile_id": "2d9ea860-a864-477f-9fd5-6f8b5e6f406f",
+            "profile_digest": "983974d2c7112e06495afb8180e34142ff2952803e3e247e67d94a623314534c"
+          }
+        ]
+      },
+      "config_digest": "ca1abf23947175fa9e03ec30150d439c15cfbe9b53af1ef4cc8ce782314cdf05",
+      "created_at": "2026-11-02T20:33:33.395786Z"
+    }
+  ],
+  "disabled_provider_run": {
+    "id": "9a36591c-ba54-4333-982d-50ca3f0e26c4",
+    "namespace_id": "ef4d32ac-169a-4a9e-bf5e-9a8c5ad27dc7",
+    "creator_id": "1f6545bb-ff30-4325-a233-a37d1353b4a5",
+    "kind": "process_flow",
+    "status": "queued",
+    "epoch": 1,
+    "revision": 0,
+    "created_at": "2026-11-02T20:33:33.523835Z"
+  },
+  "paid_calls": 0
+}

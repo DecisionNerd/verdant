@@ -32,8 +32,9 @@ jobs:
           uv sync --locked --group workflows
       - name: Static checks
         run: |
-          uv run --locked --group workflows ruff check src migrations tests scripts infrastructure/compose
-          uv run --locked --group workflows ruff format --check src migrations tests scripts infrastructure/compose
+          uv run --locked --group workflows ruff check src migrations tests scripts infrastructure/compose examples
+          uv run --locked --group workflows ruff format --check src migrations tests scripts infrastructure/compose examples
+          uv run --locked --group workflows python scripts/generate_sdk.py --check
       - name: PostgreSQL lifecycle and contracts
         run: |
           uv run --locked --group workflows pytest -q
@@ -99,5 +100,41 @@ jobs:
           name: lifecycle-browser-evidence
           path: |
             apps/workspace/test-results/**/receipt.json
+            apps/workspace/test-results/**/*.png
+          if-no-files-found: ignore
+
+  process-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERDANT_MODEL_CALLS_ENABLED: '0'
+      DATACHAIN_NO_ANALYTICS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.2
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Install locked process and browser dependencies
+        run: |
+          python -m pip install uv==0.8.16
+          uv sync --locked --group workflows
+          pnpm install --filter @verdant/workspace... --frozen-lockfile
+          pnpm --filter @verdant/workspace exec playwright install --with-deps chromium
+      - name: Real SSO and native Prefect DataChain lifecycle
+        run: pnpm --filter @verdant/workspace test:e2e:process
+      - name: Preserve bounded process evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: process-browser-evidence
+          path: |
+            apps/workspace/test-results/**/process-receipt.json
             apps/workspace/test-results/**/*.png
           if-no-files-found: ignore

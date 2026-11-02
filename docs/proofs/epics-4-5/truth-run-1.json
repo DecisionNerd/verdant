@@ -1,0 +1,54 @@
+{
+  "environment": "fresh-HTTPS-issuer-two-real-apps",
+  "assertions": [
+    "Independent authorization-code SSO in Verdant, no test auth bypass",
+    "UI assignments verify exact native schema/instructions/content/source revision and admitted contributor pins",
+    "Both humans enter stock editor through shared HTTPS issuer SSO, click categories and independently submit native annotations",
+    "Persisted exact pre-adjudication report plus side-by-side disagreement queue and authorized rationale-bearing immutable canonical reviews",
+    "Browser version correction retains exact old report and canonical review identities",
+    "UI publishes typed train/validation/test/production with deterministic validation derivation and exact canonical/schema/review membership pins",
+    "Reviewed production audit records stratum/probability/source truth/review pins, remains production, preserves unchanged holdout without declaring evaluation reuse, preserves old immutable truth and registry revision"
+  ],
+  "run_id": "0f572a64483e4f6f900c6183d6401a99",
+  "dataset_id": "88044e0d-023c-4501-948e-5af55c9fc046",
+  "namespace_id": "a35c5ffe-3caa-43d3-8f19-0ab0ca218071",
+  "compose_project": "verdant-truth-6abf50cfe8b8",
+  "image": "localhost:5001/label-studio-oidc@sha256:d7f8aac5ddee20155a967d91927d7278d0ed5f0f99ccbf9fdb4818cf653a1cea",
+  "source": "cc81a17bb2a077664083979dbdbb6e685228e08f",
+  "assignments": [
+    "bb422b96-631f-4baf-b37d-2775042558f4",
+    "ae372640-d388-4540-a3ab-3a011dec92c5",
+    "2b826d66-b4f5-4fe5-ad24-04a25aa27915",
+    "4ee04ebc-7cff-4df3-840f-82bc16dd31bd",
+    "893e1ff3-9219-44ba-8007-b2c4744ba995"
+  ],
+  "native_export": {
+    "tasks": 5,
+    "annotation_count": 10
+  },
+  "native_user_ids": [
+    3,
+    4
+  ],
+  "report": {
+    "id": "49f75d0c-059d-4432-9a4e-6116381ddfaf",
+    "digest": "3c0466e82debf590808b60ba783a04c6710218e44845e9ae4028c16e66956eef"
+  },
+  "canonical_ids": [
+    "9e87fffe-e41b-4e51-8ef9-e3e662959de4",
+    "47237fc5-4dd4-402c-a483-8590476e157d",
+    "40dd6183-9cae-4da5-b1ec-51a1d70895b1",
+    "feb236a4-d8d7-4079-9afe-5790e70f5242",
+    "787a5ca7-c5fd-4911-b4e6-656dfad7ff57"
+  ],
+  "truth_before_audit": {
+    "id": "0186a6ac-a4b4-4c8a-9064-461f8d427a18",
+    "digest": "f4e482a4d25e3b99c7082169281592e61c9f50765529aca0db43ab8af1824cee",
+    "pinned_revision": 6
+  },
+  "truth_after_audit": {
+    "id": "2ba23cd9-472c-40de-b305-aa2f5440dcf4",
+    "digest": "70287dc45dbfdc5bc8119180ce014a23fc9ddebe5bf02a69462c6b048e8139dc"
+  },
+  "status": "passed"
+}

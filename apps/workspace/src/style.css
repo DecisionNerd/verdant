@@ -32,3 +32,5 @@ form { padding: 20px; border: 1px solid #718e83; margin: 20px 0; }
 
 .content-preview { max-height: 28rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .content-preview-image { display: block; max-width: 100%; max-height: 40rem; object-fit: contain; margin-block: 1rem; }
+.annotation-comparison { display:flex; flex-wrap:wrap; gap:1rem; }
+.annotation-comparison article { flex:1 1 14rem; overflow-wrap:anywhere; padding:.75rem; border:1px solid currentColor; }

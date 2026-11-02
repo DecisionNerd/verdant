@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from verdant.contracts import SAMPLE_INGESTION_KINDS, Contract, Digest, Revision
 from verdant.domain import Conflict, NotFound, Principal
-from verdant.identity import current_principal
+from verdant.identity import current_principal, require_current_access
 from verdant.persistence import (
     AuditRow,
     ConsumerCheckpointRow,
@@ -346,6 +346,8 @@ class OperationService:
             )
             if row is None:
                 raise NotFound("Operation not found")
+            if row.kind == "process_flow":
+                raise Conflict("Use the owning process service action for this operation")
             if row.epoch != epoch:
                 raise Conflict("Operation attempt is stale")
             if row.status == target and not new_attempt:
@@ -489,6 +491,7 @@ class OperationService:
             row = self._locked_operation(session, actor, namespace_id, operation_id, epoch)
             if row.kind not in {
                 "verify_sample_artifact",
+                "process_flow",
                 *SAMPLE_INGESTION_KINDS,
                 "ingest_cleanup",
             } or row.status in {"succeeded", "cancelled"}:
@@ -640,6 +643,7 @@ class OperationService:
         )
         if operation is None:
             raise NotFound("Operation not found")
+        require_current_access(session, actor.id, namespace_id, write=True)
         if epoch is not None and operation.epoch != epoch:
             raise Conflict("Operation attempt is stale")
         return operation
@@ -962,6 +966,9 @@ class OperationService:
                 "operation." + value
                 for value in (
                     "queued",
+                    "paused",
+                    "pause_requested",
+                    "reconciliation_needed",
                     "running",
                     "cancellation_requested",
                     "cancelled",

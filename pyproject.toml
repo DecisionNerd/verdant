@@ -27,6 +27,7 @@ dev = [
     "ruff>=0.11,<1",
 ]
 workflows = [
+    "datachain>=0.58,<0.59",
     "prefect==3.9.0",
 ]
 

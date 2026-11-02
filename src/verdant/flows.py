@@ -160,3 +160,33 @@ def ingest_operations(namespace_id: str, operation_id: str, epoch: int):
         if storage is not None:
             storage.close()
         sessions.kw["bind"].dispose()
+
+
+@flow(name="verdant-process", persist_result=False, log_prints=False, retries=0)
+def process_operations(namespace_id: str, operation_id: str, epoch: int):
+    """One fixed process deployment. Parameters contain only committed operation identity."""
+    import time
+
+    from verdant.process_runner import ProcessRunner
+
+    sessions = make_sessions(os.environ["VERDANT_DATABASE_URL"])
+    storage = None
+    try:
+        namespace, operation = UUID(namespace_id), UUID(operation_id)
+        actor, operations = admitted_worker(sessions, namespace, operation, epoch, {"process_flow"})
+        storage = S3Storage.from_env()
+        if storage is None:
+            raise StorageUnavailable("Process worker storage is not configured")
+        runner = ProcessRunner(sessions, storage)
+        deadline = time.monotonic() + 300
+        for _ in range(40):
+            result = runner.run(actor, namespace, operation, epoch, deadline=deadline)
+            if result.status != "running":
+                break
+        else:
+            result = runner.service.fail(actor, namespace, operation, epoch, "worker_batch_budget")
+        return {"operation_id": str(result.id), "epoch": result.epoch, "status": result.status}
+    finally:
+        if storage is not None:
+            storage.close()
+        sessions.kw["bind"].dispose()

@@ -2,6 +2,11 @@
 
 The architecture is accepted; this is a target delivery plan, independent of existing engineering. No directory scaffold, runtime migration, provider choice, or deployment is executed by this docs change.
 
+Implemented bounded text flows/model profiles are documented in
+[PROCESS-FLOWS.md](PROCESS-FLOWS.md), with isolated native/browser and shared-service
+[evidence](../proofs/issue-20/acceptance.md). That slice does not establish the live
+paid-provider gate or the parent's combined SDK/MCP/annotation qualification.
+
 ## Qualification workload
 
 Keep the platform modality-neutral. Choose a real representative dataset for each supported processing adapter; record modality, count, byte/size distribution, annotation density, edit concurrency, execution cost and peak memory. Images/PDFs are a convenient initial profile from this repository, not a platform requirement or a gate on other modalities.

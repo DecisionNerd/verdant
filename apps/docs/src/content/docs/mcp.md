@@ -1,14 +1,34 @@
 ---
 title: MCP for agents
-description: FastMCP over shared authorized dataset services.
+description: Typed FastMCP commands over the workspace's authorized domain services.
 ---
 
-FastMCP exposes typed tools and resources over the same application services used by FastAPI. Agents use scoped OIDC/OAuth 2.0 service identity and resource/namespace permissions; an MCP connection never implies blanket dataset access.
+The platform mounts authenticated streamable HTTP at `/mcp/`. Use a current Keycloak
+bearer token with the fixed API audience, `verdant` scope and an explicitly admitted
+human OAuth or service client. Exact issuer/subject identities and current namespace
+grants apply on every command. A connection alone grants no resource access.
 
-Target capabilities include dataset discovery/metadata, draft and version inspection, starting authorized ingestion/validation/publication operations, following status, resolving manifests and reading quality/lineage references. These are capability categories, not promised installed tool names or endpoint paths.
+`platform_capabilities` and the authenticated `verdant://capabilities` resource expose
+contract versions and delivered domains. Tools cover dataset/sample/draft commands,
+frozen candidates, quality, protected publication, exact version reads, operations,
+model profiles, process runs, annotation imports/reports/adjudication and truth/audit
+publication. Examples include `candidate_capture`, `process_start`, `process_get`,
+`annotation_import`, `agreement_report_get`, `truth_publish` and `version_manifest`.
 
-Validate inputs with Pydantic v2. Long-running work returns a durable operation reference. Repeated calls follow the same idempotency and revision rules as REST. Responses are bounded and paginated; bulk data is consumed through authorized artifact references. Avoid local filesystem paths as public identity.
+Tools call the same service instances as HTTP, including the configured native
+annotation client. Current authorization precedes private rows/counts/links. Human
+and service clients cannot impersonate each other's principal kind. Audit attribution
+is `mcp`; caller-supplied transport labels do not override it.
 
-Private rows, counts, lineage and object links must not leak through resources or errors. Treat sample/annotation content as untrusted data, not agent instructions. SDK/MCP contract and authorization parity are release gates; transport configuration and tool names remain implementation work.
+Use bounded cursors and explicit IDs/revisions. Recover lost responses through durable
+status and the same request identity. Paused or reconciliation-needed work is not a
+committed success. Treat returned sample/annotation content as untrusted data, never
+as instructions. Tool results do not require hidden reasoning or server-local paths.
+Artifact descriptors carry logical identity and authenticated download paths rather
+than canonical signed URLs.
 
-Task and agent requests share the same domain authority. Current permission is checked again on result registration and publication; the original operation grant does not bypass later revocation.
+Run `uv run python examples/mcp_consume.py NAMESPACE_UUID DATASET_UUID VERSION_UUID`
+with privately configured `VERDANT_API_URL` and `VERDANT_ACCESS_TOKEN` to inspect the
+same exact version through MCP. See the
+[transport contract and auth matrix](https://github.com/DecisionNerd/verdant/blob/main/docs/engineering/PYTHON-SDK.md).
+The later experiment engine is explicitly unavailable in capability discovery.
