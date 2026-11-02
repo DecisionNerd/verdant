@@ -1,0 +1,51 @@
+services:
+  database:
+    image: postgres:17.6@sha256:00bc86618629af00d2937fdc5a5d63db3ff8450acf52f0636ec813c7f4902929
+    environment: {POSTGRES_PASSWORD: '${FIXTURE_DB_PASSWORD}', POSTGRES_DB: verdant_truth_test}
+    ports: ['127.0.0.1:19232:5432']
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U postgres']
+      interval: 2s
+      retries: 40
+  native-db:
+    image: postgres:17.6@sha256:00bc86618629af00d2937fdc5a5d63db3ff8450acf52f0636ec813c7f4902929
+    environment: {POSTGRES_PASSWORD: '${FIXTURE_DB_PASSWORD}', POSTGRES_DB: labeling, POSTGRES_USER: labeling}
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U labeling']
+      interval: 2s
+      retries: 40
+  auth:
+    image: quay.io/keycloak/keycloak@sha256:a78d6b79572168cb25886b80a8b5b8d4ed4390743e3eecb810538683e209dd6b
+    command: [start-dev, --import-realm, --http-enabled=true, --proxy-headers=xforwarded, --hostname=https://identity.localhost:19243]
+    volumes: ['./.local/realm.json:/opt/keycloak/data/import/realm.json:ro']
+    healthcheck:
+      test: [CMD, bash, -ec, 'exec 3<>/dev/tcp/127.0.0.1/9000; printf "GET /health/ready HTTP/1.0\r\n\r\n" >&3; grep -q "200 OK" <&3']
+      interval: 3s
+      retries: 60
+    environment: {KC_HEALTH_ENABLED: 'true'}
+  native-migrate:
+    image: localhost:5001/label-studio-oidc@sha256:d7f8aac5ddee20155a967d91927d7278d0ed5f0f99ccbf9fdb4818cf653a1cea
+    env_file: .local/native.env
+    command: [python, /label-studio/label_studio/manage.py, migrate, --noinput]
+    volumes: ['media:/label-studio/data', './.local/trust.pem:/trust.pem:ro']
+    depends_on: {native-db: {condition: service_healthy}}
+    networks: [default]
+  native:
+    image: localhost:5001/label-studio-oidc@sha256:d7f8aac5ddee20155a967d91927d7278d0ed5f0f99ccbf9fdb4818cf653a1cea
+    env_file: .local/native.env
+    volumes: ['media:/label-studio/data', './.local/trust.pem:/trust.pem:ro']
+    depends_on: {native-migrate: {condition: service_completed_successfully}}
+  objects:
+    image: chrislusf/seaweedfs@sha256:f7a49e3f3972ebed5be2ed4befa4a0c68eb7bdddba6e692d42729ceb545134b8
+    command: [mini, '-dir=/data', '-ip=objects', '-ip.bind=0.0.0.0', '-s3.port=8333', '-s3.config=/run/objects.json', '-bucket=verdant-artifacts', '-s3.autoCreateBucket=false', '-webdav=false', '-admin.ui=false', '-s3.port.iceberg=0', '-s3.port.lance=0', '-master.telemetry=false', '-master.volumeSizeLimitMB=64', '-master.volumePreallocate=false', '-volume.max=16']
+    ports: ['127.0.0.1:19233:8333']
+    volumes: ['./.local/objects.json:/run/objects.json:ro']
+  ingress:
+    image: caddy@sha256:3b2a0196e0687279c14c27adff9fc6b44acfa318dbb97eaebe385bdf99e5364c
+    ports: ['127.0.0.1:19243:19243']
+    volumes: ['./Caddyfile:/etc/caddy/Caddyfile:ro', './.local/certs:/certs:ro']
+    extra_hosts: ['host.docker.internal:host-gateway']
+    networks:
+      default:
+        aliases: [identity.localhost, labels.localhost, machine.localhost, workspace.localhost, objects.localhost]
+volumes: {media: {}}

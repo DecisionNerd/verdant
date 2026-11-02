@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError, request, type Dataset } from "./api";
 import { DatasetView } from "./dataset";
 
+vi.mock("./annotations", () => ({ Annotations: () => null }));
+vi.mock("./truth", () => ({ Truth: () => null }));
 vi.mock("./api", async original => ({ ...await original<typeof import("./api")>(), request: vi.fn() }));
 afterEach(() => { cleanup(); vi.resetAllMocks(); history.replaceState(null, "", "/"); });
 const dataset: Dataset = { id: "dataset", namespace_id: "namespace", owner_id: "owner", revision: 0, slug: "fixture", name: "Original", modality: "text", draft_id: "draft", created_at: "2026-10-27T00:00:00Z", availability: "active" };

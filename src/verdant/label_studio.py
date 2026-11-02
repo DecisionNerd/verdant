@@ -72,9 +72,10 @@ def positive_id(value):
 
 
 class NativeAnnotation(Contract):
-    id: int = Field(gt=0, strict=True)
-    task: int = Field(gt=0, strict=True)
-    completed_by: int = Field(gt=0, strict=True)
+    id: int = Field(gt=0, le=9223372036854775807, strict=True)
+    task: int = Field(gt=0, le=9223372036854775807, strict=True)
+    completed_by: int = Field(gt=0, le=9223372036854775807, strict=True)
+    updated_by: int | None = Field(default=None, gt=0, le=9223372036854775807, strict=True)
     result: list[dict[str, JsonValue]] = Field(max_length=1000)
     was_cancelled: bool = Field(strict=True)
     # Native exports contain other provider metadata; accept only fields selected
@@ -82,7 +83,7 @@ class NativeAnnotation(Contract):
 
 
 class LabelStudioClient:
-    def __init__(self, settings, token, *, transport=None):
+    def __init__(self, settings, token, *, transport=None, verify=True):
         if not token or any(character.isspace() for character in token):
             raise ValueError("A private native service token is required")
         self.settings = settings
@@ -93,6 +94,7 @@ class LabelStudioClient:
             follow_redirects=False,
             trust_env=False,
             transport=transport,
+            verify=verify,
         )
 
     def close(self):
@@ -166,11 +168,15 @@ class LabelStudioClient:
             for row in rows:
                 if not isinstance(row, dict):
                     raise ValueError
-                selected = {name: row[name] for name in NativeAnnotation.model_fields}
+                selected = {
+                    name: row[name] for name in NativeAnnotation.model_fields if name in row
+                }
                 # Native TaskAPI expands annotations.completed_by. Only its native
                 # integer ID is provenance input; email/display fields never bind identity.
                 if isinstance(selected["completed_by"], dict):
                     selected["completed_by"] = selected["completed_by"].get("id")
+                if isinstance(selected.get("updated_by"), dict):
+                    selected["updated_by"] = selected["updated_by"].get("id")
                 annotation = NativeAnnotation.model_validate(selected)
                 if annotation.task != task_id:
                     raise ValueError
@@ -182,3 +188,24 @@ class LabelStudioClient:
         if self.project_schema(project_id) != before:
             raise LabelStudioConflict("Native project schema changed during inspection")
         return annotations
+
+    def task_data(self, project_id, task_id):
+        """Export is read-only; never use TaskAPI.get, which can evaluate predictions.
+
+        Annotation provenance is fetched separately through the dedicated listing.
+        This deliberately supports bounded projects (100 tasks / 1 MiB export).
+        """
+        positive_id(project_id)
+        positive_id(task_id)
+        rows = self._get(
+            f"/api/projects/{project_id}/export?exportType=JSON&download_all_tasks=true"
+        )
+        if not isinstance(rows, list) or len(rows) > 100:
+            raise LabelStudioConflict("Native project export exceeds 100 tasks")
+        found = [row for row in rows if isinstance(row, dict) and row.get("id") == task_id]
+        if len(found) != 1 or type(found[0].get("id")) is not int:
+            raise LabelStudioConflict("Native task is absent from the pinned project")
+        data = found[0].get("data")
+        if not isinstance(data, dict):
+            raise LabelStudioConflict("Native task data is invalid")
+        return data

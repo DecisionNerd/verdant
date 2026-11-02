@@ -1,0 +1,49 @@
+{
+  auto_https disable_redirects
+  log {
+    exclude http.log.error
+  }
+}
+https://identity.localhost:19243 {
+  tls /certs/cert.pem /certs/key.pem
+  reverse_proxy auth:8080
+}
+https://workspace.localhost:19243 {
+  tls /certs/cert.pem /certs/key.pem
+  reverse_proxy host.docker.internal:19285
+}
+https://labels.localhost:19243 {
+  tls /certs/cert.pem /certs/key.pem
+  @credentials header Authorization *
+  respond @credentials 401
+  @machine path /machine /machine/*
+  respond @machine 403
+  reverse_proxy native:8080 {
+    header_up -Authorization
+    header_up -X-Api-Key
+    header_up -X-Forwarded-User
+    header_up -X-Remote-User
+    header_up -Remote-User
+    header_up X-Forwarded-Proto https
+  }
+}
+https://machine.localhost:19243 {
+  tls /certs/cert.pem /certs/key.pem
+  @api path /api/*
+  handle @api {
+    rewrite * /machine{uri}
+    reverse_proxy native:8080 {
+      header_up -X-Api-Key
+      header_up -X-Forwarded-User
+      header_up -X-Remote-User
+      header_up -Remote-User
+      header_up X-Forwarded-Proto https
+    }
+  }
+  respond 403
+}
+
+https://objects.localhost:19243 {
+  tls /certs/cert.pem /certs/key.pem
+  reverse_proxy objects:8333
+}

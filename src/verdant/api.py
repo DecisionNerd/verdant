@@ -15,6 +15,7 @@ from verdant import consumption as read
 from verdant import contracts as c
 from verdant import publication as p
 from verdant import quality_service as q
+from verdant.annotation_routes import install_annotation_routes
 from verdant.application import RegistryService
 from verdant.auth import IdentityRuntime, IdentitySettings
 from verdant.contracts import SAMPLE_INGESTION_KINDS
@@ -106,6 +107,7 @@ def create_app(
             response.headers["X-Verdant-Contract-Version"] = str(c.CONTRACT_VERSION)
         return response
 
+    install_annotation_routes(app, sessions, verified_principal)
     app.state.storage = storage
     from verdant.process_routes import install_process_routes
 

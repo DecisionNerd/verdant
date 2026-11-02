@@ -1,4 +1,6 @@
 import { ProcessWorkspace } from "./process";
+import { Annotations } from "./annotations";
+import { Truth } from "./truth";
 import { Candidates } from "./candidates";
 import { DraftEditor } from "./draft";
 import { Versions } from "./versions";
@@ -74,6 +76,8 @@ function MetadataEditor({ dataset, csrf, writable, stale }: { dataset: Dataset; 
       <button type="button" disabled={busy} onClick={() => void reload()}>Load current revision</button>
     </form>{error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     <ProcessWorkspace namespace={dataset.namespace_id} dataset={dataset.id} csrf={csrf} writable={writable && !archived} />
+    <Annotations key={`annotations/${dataset.namespace_id}/${dataset.id}`} namespace={dataset.namespace_id} dataset={dataset.id} csrf={csrf} writable={writable && !archived} />
+    <Truth key={`truth/${dataset.namespace_id}/${dataset.id}`} namespace={dataset.namespace_id} dataset={dataset.id} csrf={csrf} writable={writable && !archived} />
     <Versions namespace={dataset.namespace_id} dataset={dataset.id} csrf={csrf} writable={writable} />
     <Candidates key={`${dataset.namespace_id}/${dataset.id}`} namespace={dataset.namespace_id} dataset={dataset.id} csrf={csrf} writable={writable} archived={archived} />
     <DraftEditor namespace={dataset.namespace_id} dataset={dataset.id} csrf={csrf} writable={writable && !archived} />

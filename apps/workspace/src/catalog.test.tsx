@@ -3,6 +3,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, expect, it, vi } from "vitest";
 import { ApiError, request } from "./api";
 import { Catalog } from "./catalog";
+vi.mock("./annotations", () => ({ Annotations: () => null }));
+vi.mock("./truth", () => ({ Truth: () => null }));
 vi.mock("./api", async original => ({ ...await original<typeof import("./api")>(), request: vi.fn() }));
 afterEach(() => { cleanup(); vi.resetAllMocks(); history.replaceState(null, "", "/"); });
 const namespace = {id: "requested", name: "Requested workspace", access: "write"};
