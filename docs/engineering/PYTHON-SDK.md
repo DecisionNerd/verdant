@@ -64,6 +64,8 @@ version/descriptor identity, supported schema, namespace/dataset/candidate/gener
 and strictly ordered distinct members. Its typed in-memory reader supports 16 MiB;
 larger manifests remain available through the verified streaming method. JSON API
 responses are limited to 64 MiB. Ordinary HTTP logs redact signed query capabilities.
+Clients request identity transfer encoding and reject compressed responses before
+reading them, so automatic decompression cannot bypass byte-admission limits.
 
 ## Runnable examples and proof
 

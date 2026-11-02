@@ -228,3 +228,38 @@ def test_waiter_stops_on_ambiguous_receipt_and_never_mutates(monkeypatch):
         state.operation.status = "running"
         with pytest.raises(SDKError, match="without mutation"):
             sdk.wait_operation(namespace_id=uuid4(), operation_id=uuid4(), polls=2, interval=0)
+
+
+@pytest.mark.parametrize("objects", [False, True])
+def test_compressed_responses_rejected_before_any_decoder_read(objects):
+    import gzip
+
+    reads = []
+
+    class Compressed(httpx.SyncByteStream):
+        def __iter__(self):
+            reads.append(True)
+            yield gzip.compress(b"a" * (8 * 1024 * 1024))
+
+    def handler(request):
+        assert request.headers["accept-encoding"] == "identity"
+        if objects and request.url.host == "platform.test":
+            return httpx.Response(
+                307, headers=VERSION | {"location": "https://objects.test/key?signature=private"}
+            )
+        return httpx.Response(
+            200, headers=VERSION | {"Content-Encoding": "gzip"}, stream=Compressed()
+        )
+
+    with Client(
+        "https://platform.test",
+        "token",
+        storage_origins=("https://objects.test",),
+        transport=httpx.MockTransport(handler),
+    ) as sdk:
+        with pytest.raises(SDKError, match="identity encoding"):
+            if objects:
+                sdk.download_verified(descriptor(b"payload"), io.BytesIO())
+            else:
+                sdk.list_namespaces()
+    assert reads == []

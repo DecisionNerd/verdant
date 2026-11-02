@@ -92,6 +92,7 @@ class Transport:
             follow_redirects=False,
             trust_env=False,
             transport=transport,
+            headers={"Accept-Encoding": "identity"},
         )
 
     def __enter__(self):
@@ -108,7 +109,11 @@ class Transport:
         token = self._token() if callable(self._token) else self._token
         if not isinstance(token, str) or not token or any(char.isspace() for char in token):
             raise SDKError("A valid current access token is required")
-        return {"Authorization": "Bearer " + token, "Accept": "application/json"}
+        return {
+            "Authorization": "Bearer " + token,
+            "Accept": "application/json",
+            "Accept-Encoding": "identity",
+        }
 
     @staticmethod
     def _segment(value):
@@ -134,6 +139,14 @@ class Transport:
         version = response.headers.get("X-Verdant-Contract-Version")
         if version != str(CONTRACT_VERSION):
             raise SDKError("Unsupported or missing platform contract version")
+
+    @staticmethod
+    def _identity_encoding(response):
+        # HTTPX decompresses a raw chunk before applying iter_bytes(chunk_size).
+        # Reject compression before reading, so a zip bomb cannot allocate beyond
+        # our admission limits or change the bytes named by an artifact digest.
+        if response.headers.get("content-encoding", "identity").strip().lower() != "identity":
+            raise SDKError("Compressed responses are unsupported; identity encoding is required")
 
     @staticmethod
     def _error(status, data):
@@ -173,6 +186,7 @@ class Transport:
                     method, path, params=query, json=payload, headers=self._headers()
                 ) as response:
                     self._compatibility(response)
+                    self._identity_encoding(response)
                     data = bytearray()
                     for chunk in response.iter_bytes(65536):
                         if len(data) + len(chunk) > JSON_BYTES:
@@ -243,6 +257,7 @@ class Transport:
         try:
             with self._http.stream("GET", path, headers=self._headers()) as response:
                 self._compatibility(response)
+                self._identity_encoding(response)
                 if response.status_code in {302, 303, 307, 308}:
                     location = response.headers.get("location", "")
                     parsed = urlsplit(location)
@@ -253,6 +268,7 @@ class Transport:
                     if parsed.fragment or origin not in self._storage_origins:
                         raise SDKError("Artifact redirect origin is not configured")
                     with self._objects.stream("GET", location) as objects:
+                        self._identity_encoding(objects)
                         if objects.status_code != 200:
                             raise SDKError("Artifact provider is unavailable")
                         return self._copy_verified(objects, destination, digest, expected_size)
