@@ -3756,9 +3756,11 @@
             "title": "Config Digest",
             "type": "string"
           },
-          "credential_configured": {
-            "title": "Credential Configured",
-            "type": "boolean"
+          "credential_status": {
+            "const": "worker_unverified",
+            "default": "worker_unverified",
+            "title": "Credential Status",
+            "type": "string"
           },
           "endpoint": {
             "title": "Endpoint",
@@ -3811,8 +3813,7 @@
           "identity_kind",
           "settings",
           "capabilities",
-          "config_digest",
-          "credential_configured"
+          "config_digest"
         ],
         "title": "Profile",
         "type": "object"

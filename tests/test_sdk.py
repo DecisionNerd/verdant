@@ -263,3 +263,33 @@ def test_compressed_responses_rejected_before_any_decoder_read(objects):
             else:
                 sdk.list_namespaces()
     assert reads == []
+
+
+@pytest.mark.parametrize("artifact", [False, True])
+def test_slow_raw_fragments_cannot_hide_the_request_deadline(artifact, monkeypatch):
+    clock, reads = [0.0], []
+    monkeypatch.setattr("verdant.sdk.transport.time.monotonic", lambda: clock[0])
+
+    class Slow(httpx.SyncByteStream):
+        def __iter__(self):
+            for _ in range(100):
+                clock[0] += 4
+                reads.append(True)
+                yield b" "
+
+    with Client(
+        "https://platform.test",
+        "token",
+        timeout=5,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, headers=VERSION, stream=Slow())
+        ),
+    ) as sdk:
+        target = io.BytesIO(b"retained")
+        with pytest.raises(SDKError, match="deadline exceeded"):
+            if artifact:
+                sdk.download_verified(descriptor(b" " * 100), target)
+            else:
+                sdk.list_namespaces()
+        assert len(reads) == 2
+        assert target.getvalue() == b"retained"

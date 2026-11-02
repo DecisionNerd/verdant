@@ -66,6 +66,10 @@ larger manifests remain available through the verified streaming method. JSON AP
 responses are limited to 64 MiB. Ordinary HTTP logs redact signed query capabilities.
 Clients request identity transfer encoding and reject compressed responses before
 reading them, so automatic decompression cannot bypass byte-admission limits.
+Each logical request/download also has a total deadline (15 seconds by default,
+configurable up to 120). Checks run on every raw transport fragment, so a slow
+trickle cannot hide behind chunk buffering. The remaining budget also bounds each
+network wait and the read-retry loop.
 
 ## Runnable examples and proof
 

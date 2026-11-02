@@ -77,6 +77,7 @@ class Transport:
         if not 0 < timeout <= 120:
             raise ValueError("Timeout must be positive and at most 120 seconds")
         self._allow_insecure_http = allow_insecure_http
+        self._timeout = timeout
         self._token = token
         self._http = httpx.Client(
             base_url=self._origin,
@@ -180,15 +181,23 @@ class Transport:
         )
         # Only idempotent reads retry. A lost POST response is an unknown outcome;
         # callers may explicitly resubmit the SAME domain request key to reconcile.
+        deadline = time.monotonic() + self._timeout
         for attempt in range(3):
+            self._remaining(deadline)
             try:
                 with self._http.stream(
-                    method, path, params=query, json=payload, headers=self._headers()
+                    method,
+                    path,
+                    params=query,
+                    json=payload,
+                    headers=self._headers(),
+                    timeout=self._remaining(deadline),
                 ) as response:
                     self._compatibility(response)
                     self._identity_encoding(response)
                     data = bytearray()
-                    for chunk in response.iter_bytes(65536):
+                    for chunk in self._raw_chunks(response):
+                        self._remaining(deadline)
                         if len(data) + len(chunk) > JSON_BYTES:
                             raise SDKError("Platform JSON response exceeds the 64 MiB SDK limit")
                         data.extend(chunk)
@@ -215,6 +224,19 @@ class Transport:
                     retryable=method == "GET",
                 ) from None
         raise SDKError("Platform read retry budget exhausted")
+
+    @staticmethod
+    def _remaining(deadline):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise SDKError("SDK request deadline exceeded; command outcome may be unknown")
+        return remaining
+
+    @staticmethod
+    def _raw_chunks(response):
+        # No chunk_size: a slow trickle must not be buffered before our deadline
+        # checks. Already-read responses occur with injected/offline transports.
+        return (response.content,) if response.is_stream_consumed else response.iter_raw()
 
     def iter_pages(
         self, method: Callable[..., T], *, max_pages: int = 1000, **kwargs
@@ -254,8 +276,11 @@ class Transport:
         ):
             raise SDKError("Invalid artifact identity or size")
         path = self._path(descriptor.download_path)
+        deadline = time.monotonic() + self._timeout
         try:
-            with self._http.stream("GET", path, headers=self._headers()) as response:
+            with self._http.stream(
+                "GET", path, headers=self._headers(), timeout=self._remaining(deadline)
+            ) as response:
                 self._compatibility(response)
                 self._identity_encoding(response)
                 if response.status_code in {302, 303, 307, 308}:
@@ -267,24 +292,28 @@ class Transport:
                     )
                     if parsed.fragment or origin not in self._storage_origins:
                         raise SDKError("Artifact redirect origin is not configured")
-                    with self._objects.stream("GET", location) as objects:
+                    with self._objects.stream(
+                        "GET", location, timeout=self._remaining(deadline)
+                    ) as objects:
                         self._identity_encoding(objects)
                         if objects.status_code != 200:
                             raise SDKError("Artifact provider is unavailable")
-                        return self._copy_verified(objects, destination, digest, expected_size)
+                        return self._copy_verified(
+                            objects, destination, digest, expected_size, deadline
+                        )
                 if response.status_code != 200:
                     raise SDKError(
                         "Artifact download denied or unavailable", status=response.status_code
                     )
-                return self._copy_verified(response, destination, digest, expected_size)
+                return self._copy_verified(response, destination, digest, expected_size, deadline)
         except (httpx.TransportError, ValueError):
             raise SDKError("Artifact transport or location unavailable") from None
 
-    @staticmethod
-    def _copy_verified(response, destination, digest, expected_size):
+    def _copy_verified(self, response, destination, digest, expected_size, deadline):
         count, hasher = 0, hashlib.sha256()
         with SpooledTemporaryFile(max_size=1024 * 1024) as staged:
-            for chunk in response.iter_bytes(65536):
+            for chunk in self._raw_chunks(response):
+                self._remaining(deadline)
                 count += len(chunk)
                 if count > expected_size:
                     raise SDKError("Artifact byte count exceeds its immutable identity")
