@@ -391,7 +391,7 @@
             "items": {
               "$ref": "#/components/schemas/OriginalResponse"
             },
-            "maxItems": 100,
+            "maxItems": 1000,
             "title": "Latest",
             "type": "array"
           },

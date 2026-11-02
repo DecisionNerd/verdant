@@ -3,6 +3,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { createServer } from "node:net";
 
 const root = resolve("../..");
 const local = resolve("e2e/truth/.local");
@@ -19,7 +20,23 @@ async function stop(child?: ChildProcess) {
   await Promise.race([exited, new Promise(resolve => setTimeout(resolve, 10_000))]);
   if (child.exitCode === null && child.signalCode === null) process.kill(-child.pid, "SIGKILL");
 }
-async function ready(url: string) { await expect.poll(async () => { try { return (await fetch(url)).status; } catch { return 0; } }, { timeout: 45_000 }).toBe(200); }
+async function ready(url: string, child: ChildProcess) {
+  const live = () => child.pid && child.exitCode === null && child.signalCode === null;
+  await expect.poll(async () => {
+    if (!live()) throw new Error("Owned fixture server exited before readiness");
+    try { const status = (await fetch(url)).status; return live() ? status : 0; } catch { return 0; }
+  }, { timeout: 45_000 }).toBe(200);
+  if (!live()) throw new Error("Owned fixture server exited during readiness");
+}
+
+async function preflightOwnedServerPorts() {
+  for (const [port, host] of [[19285, "0.0.0.0"], [19287, "127.0.0.1"]] as const) {
+    await new Promise<void>((resolve, reject) => {
+      const server = createServer(); server.once("error", reject);
+      server.listen(port, host, () => server.close(() => resolve()));
+    });
+  }
+}
 async function response(page: Page, suffix: string, click: () => Promise<unknown>, status = 200) {
   const pending = page.waitForResponse(r => r.url().endsWith(suffix) && r.request().method() === "POST", { timeout: 60_000 });
   await click(); const result = await pending; expect(result.status(), `phase ${phase}, ${suffix}`).toBe(status); return result.json();
@@ -42,13 +59,23 @@ async function openNative(page: Locator, context: BrowserContext) {
   const link = page.getByRole("link", { name: "Open stock labeling editor" });
   await expect(link).toHaveAttribute("target", "_blank");
   const href = await link.getAttribute("href"); expect(new URL(href!).origin).toBe(labels);
-  const native = await context.newPage(); await native.goto(href!);
+  const native = await context.newPage();
+  native.on("response", result => {
+    const url = new URL(result.url());
+    if (url.origin === labels && url.pathname.startsWith("/api/") && result.status() >= 400) {
+      nativeFailure = { status: result.status(), path: url.pathname };
+    }
+  });
+  await native.goto(href!);
   await native.waitForURL(`${labels}/**`, { timeout: 60_000 });
   await expect.poll(async () => { try { return (await nativeApi(native, "/api/current-user/whoami")).status; } catch { return 0; } }, { timeout: 60_000 }).toBe(200);
   return native;
 }
 async function nativeSubmit(page: Page, category: string, task: number, person: number) {
   await page.waitForFunction(() => !!(window as any).Htx && !(window as any).Htx.isLoading, null, { timeout: 45_000 });
+  if (await page.getByText("Runtime error", { exact: true }).isVisible()) {
+    throw new Error(`Native editor failed to load: ${JSON.stringify(nativeFailure)}`);
+  }
   const listed = await nativeApi(page, `/api/tasks/${task}/annotations/`);
   expect(listed.status).toBe(200);
   const existing = listed.body.find((row: any) => (typeof row.completed_by === "object" ? row.completed_by.id : row.completed_by) === person && !row.was_cancelled);
@@ -97,6 +124,7 @@ test("real independent HTTPS SSO, stock annotation, immutable agreement/review a
   const fixturePath = resolve(local, "runs", `${process.pid}-${Date.now()}`, "fixture.json");
   let first: BrowserContext | undefined, second: BrowserContext | undefined;
   try {
+    await preflightOwnedServerPorts();
     if (!existsSync(resolve(local, "environment.json"))) python("scripts/prepare_truth_fixture.py");
     // Start the retained deployment every time. Seed upgrades to the current
     // Alembic heads and creates new run-owned data in its existing cohort namespace.
@@ -109,9 +137,9 @@ test("real independent HTTPS SSO, stock annotation, immutable agreement/review a
     receipt.image = fixture.image; receipt.source = fixture.source_revision;
     const env = environment();
     api = spawn("uv", ["run", "--locked", "uvicorn", "verdant.api:create_app", "--factory", "--host", "127.0.0.1", "--port", "19287", "--no-access-log"], { cwd: root, env, detached: true, stdio: "ignore" });
-    await ready("http://127.0.0.1:19287/health/ready");
+    await ready("http://127.0.0.1:19287/health/ready", api);
     web = spawn("pnpm", ["exec", "vite", "--host", "0.0.0.0", "--port", "19285", "--strictPort", "--config", "e2e/truth/vite.config.ts"], { env, detached: true, stdio: "ignore" });
-    await ready("http://127.0.0.1:19285");
+    await ready("http://127.0.0.1:19285", web);
     const route = `/?namespace=${fixture.namespace_id}&dataset=${fixture.dataset_id}`;
     const base = `/api/v1/namespaces/${fixture.namespace_id}/datasets/${fixture.dataset_id}`;
     first = await browser.newContext({ ignoreHTTPSErrors: true, baseURL: app }); second = await browser.newContext({ ignoreHTTPSErrors: true, baseURL: app });

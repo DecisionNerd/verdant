@@ -293,3 +293,22 @@ def test_slow_raw_fragments_cannot_hide_the_request_deadline(artifact, monkeypat
                 sdk.list_namespaces()
         assert len(reads) == 2
         assert target.getvalue() == b"retained"
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_command_http_error_never_advertises_safe_automatic_retry(status):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return reply({"detail": "Command may require reconciliation"}, status)
+
+    with Client("https://platform.test", "token", transport=httpx.MockTransport(handler)) as sdk:
+        with pytest.raises(SDKError) as error:
+            sdk.create_dataset(
+                namespace_id=uuid4(),
+                command=DatasetCreate(slug="pending", name="Pending", modality="text"),
+            )
+        assert not error.value.retryable
+        assert error.value.status == status
+    assert len(calls) == 1

@@ -203,6 +203,7 @@ class Transport:
                         data.extend(chunk)
                     if response.status_code >= 400:
                         error = self._error(response.status_code, data)
+                        error.retryable = method == "GET" and error.retryable
                         if method == "GET" and error.retryable and attempt < 2:
                             time.sleep(min(0.1 * 2**attempt, 1))
                             continue

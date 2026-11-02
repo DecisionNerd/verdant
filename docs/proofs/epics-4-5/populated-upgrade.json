@@ -1,0 +1,27 @@
+{
+  "scope": "owned populated schema21 fixture upgraded to23; preexisting immutable versions retain digest-verified bytes",
+  "schema_revision": "0023_flows_truth",
+  "new_test_run_started_at": "2026-11-02T20:38:33.392796+00:00",
+  "retained_versions": [
+    {
+      "version_id": "b10b2d6e-d479-4abc-ba2b-a2d3d6265e8c",
+      "created_at": "2026-11-02T19:55:14.681424+00:00",
+      "namespace_id": "3cfeb664-00bb-4353-b68b-909a4a1f153e",
+      "candidate_id": "837a2b3b-af3c-4c7d-9350-22f996fe1a79",
+      "generation_id": "37d9a64f-8b71-4129-8ecb-743c21794adb",
+      "manifest_sha256": "6a2404ebb160553836291405da8003fee8a72ad6484df6d2ef0f61216027c891",
+      "manifest_bytes": 2093,
+      "verified": true
+    },
+    {
+      "version_id": "e872cdd6-c438-49ef-ad34-20ed9813d78a",
+      "created_at": "2026-11-02T19:57:02.542041+00:00",
+      "namespace_id": "3e2eb0d2-86eb-419f-a3ea-11d91a84eada",
+      "candidate_id": "260e3f87-dd4d-4dfc-88e8-4874bd6f8acf",
+      "generation_id": "a2e740c0-c17f-4bc3-9be5-03d3301e3b82",
+      "manifest_sha256": "9fc4dabb3198566a1a9366abeaddb54a22e732244dbd13e171c4d2e0fcb278dc",
+      "manifest_bytes": 2093,
+      "verified": true
+    }
+  ]
+}

@@ -19,6 +19,7 @@ def test_mcp_flow_and_sdk_shared_model_preserve_canonical_alias_and_digest():
     canonical = definition.model_dump(mode="json", by_alias=True)
     result = Flow(
         id=flow_id,
+        namespace_id=namespace,
         dataset_id=dataset,
         name="Flow",
         revision=1,
