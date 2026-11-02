@@ -358,7 +358,6 @@ class ProcessService:
 
     def _locked(self, session, actor, ns, operation_id, epoch=None):
         operation = self.operations._locked_operation(session, actor, ns, operation_id, epoch)
-        require_current_access(session, actor.id, ns, write=True)
         run = session.get(ProcessRunRow, operation_id)
         if operation.kind != "process_flow" or run is None or run.namespace_id != ns:
             raise NotFound("Process run not found")
