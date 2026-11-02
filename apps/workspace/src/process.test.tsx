@@ -30,7 +30,7 @@ it("preserves a failed admission request identity for recovery", async () => {
   await waitFor(() => expect(screen.getByLabelText("Saved flow version").querySelectorAll("option").length).toBe(2));
   fireEvent.change(screen.getByLabelText("Saved flow version"), { target: { value: "flow1" } });
   fireEvent.change(screen.getByLabelText("Pinned input"), { target: { value: "candidate" } });
-  fireEvent.click(screen.getByRole("button", { name: "Start pinned run", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Start pinned run" }));
   await screen.findByText("Response lost");
   fireEvent.click(screen.getByRole("button", { name: "Recover start request" }));
   await screen.findByText("Run admitted on pinned input.");
