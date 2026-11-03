@@ -219,6 +219,9 @@ def test_profile_versions_digest_alias_and_backend_only_reference(
             "usage": {"prompt_tokens": -1},
         },
         {"choices": []},
+        {"choices": [{"finish_reason": "stop", "message": {"content": ""}}]},
+        {"choices": [{"finish_reason": "stop", "message": {"content": None}}]},
+        {"choices": [{"finish_reason": "stop", "message": {"content": "x", "tool_calls": [{}]}}]},
     ],
 )
 def test_malformed_accepted_output_is_safe_uncertain_error(raw, monkeypatch):
@@ -398,3 +401,135 @@ def test_trickle_stream_deadline_is_checked_before_chunk_coalescing(monkeypatch)
             output_contract="text",
         )
     assert caught.value.uncertain and body.reads == 8
+
+
+@pytest.mark.parametrize("provider,family", [("gemini", "google"), ("glm", "z-ai")])
+def test_openrouter_routes_actual_adapter_with_bounded_chat_protocol(provider, family, monkeypatch):
+    monkeypatch.setenv("VERDANT_MODEL_SECRET_FIXTURE", "synthetic-never-log")
+    routed = profile(provider).model_copy(
+        update={
+            "transport": "openrouter",
+            "model": family + "/model-identifier",
+            "identity_kind": "mutable_alias",
+        }
+    )
+
+    def handler(request):
+        assert str(request.url) == "https://openrouter.ai/api/v1/chat/completions"
+        assert request.headers["authorization"] == "Bearer synthetic-never-log"
+        body = json.loads(request.content)
+        assert body["model"] == routed.model
+        assert body["messages"] == [
+            {"role": "system", "content": "Instruction"},
+            {"role": "user", "content": "only verified content"},
+        ]
+        assert body["max_tokens"] == routed.settings.max_output_tokens
+        assert body["stream"] is False
+        assert body["reasoning"] == {"enabled": False}
+        assert body["provider"] == {"require_parameters": True, "allow_fallbacks": False}
+        assert body["response_format"] == {"type": "json_object"}
+        return model_response(
+            200,
+            json={
+                "id": "routed-call",
+                "model": routed.model,
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": '{"ok":true}', "reasoning": "hidden"},
+                    }
+                ],
+                "usage": {"prompt_tokens": 7, "completion_tokens": 4, "cost": 0.01},
+            },
+        )
+
+    result = ModelAdapter(transport=httpx.MockTransport(handler)).generate(
+        routed,
+        "VERDANT_MODEL_SECRET_FIXTURE",
+        project_model_input(b"only verified content"),
+        prompt="Instruction",
+        output_contract="json",
+    )
+    assert result.resolved_model == routed.model and result.provider_reference == "routed-call"
+    assert result.input_tokens == 7 and result.output_tokens == 4
+    assert result.cost is None and "hidden" not in result.model_dump_json()
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"model": "z-ai/glm-4.5-air"},
+        {"model": "google/../escape"},
+        {"model": "google/a/b"},
+        {"model": "https://attacker.invalid"},
+        {"identity_kind": "exact"},
+        {"transport": "attacker"},
+    ],
+)
+def test_openrouter_rejects_cross_family_urls_traversal_and_false_snapshot_claims(patch):
+    command = {
+        "name": "Router",
+        "provider": "gemini",
+        "transport": "openrouter",
+        "model": "google/gemini-3.1-flash-lite",
+        "identity_kind": "mutable_alias",
+        "credential_ref": "VERDANT_MODEL_SECRET_FIXTURE",
+    }
+    with pytest.raises(ValidationError):
+        ProfileCreate.model_validate(command | patch)
+
+
+def test_old_profile_definition_retains_digest_and_native_route():
+    from types import SimpleNamespace
+
+    command = ProfileCreate(
+        name="Old",
+        provider="gemini",
+        model="gemini-2.0-flash-001",
+        identity_kind="exact",
+        credential_ref="VERDANT_MODEL_SECRET_FIXTURE",
+    )
+    old_definition = command.model_dump(
+        exclude={"name", "expected_revision", "credential_ref", "transport"}
+    )
+    view = ModelProfileService._view(
+        SimpleNamespace(
+            id=uuid4(), name="Old", revision=1, definition=old_definition, config_digest="a" * 64
+        )
+    )
+    assert view.transport == "native"
+    assert view.endpoint == "https://generativelanguage.googleapis.com/v1beta"
+    assert view.config_digest == "a" * 64 and "transport" not in old_definition
+
+
+def test_profile_transport_is_immutable_versioned_and_part_of_digest(registry, sessions):
+    _, actor, namespace = registry
+    service = ModelProfileService(sessions)
+    first = service.create(
+        actor,
+        namespace,
+        ProfileCreate(
+            name="Routed",
+            provider="glm",
+            model="glm-4.5-air",
+            identity_kind="mutable_alias",
+            credential_ref="VERDANT_MODEL_SECRET_FIXTURE",
+        ),
+    )
+    routed = service.create(
+        actor,
+        namespace,
+        ProfileCreate(
+            name="Routed",
+            expected_revision=1,
+            provider="glm",
+            transport="openrouter",
+            model="z-ai/glm-4.5-air",
+            identity_kind="mutable_alias",
+            credential_ref="VERDANT_MODEL_SECRET_FIXTURE",
+        ),
+    )
+    assert routed.endpoint == "https://openrouter.ai/api/v1"
+    assert routed.config_digest != first.config_digest
+    assert service.get(actor, namespace, first.id).transport == "native"
+    assert "credential_ref" not in routed.model_dump() and routed.revision == 2

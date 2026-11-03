@@ -31,6 +31,10 @@ alone does not establish accepted domain outputs.
 Profiles disclose exact-requested identifiers or mutable aliases and report worker
 credentials as unverified. Actual secrets are configured only in the worker. Paid
 provider calls default to disabled; missing configuration is a visible failure.
+Choose **Direct provider** or **OpenRouter** when saving a profile. OpenRouter uses
+`google/…` identifiers for Gemini and `z-ai/…` for GLM, requires mutable-alias
+disclosure, and pins the route in each profile version. It uses a backend OpenRouter
+credential reference; no secret value belongs in the form.
 The [process guide](https://github.com/DecisionNerd/verdant/blob/main/docs/engineering/PROCESS-FLOWS.md)
 records limits and recovery behavior.
 
