@@ -33,9 +33,11 @@ versions retain verified downloads and recorded lineage when the draft changes o
 the dataset is archived. Clients share the same current authorization.
 
 The workspace also supports versioned process flows and model profiles, native
-Prefect/DataChain text execution and durable pause/recovery. Gemini/GLM protocol
-fixtures are qualified; actual provider calls remain disabled until credentials and
-a live request budget are explicitly authorized.
+Prefect/DataChain text execution and durable pause/recovery. Gemini/GLM have bounded
+live qualification through OpenRouter as well as native protocol fixtures. Choose
+the transport explicitly in each profile. Ordinary provider calls remain disabled
+until backend credentials and a request budget are explicitly authorized.
+[Live evidence and limits](https://github.com/DecisionNerd/verdant/blob/main/docs/proofs/issue-21/README.md).
 
 Annotation uses a qualified pinned external Label Studio Community image with
 individual Keycloak SSO. It retains the stock editor; paid embedding and Enterprise

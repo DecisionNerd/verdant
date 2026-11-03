@@ -98,7 +98,11 @@ project plus native Prefect/API/Vite process groups. It logs into actual Keycloa
 versions flows and Gemini/GLM profiles, executes fixed preprocessing through actual
 Prefect and DataChain, restarts the API, resumes a paused attempt, verifies every
 accepted output/receipt/profile pin and exercises disabled-provider recovery.
-It makes zero paid model calls. The `process-browser` CI job runs this automatically.
+It also saves/reloads native and OpenRouter profile versions and pins their route
+digests. It makes zero paid model calls. The `process-browser` CI job runs this automatically.
+User-authorized live OpenRouter calls and completed-key receipt reuse are recorded
+separately in [issue21 proof](../proofs/issue-21/README.md); hosted CI never needs
+provider secrets or issues paid calls.
 The original `test:e2e` command selects only `lifecycle.spec.ts`.
 
 `pnpm --filter @verdant/workspace test:e2e:truth` requires the exact qualified external
