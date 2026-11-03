@@ -1,0 +1,213 @@
+{
+  "source_sha": "6703c8b6133f14c5bd9ffd7b645abcb78628c79e",
+  "date": "2026-11-03",
+  "route": "https://openrouter.ai/api/v1/chat/completions",
+  "verdant_adapter_exercised": true,
+  "native_vendor_endpoints_exercised": false,
+  "credential_source": "Existing private OpenCode OpenRouter auth; mapped only in qualification process memory to a backend environment reference. No secret value retained.",
+  "worker_identity": "Actual Keycloak client-credentials token verified by Verdant and resolved to an admitted service principal. Local issuer uses explicit insecure-local fixture mode; provider transport is verified HTTPS.",
+  "database": "Isolated verdant_issue21_test, PostgreSQL17.6, schema0023_flows_truth",
+  "wire_guard": "Transparent HTTPX HTTPTransport subclass used through existing ModelAdapter transport seam; validates route/model/cap64 and prohibits a second HTTP request. Does not translate requests, responses, or route. Captures only redacted metadata/digests.",
+  "providers": {
+    "gemini": {
+      "receipt": {
+        "source_sha": "6703c8b6133f14c5bd9ffd7b645abcb78628c79e",
+        "namespace_id": "8ac1914e-1581-4af0-b05b-e1e387a4750f",
+        "profile_id": "b0da30e7-6742-4e52-9656-0d3d05596a72",
+        "request_key": "issue21-openrouter-gemini-4df0b696-2ecf-438e-8957-5a7832cf1564",
+        "exit_code": 0,
+        "qualification": {
+          "operation_id": "4771df3b-7b70-4951-b808-2803c912d043",
+          "receipt_id": "1e87781c-e6a0-4017-b43b-b3f1a9893163",
+          "profile_digest": "65e2ba9f593142ebb164f3444294d31a99f5ef6e882f1aea0a8abe7323a78b1c",
+          "provider": "gemini",
+          "transport": "openrouter",
+          "endpoint": "https://openrouter.ai/api/v1",
+          "requested_model": "google/gemini-3.1-flash-lite",
+          "identity_kind": "mutable_alias",
+          "resolved_model": "google/gemini-3.1-flash-lite",
+          "provider_reference": "gen-1793736310-beXHea9QJXdfgYaFpNYK",
+          "output_digest": "75a37ac19fa90ba97c7d3a7dce2dcca077cf56b4a18cbc6bb3f5a4b9e0b88ca5",
+          "input_tokens": 18,
+          "output_tokens": 2,
+          "cost": null,
+          "status": "succeeded"
+        },
+        "recovery": {
+          "operation_id": "4771df3b-7b70-4951-b808-2803c912d043",
+          "status": "succeeded",
+          "reused": true
+        }
+      },
+      "wire": {
+        "time_utc": "2026-11-03T20:05:10.161066+00:00",
+        "source_sha": "6703c8b6133f14c5bd9ffd7b645abcb78628c79e",
+        "provider": "gemini",
+        "model": "google/gemini-3.1-flash-lite",
+        "transport": "openrouter",
+        "http_requests": 1,
+        "max_output_tokens": 64,
+        "status": "succeeded",
+        "request_digest": "d19650ad538fdaac9e24039e236eaaa5ce9af5656086cee744101d49e267de65",
+        "request_keys": [
+          "max_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "top_p"
+        ],
+        "request_url": "https://openrouter.ai/api/v1/chat/completions",
+        "http_status": 200,
+        "response_bytes": 1041,
+        "response_digest": "80737266aca9752b3a9cf1e05c809a30ff9676fd498327f26d47bb4f02585861",
+        "provider_reference": "gen-1793736310-beXHea9QJXdfgYaFpNYK",
+        "resolved_model": "google/gemini-3.1-flash-lite",
+        "reported_usage": {
+          "prompt_tokens": 18,
+          "completion_tokens": 2,
+          "total_tokens": 20,
+          "cost": 7.5e-06,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 7.5e-06,
+            "upstream_inference_prompt_cost": 4.5e-06,
+            "upstream_inference_completions_cost": 3e-06
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        },
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "content_type": "str",
+            "content_chars": 3,
+            "synthetic_ok": false
+          }
+        ]
+      },
+      "database": {
+        "operation_id": "4771df3b-7b70-4951-b808-2803c912d043",
+        "operation_kind": "model_qualification",
+        "operation_status": "succeeded",
+        "epoch": 1,
+        "receipt_id": "1e87781c-e6a0-4017-b43b-b3f1a9893163",
+        "receipt_status": "succeeded",
+        "dispatch_id": "df927412-d175-4f42-8d15-0501eeb2a06c",
+        "result_digest": "30c47075b7b332b31a11b8c9fa17e2c203282c92c450a76b9d6b769df4f7f7cb",
+        "provider_reference": "gen-1793736310-beXHea9QJXdfgYaFpNYK"
+      }
+    },
+    "glm": {
+      "receipt": {
+        "source_sha": "6703c8b6133f14c5bd9ffd7b645abcb78628c79e",
+        "namespace_id": "8ac1914e-1581-4af0-b05b-e1e387a4750f",
+        "profile_id": "79beb7f2-7d8b-4cc5-8ec6-c13599ecabfd",
+        "request_key": "issue21-openrouter-glm-fb763c65-26b3-4d8c-b146-d1926e14af62",
+        "exit_code": 0,
+        "qualification": {
+          "operation_id": "a7f065e1-87c6-4b02-938d-504628b7888a",
+          "receipt_id": "665fdd70-1ee8-4cdc-b2f9-b6b0496f7311",
+          "profile_digest": "e42a182be4d764a66cbe3063e520208364c765f85808208f694f152c252f0884",
+          "provider": "glm",
+          "transport": "openrouter",
+          "endpoint": "https://openrouter.ai/api/v1",
+          "requested_model": "z-ai/glm-4.5-air",
+          "identity_kind": "mutable_alias",
+          "resolved_model": "z-ai/glm-4.5-air",
+          "provider_reference": "gen-1793736343-xUUt8L00PCSPymANH1WH",
+          "output_digest": "69b62862e424c427d991129bcfad9f2d8740e737efdee61b94eb443080162ce3",
+          "input_tokens": 29,
+          "output_tokens": 2,
+          "cost": null,
+          "status": "succeeded"
+        },
+        "recovery": {
+          "operation_id": "a7f065e1-87c6-4b02-938d-504628b7888a",
+          "status": "succeeded",
+          "reused": true
+        }
+      },
+      "wire": {
+        "time_utc": "2026-11-03T20:05:42.751485+00:00",
+        "source_sha": "6703c8b6133f14c5bd9ffd7b645abcb78628c79e",
+        "provider": "glm",
+        "model": "z-ai/glm-4.5-air",
+        "transport": "openrouter",
+        "http_requests": 1,
+        "max_output_tokens": 64,
+        "status": "succeeded",
+        "request_digest": "d9f649c0794601a001f4fea8863eb616638aa87ab2ee094b6498aa0d23dedd20",
+        "request_keys": [
+          "max_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "top_p"
+        ],
+        "request_url": "https://openrouter.ai/api/v1/chat/completions",
+        "http_status": 200,
+        "response_bytes": 813,
+        "response_digest": "2ebf85cfd9222321deda757fccce8f4fcf08c24fc623c3c4e9ec75099eea7d0c",
+        "provider_reference": "gen-1793736343-xUUt8L00PCSPymANH1WH",
+        "resolved_model": "z-ai/glm-4.5-air",
+        "reported_usage": {
+          "prompt_tokens": 29,
+          "completion_tokens": 2,
+          "total_tokens": 31,
+          "cost": 5.05e-06,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 4,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 5.05e-06,
+            "upstream_inference_prompt_cost": 3.35e-06,
+            "upstream_inference_completions_cost": 1.7e-06
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        },
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "content_type": "str",
+            "content_chars": 2,
+            "synthetic_ok": true
+          }
+        ]
+      },
+      "database": {
+        "operation_id": "a7f065e1-87c6-4b02-938d-504628b7888a",
+        "operation_kind": "model_qualification",
+        "operation_status": "succeeded",
+        "epoch": 1,
+        "receipt_id": "665fdd70-1ee8-4cdc-b2f9-b6b0496f7311",
+        "receipt_status": "succeeded",
+        "dispatch_id": "fb893229-1e76-40b8-a03f-1353d0a6d524",
+        "result_digest": "1b8771e126b2245e573dd7d03493c88462b85a1ddcda365396507ce9f7500330",
+        "provider_reference": "gen-1793736343-xUUt8L00PCSPymANH1WH"
+      }
+    }
+  }
+}

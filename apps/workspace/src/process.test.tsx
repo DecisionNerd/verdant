@@ -12,7 +12,9 @@ const detail = { operation: { id: "run1", status: "paused", epoch: 1 }, flow, in
 function setup(options: { writable?: boolean; detail?: typeof detail; startFails?: boolean } = {}) {
   if (options.detail) history.replaceState(null, "", "/?process=run1");
   const starts: any[] = [];
+  const profiles: any[] = [];
   vi.mocked(request).mockImplementation(async (path, _csrf, body) => {
+    if (path.endsWith("/model-profiles") && body) { profiles.push(body); return { ...body, revision: 1 }; }
     if (path.endsWith("/process-runs") && body) { starts.push(body); if (options.startFails && starts.length === 1) throw new ApiError(503, "Response lost"); return { id: "run1", status: "queued", epoch: 1 }; }
     if (path.includes("/process-runs/run1?")) return options.detail ?? detail;
     if (path.includes("/process-flows?")) return { items: [flow], next_after: null };
@@ -22,7 +24,7 @@ function setup(options: { writable?: boolean; detail?: typeof detail; startFails
     return { items: [], next_after: null };
   });
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ProcessWorkspace namespace="ns" dataset="dataset" csrf="csrf" writable={options.writable ?? true} /></QueryClientProvider>);
-  return { starts };
+  return { starts, profiles };
 }
 
 it("preserves a failed admission request identity for recovery", async () => {
@@ -60,4 +62,20 @@ it("keeps model and flow editing unavailable to readers", async () => {
   expect(screen.queryByRole("button", { name: "Save profile version" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Save flow version" })).toBeNull();
   expect((screen.getByRole("button", { name: "Start pinned run" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+
+it("saves an explicit OpenRouter route with mutable identity and only a credential reference", async () => {
+  const { profiles } = setup();
+  fireEvent.click(screen.getByText("Model profiles", { selector: "summary" }));
+  fireEvent.change(screen.getByLabelText("Transport"), { target: { value: "openrouter" } });
+  expect((screen.getByLabelText("Reproducibility") as HTMLSelectElement).value).toBe("mutable_alias");
+  expect((screen.getByRole("option", { name: "Exact identifier" }) as HTMLOptionElement).disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText("Model identifier"), { target: { value: "google/gemini-3.1-flash-lite" } });
+  fireEvent.change(screen.getByLabelText("Operator credential reference"), { target: { value: "VERDANT_MODEL_SECRET_ROUTER" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save profile version" }));
+  await screen.findByText(/revision 1 saved/);
+  expect(profiles).toHaveLength(1);
+  expect(profiles[0]).toMatchObject({ provider: "gemini", transport: "openrouter", model: "google/gemini-3.1-flash-lite", identity_kind: "mutable_alias", credential_ref: "VERDANT_MODEL_SECRET_ROUTER" });
+  expect((screen.getByLabelText("Operator credential reference") as HTMLInputElement).value).toBe("");
 });

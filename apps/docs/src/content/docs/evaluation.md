@@ -33,5 +33,7 @@ MLflow experiment/model authority, optional Evidently qualification and drift
 comparisons remain later work. Capability discovery reports experiments as
 `not_implemented`; this delivery does not fabricate experiment outcomes.
 [Testing and exact proof limits](https://github.com/DecisionNerd/verdant/blob/main/docs/engineering/TESTING.md)
-separate real browser/provider execution from protocol fixtures and pending live
-Gemini/GLM authorization.
+separate real browser/provider execution from protocol fixtures.
+[Gemini/GLM receipts](https://github.com/DecisionNerd/verdant/blob/main/docs/proofs/issue-21/README.md)
+qualify the explicit OpenRouter adapter route; native vendor endpoints remain
+fixture-tested. All routed model identities remain mutable.

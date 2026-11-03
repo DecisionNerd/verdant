@@ -3780,6 +3780,8 @@
             "type": "string"
           },
           "model": {
+            "maxLength": 150,
+            "minLength": 1,
             "title": "Model",
             "type": "string"
           },
@@ -3801,18 +3803,25 @@
           },
           "settings": {
             "$ref": "#/components/schemas/ModelSettings"
+          },
+          "transport": {
+            "default": "native",
+            "enum": [
+              "native",
+              "openrouter"
+            ],
+            "title": "Transport",
+            "type": "string"
           }
         },
         "required": [
+          "provider",
+          "model",
+          "identity_kind",
           "id",
           "name",
           "revision",
-          "provider",
           "endpoint",
-          "model",
-          "identity_kind",
-          "settings",
-          "capabilities",
           "config_digest"
         ],
         "title": "Profile",
@@ -3854,7 +3863,6 @@
           "model": {
             "maxLength": 150,
             "minLength": 1,
-            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]*$",
             "title": "Model",
             "type": "string"
           },
@@ -3875,13 +3883,22 @@
           },
           "settings": {
             "$ref": "#/components/schemas/ModelSettings"
+          },
+          "transport": {
+            "default": "native",
+            "enum": [
+              "native",
+              "openrouter"
+            ],
+            "title": "Transport",
+            "type": "string"
           }
         },
         "required": [
-          "name",
           "provider",
           "model",
           "identity_kind",
+          "name",
           "credential_ref"
         ],
         "title": "ProfileCreate",

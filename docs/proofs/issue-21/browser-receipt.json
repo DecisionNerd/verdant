@@ -1,0 +1,539 @@
+{
+  "scenario": "real SSO + native Prefect process + actual DataChain + OpenRouter profile versioning",
+  "run": {
+    "id": "5c25802d-fb13-442f-8feb-e8199785ef9f",
+    "namespace_id": "688bbca7-0826-4c85-8f10-a0e6f4487478",
+    "creator_id": "38dd3382-937b-42cf-bc7b-e76a085cde5d",
+    "kind": "process_flow",
+    "status": "queued",
+    "epoch": 1,
+    "revision": 0,
+    "created_at": "2026-11-03T20:06:55.207142Z"
+  },
+  "detail": {
+    "operation": {
+      "id": "5c25802d-fb13-442f-8feb-e8199785ef9f",
+      "namespace_id": "688bbca7-0826-4c85-8f10-a0e6f4487478",
+      "creator_id": "38dd3382-937b-42cf-bc7b-e76a085cde5d",
+      "kind": "process_flow",
+      "status": "succeeded",
+      "epoch": 2,
+      "revision": 24,
+      "created_at": "2026-11-03T20:06:55.207142Z"
+    },
+    "flow": {
+      "id": "61b4314c-ffc9-4a60-8298-fece3c1ab869",
+      "namespace_id": "688bbca7-0826-4c85-8f10-a0e6f4487478",
+      "dataset_id": "957ec983-aebb-4859-975c-fa83a46a679f",
+      "name": "Text processing",
+      "revision": 1,
+      "definition": {
+        "schema": "verdant.process.v1",
+        "steps": [
+          {
+            "name": "Clean text",
+            "kind": "preprocess",
+            "transform": "strip",
+            "prompt": "",
+            "output_contract": "text",
+            "profile_id": null,
+            "profile_digest": null
+          },
+          {
+            "name": "Step 2",
+            "kind": "preprocess",
+            "transform": "lowercase",
+            "prompt": "",
+            "output_contract": "text",
+            "profile_id": null,
+            "profile_digest": null
+          }
+        ]
+      },
+      "config_digest": "929155c925c66df2afdf1268aee59337cd525356837c0ebab27ea6ae1a27a9ad",
+      "created_at": "2026-11-03T20:06:55.065437Z"
+    },
+    "input": {
+      "dataset_id": "957ec983-aebb-4859-975c-fa83a46a679f",
+      "candidate_id": "a3023852-81d4-4f52-a146-48b7e15f1983",
+      "version_id": null,
+      "generation_id": "26dedb8c-3178-47b0-b1bb-a3856229b4b6",
+      "member_count": 3,
+      "completed_count": 3,
+      "trial_of": null
+    },
+    "needs_reconciliation": false,
+    "attempts": [
+      {
+        "epoch": 2,
+        "status": "succeeded",
+        "error_code": null,
+        "provider_run_id": "15edc27f-01d5-44b4-9c84-6d245f1cd37c",
+        "invocation_key": "verdant:688bbca7-0826-4c85-8f10-a0e6f4487478:5c25802d-fb13-442f-8feb-e8199785ef9f:2"
+      },
+      {
+        "epoch": 1,
+        "status": "paused",
+        "error_code": null,
+        "provider_run_id": null,
+        "invocation_key": null
+      }
+    ],
+    "outputs": [
+      {
+        "sample_id": "3cd1fb1b-90dd-4fa6-8199-b2f0393f82ce",
+        "sample_revision_id": "bb7482b1-5ecb-4283-bfbe-ebcb114066ca",
+        "step_position": 0,
+        "receipt_id": "1986249b-4662-42d6-b5e4-46952ebe9b13",
+        "accepted_epoch": 2,
+        "input_digest": "6eabc1d4c779337954c7f8c95dc0bab26cdb0b42d0a3f33f161cb87737c493c0",
+        "output_digest": "ac8e244493d70940307e52a175f206188f52d4d9a63623a4c5dd55b38a926cdf",
+        "profile_id": null,
+        "profile_digest": null,
+        "result": {
+          "text": "Safe process text 2",
+          "provider_reference": null,
+          "resolved_model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cost": null
+        }
+      },
+      {
+        "sample_id": "3cd1fb1b-90dd-4fa6-8199-b2f0393f82ce",
+        "sample_revision_id": "bb7482b1-5ecb-4283-bfbe-ebcb114066ca",
+        "step_position": 1,
+        "receipt_id": "e6937639-5713-466a-b48e-7381ad165974",
+        "accepted_epoch": 2,
+        "input_digest": "ba9da36324c026e8b854219d0c801c6b518e9a2d8ebfe3de5f4ff973721dc6a3",
+        "output_digest": "79a7231f6fc76d00cbff15873441cd63e9de4dd0b9a9ed3c09e7fe5b0b1a732a",
+        "profile_id": null,
+        "profile_digest": null,
+        "result": {
+          "text": "safe process text 2",
+          "provider_reference": null,
+          "resolved_model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cost": null
+        }
+      },
+      {
+        "sample_id": "7adbdbc6-7009-40bd-bf29-fa65f9914858",
+        "sample_revision_id": "babeed74-1c9e-478f-b0ad-998e9d7a2fca",
+        "step_position": 0,
+        "receipt_id": "1d5db7a9-4c97-4881-879c-d3bdfead7b5e",
+        "accepted_epoch": 2,
+        "input_digest": "4e2fbe627f67796a4db8904f2dc2bfde480df2065e6abb62561153f5793c2a3c",
+        "output_digest": "9294a2a781eac9093f34acbc36a697d75b1b409d2ad8615aaecf0994c22ca51b",
+        "profile_id": null,
+        "profile_digest": null,
+        "result": {
+          "text": "Safe process text 0",
+          "provider_reference": null,
+          "resolved_model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cost": null
+        }
+      },
+      {
+        "sample_id": "7adbdbc6-7009-40bd-bf29-fa65f9914858",
+        "sample_revision_id": "babeed74-1c9e-478f-b0ad-998e9d7a2fca",
+        "step_position": 1,
+        "receipt_id": "722600f1-5449-42a5-9e0c-ed1e0dc35c0e",
+        "accepted_epoch": 2,
+        "input_digest": "21537113ab87bd5734bd91aa16146cf32639af1011a39f522a61e0c859a2dd7c",
+        "output_digest": "b3c264b25c2a462f7676f34c4752004ab43a47129efc7ae5abb7257784b4de51",
+        "profile_id": null,
+        "profile_digest": null,
+        "result": {
+          "text": "safe process text 0",
+          "provider_reference": null,
+          "resolved_model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cost": null
+        }
+      },
+      {
+        "sample_id": "cb26aa3a-c628-47c9-bfc6-f638050fbccf",
+        "sample_revision_id": "dd732ad2-dfbe-41ee-a336-403cce1e900a",
+        "step_position": 0,
+        "receipt_id": "c6f9bc1c-02cc-454b-93ee-2f9635c061d9",
+        "accepted_epoch": 2,
+        "input_digest": "9be7a559e8e8e31e9630d08f2b49eaf5b8a9f240e438497a40a71a2e882541c9",
+        "output_digest": "8981baef6e90d490c693054156b1d08d2b2d112f70b8e7e56fae70a2ef6a481a",
+        "profile_id": null,
+        "profile_digest": null,
+        "result": {
+          "text": "Safe process text 1",
+          "provider_reference": null,
+          "resolved_model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cost": null
+        }
+      },
+      {
+        "sample_id": "cb26aa3a-c628-47c9-bfc6-f638050fbccf",
+        "sample_revision_id": "dd732ad2-dfbe-41ee-a336-403cce1e900a",
+        "step_position": 1,
+        "receipt_id": "ff501d62-4a7f-4c94-8a0c-b224c303d1d8",
+        "accepted_epoch": 2,
+        "input_digest": "115727d40a6bab573e90f5af39d1719d9d23b42be7764b41fdcd56fa5da29abd",
+        "output_digest": "c8f3fbd09b73027da2953e01d0db2ad989f5c044f2d2b1f625b290180218f7b2",
+        "profile_id": null,
+        "profile_digest": null,
+        "result": {
+          "text": "safe process text 1",
+          "provider_reference": null,
+          "resolved_model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "cost": null
+        }
+      }
+    ],
+    "next_after": null
+  },
+  "native_run": {
+    "id": "15edc27f-01d5-44b4-9c84-6d245f1cd37c",
+    "created": "2026-11-03T20:07:12.096127Z",
+    "updated": "2026-11-03T20:07:17.144000Z",
+    "name": "brainy-quetzal",
+    "flow_id": "272bd1ec-beb8-4a0e-a630-0e5b36b8caef",
+    "state_id": "01a1a305-ed91-738a-a2f2-9e76f6dd4e48",
+    "deployment_id": "ffd8b5dd-f1d5-43e3-8da5-0604bc60232a",
+    "deployment_version": "6703c8b6",
+    "work_queue_id": "0a27f250-657f-4765-b41d-eb29f3e0eeb1",
+    "work_queue_name": "default",
+    "flow_version": "63813e665283b8e5a7b43e54f6cd10a2",
+    "parameters": {
+      "namespace_id": "688bbca7-0826-4c85-8f10-a0e6f4487478",
+      "operation_id": "5c25802d-fb13-442f-8feb-e8199785ef9f",
+      "epoch": 2
+    },
+    "idempotency_key": "verdant:688bbca7-0826-4c85-8f10-a0e6f4487478:5c25802d-fb13-442f-8feb-e8199785ef9f:2",
+    "context": {},
+    "empirical_policy": {
+      "max_retries": 0,
+      "retry_delay_seconds": 0,
+      "retries": 0,
+      "retry_delay": 0,
+      "pause_keys": [],
+      "resuming": false,
+      "retry_type": null
+    },
+    "tags": [],
+    "labels": {
+      "prefect.flow.id": "272bd1ec-beb8-4a0e-a630-0e5b36b8caef",
+      "prefect.deployment.id": "ffd8b5dd-f1d5-43e3-8da5-0604bc60232a",
+      "prefect.worker.name": "ProcessWorker 247ce250-1f6f-4810-b6c5-dfea28d3fc5a",
+      "prefect.worker.type": "process",
+      "prefect.work-pool.name": "verdant-process-e2e",
+      "prefect.work-pool.id": "6f48753d-828e-4ed0-bf32-d3fbb05b1fab"
+    },
+    "parent_task_run_id": null,
+    "state_type": "COMPLETED",
+    "state_name": "Completed",
+    "run_count": 1,
+    "expected_start_time": "2026-11-03T20:07:12.064638Z",
+    "next_scheduled_start_time": null,
+    "start_time": "2026-11-03T20:07:16.014080Z",
+    "end_time": "2026-11-03T20:07:17.137992Z",
+    "total_run_time": 1.123912,
+    "estimated_run_time": 1.123912,
+    "estimated_start_time_delta": 3.949442,
+    "auto_scheduled": false,
+    "infrastructure_document_id": null,
+    "infrastructure_pid": "54753",
+    "created_by": null,
+    "work_pool_id": "6f48753d-828e-4ed0-bf32-d3fbb05b1fab",
+    "work_pool_name": "verdant-process-e2e",
+    "state": {
+      "id": "01a1a305-ed91-738a-a2f2-9e76f6dd4e48",
+      "type": "COMPLETED",
+      "name": "Completed",
+      "timestamp": "2026-11-03T20:07:17.137992Z",
+      "message": null,
+      "data": null,
+      "state_details": {
+        "flow_run_id": "15edc27f-01d5-44b4-9c84-6d245f1cd37c",
+        "task_run_id": null,
+        "child_flow_run_id": null,
+        "scheduled_time": null,
+        "cache_key": null,
+        "cache_expiration": null,
+        "deferred": null,
+        "untrackable_result": true,
+        "pause_timeout": null,
+        "pause_reschedule": false,
+        "pause_key": null,
+        "run_input_keyset": null,
+        "refresh_cache": null,
+        "retriable": null,
+        "transition_id": "27c8ff82-0860-4d55-aae6-983bb81f5f08",
+        "task_parameters_id": null,
+        "traceparent": null,
+        "deployment_concurrency_lease_id": null
+      }
+    },
+    "job_variables": null
+  },
+  "profile_versions": [
+    {
+      "provider": "gemini",
+      "transport": "native",
+      "model": "gemini-2.0-flash-001",
+      "identity_kind": "exact",
+      "settings": {
+        "temperature": 0,
+        "top_p": 1,
+        "max_output_tokens": 256
+      },
+      "capabilities": [
+        "text"
+      ],
+      "id": "2c422ce6-d502-4660-8447-79a236a1554c",
+      "name": "Comparison",
+      "revision": 1,
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta",
+      "config_digest": "2d22f15e3c123f57d06d7fa90e9892ea124feda2ab77bab2cae1cef01ff98086",
+      "credential_status": "worker_unverified"
+    },
+    {
+      "provider": "glm",
+      "transport": "native",
+      "model": "glm-4",
+      "identity_kind": "mutable_alias",
+      "settings": {
+        "temperature": 0,
+        "top_p": 1,
+        "max_output_tokens": 256
+      },
+      "capabilities": [
+        "text"
+      ],
+      "id": "f45945bb-88a6-4941-aa5d-42693fb80780",
+      "name": "Comparison",
+      "revision": 2,
+      "endpoint": "https://open.bigmodel.cn/api/paas/v4",
+      "config_digest": "f868362e953dd57160db560ef813210ea1f633f1e080aa4ebae68b688f92ed30",
+      "credential_status": "worker_unverified"
+    },
+    {
+      "provider": "gemini",
+      "transport": "openrouter",
+      "model": "google/gemini-3.1-flash-lite",
+      "identity_kind": "mutable_alias",
+      "settings": {
+        "temperature": 0,
+        "top_p": 1,
+        "max_output_tokens": 256
+      },
+      "capabilities": [
+        "text"
+      ],
+      "id": "688a530c-16e5-4565-8d48-7408e9d8ea9f",
+      "name": "Comparison",
+      "revision": 3,
+      "endpoint": "https://openrouter.ai/api/v1",
+      "config_digest": "501f668ec7d4b118f9eb80da6e5cdc06899f511f50df258c2b67ee9139df3102",
+      "credential_status": "worker_unverified"
+    },
+    {
+      "provider": "glm",
+      "transport": "openrouter",
+      "model": "z-ai/glm-4.5-air",
+      "identity_kind": "mutable_alias",
+      "settings": {
+        "temperature": 0,
+        "top_p": 1,
+        "max_output_tokens": 256
+      },
+      "capabilities": [
+        "text"
+      ],
+      "id": "04e1577a-b2d6-4bef-84d3-004f3ea03999",
+      "name": "Comparison",
+      "revision": 4,
+      "endpoint": "https://openrouter.ai/api/v1",
+      "config_digest": "25144118287f95722ad08de02cfaa87b125e4c76e970a34622641d85f50aa4e4",
+      "credential_status": "worker_unverified"
+    }
+  ],
+  "flow_versions": [
+    {
+      "id": "61b4314c-ffc9-4a60-8298-fece3c1ab869",
+      "namespace_id": "688bbca7-0826-4c85-8f10-a0e6f4487478",
+      "dataset_id": "957ec983-aebb-4859-975c-fa83a46a679f",
+      "name": "Text processing",
+      "revision": 1,
+      "definition": {
+        "schema": "verdant.process.v1",
+        "steps": [
+          {
+            "name": "Clean text",
+            "kind": "preprocess",
+            "transform": "strip",
+            "prompt": "",
+            "output_contract": "text",
+            "profile_id": null,
+            "profile_digest": null
+          },
+          {
+            "name": "Step 2",
+            "kind": "preprocess",
+            "transform": "lowercase",
+            "prompt": "",
+            "output_contract": "text",
+            "profile_id": null,
+            "profile_digest": null
+          }
+        ]
+      },
+      "config_digest": "929155c925c66df2afdf1268aee59337cd525356837c0ebab27ea6ae1a27a9ad",
+      "created_at": "2026-11-03T20:06:55.065437Z"
+    },
+    {
+      "id": "bb6d04e9-6d7b-49cf-a9f2-e509cd347614",
+      "namespace_id": "688bbca7-0826-4c85-8f10-a0e6f4487478",
+      "dataset_id": "957ec983-aebb-4859-975c-fa83a46a679f",
+      "name": "Text processing",
+      "revision": 2,
+      "definition": {
+        "schema": "verdant.process.v1",
+        "steps": [
+          {
+            "name": "Clean text",
+            "kind": "preprocess",
+            "transform": "strip",
+            "prompt": "",
+            "output_contract": "text",
+            "profile_id": null,
+            "profile_digest": null
+          },
+          {
+            "name": "Step 2",
+            "kind": "model",
+            "transform": "identity",
+            "prompt": "Describe the text.",
+            "output_contract": "text",
+            "profile_id": "2c422ce6-d502-4660-8447-79a236a1554c",
+            "profile_digest": "2d22f15e3c123f57d06d7fa90e9892ea124feda2ab77bab2cae1cef01ff98086"
+          }
+        ]
+      },
+      "config_digest": "81ffbd30a020ada4cb7a5d81d35e580c9c5b38ff74a257d73eb050a2606ae6e9",
+      "created_at": "2026-11-03T20:07:19.203127Z"
+    },
+    {
+      "id": "ee0d2657-e7c4-4a6a-abe1-36d669d48ff4",
+      "namespace_id": "688bbca7-0826-4c85-8f10-a0e6f4487478",
+      "dataset_id": "957ec983-aebb-4859-975c-fa83a46a679f",
+      "name": "Text processing",
+      "revision": 3,
+      "definition": {
+        "schema": "verdant.process.v1",
+        "steps": [
+          {
+            "name": "Clean text",
+            "kind": "preprocess",
+            "transform": "strip",
+            "prompt": "",
+            "output_contract": "text",
+            "profile_id": null,
+            "profile_digest": null
+          },
+          {
+            "name": "Step 2",
+            "kind": "model",
+            "transform": "identity",
+            "prompt": "Describe the text.",
+            "output_contract": "text",
+            "profile_id": "f45945bb-88a6-4941-aa5d-42693fb80780",
+            "profile_digest": "f868362e953dd57160db560ef813210ea1f633f1e080aa4ebae68b688f92ed30"
+          }
+        ]
+      },
+      "config_digest": "97ea13dc9eab0818152b0265469eef6c0626518bf68ce4161ef63fd69229339d",
+      "created_at": "2026-11-03T20:07:19.351492Z"
+    },
+    {
+      "id": "c120a5f0-e72a-4a68-bbba-05394096b918",
+      "namespace_id": "688bbca7-0826-4c85-8f10-a0e6f4487478",
+      "dataset_id": "957ec983-aebb-4859-975c-fa83a46a679f",
+      "name": "Text processing",
+      "revision": 4,
+      "definition": {
+        "schema": "verdant.process.v1",
+        "steps": [
+          {
+            "name": "Clean text",
+            "kind": "preprocess",
+            "transform": "strip",
+            "prompt": "",
+            "output_contract": "text",
+            "profile_id": null,
+            "profile_digest": null
+          },
+          {
+            "name": "Step 2",
+            "kind": "model",
+            "transform": "identity",
+            "prompt": "Describe the text.",
+            "output_contract": "text",
+            "profile_id": "688a530c-16e5-4565-8d48-7408e9d8ea9f",
+            "profile_digest": "501f668ec7d4b118f9eb80da6e5cdc06899f511f50df258c2b67ee9139df3102"
+          }
+        ]
+      },
+      "config_digest": "dc3e2633a3a325f4961fdafec275404d2cf77a86af1d01df788b426563ecab73",
+      "created_at": "2026-11-03T20:07:19.466934Z"
+    },
+    {
+      "id": "06d7a410-881f-4474-8bfd-04b47087c1a1",
+      "namespace_id": "688bbca7-0826-4c85-8f10-a0e6f4487478",
+      "dataset_id": "957ec983-aebb-4859-975c-fa83a46a679f",
+      "name": "Text processing",
+      "revision": 5,
+      "definition": {
+        "schema": "verdant.process.v1",
+        "steps": [
+          {
+            "name": "Clean text",
+            "kind": "preprocess",
+            "transform": "strip",
+            "prompt": "",
+            "output_contract": "text",
+            "profile_id": null,
+            "profile_digest": null
+          },
+          {
+            "name": "Step 2",
+            "kind": "model",
+            "transform": "identity",
+            "prompt": "Describe the text.",
+            "output_contract": "text",
+            "profile_id": "04e1577a-b2d6-4bef-84d3-004f3ea03999",
+            "profile_digest": "25144118287f95722ad08de02cfaa87b125e4c76e970a34622641d85f50aa4e4"
+          }
+        ]
+      },
+      "config_digest": "e1ec1327736d36b779b71ee0122bfeba807ecfecd6b5d738a945556a97d1a04a",
+      "created_at": "2026-11-03T20:07:19.567071Z"
+    }
+  ],
+  "disabled_provider_run": {
+    "id": "8985bb9e-61a0-4158-a4ea-70bd10a03605",
+    "namespace_id": "688bbca7-0826-4c85-8f10-a0e6f4487478",
+    "creator_id": "38dd3382-937b-42cf-bc7b-e76a085cde5d",
+    "kind": "process_flow",
+    "status": "queued",
+    "epoch": 1,
+    "revision": 0,
+    "created_at": "2026-11-03T20:07:19.685318Z"
+  },
+  "paid_calls": 0
+}

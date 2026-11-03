@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import time
 from typing import Literal
 from uuid import UUID
@@ -22,6 +23,11 @@ ORIGINS = {
     "gemini": "https://generativelanguage.googleapis.com/v1beta",
     "glm": "https://open.bigmodel.cn/api/paas/v4",
 }
+OPENROUTER_ORIGIN = "https://openrouter.ai/api/v1"
+
+
+def profile_endpoint(provider, transport="native"):
+    return OPENROUTER_ORIGIN if transport == "openrouter" else ORIGINS[provider]
 
 
 def config_digest(value):
@@ -38,13 +44,11 @@ class ModelSettings(Contract):
     max_output_tokens: int = Field(default=256, ge=1, le=4096, strict=True)
 
 
-class ProfileCreate(Contract):
-    name: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9 _.-]*$")
-    expected_revision: int = Field(default=0, ge=0, strict=True)
+class ModelConfiguration(Contract):
     provider: Literal["gemini", "glm"]
-    model: str = Field(min_length=1, max_length=150, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
+    transport: Literal["native", "openrouter"] = "native"
+    model: str = Field(min_length=1, max_length=150)
     identity_kind: Literal["exact", "mutable_alias"]
-    credential_ref: str = Field(pattern=r"^VERDANT_MODEL_SECRET_[A-Z0-9_]{1,80}$")
     settings: ModelSettings = Field(default_factory=ModelSettings)
     capabilities: list[Literal["text", "json"]] = Field(default_factory=lambda: ["text"])
 
@@ -52,19 +56,28 @@ class ProfileCreate(Contract):
     def supported(self):
         if "text" not in self.capabilities or len(set(self.capabilities)) != len(self.capabilities):
             raise ValueError("Text capability is required; duplicate capabilities are invalid")
+        identifier = r"[a-zA-Z0-9][a-zA-Z0-9_.-]*"
+        if self.transport == "openrouter":
+            family = "google" if self.provider == "gemini" else "z-ai"
+            identifier = family + "/" + identifier
+            if self.identity_kind != "mutable_alias":
+                raise ValueError("OpenRouter model identifiers must disclose mutable routing")
+        if re.fullmatch(identifier, self.model) is None:
+            raise ValueError("Model identifier does not match the provider and transport")
         return self
 
 
-class Profile(Contract):
+class ProfileCreate(ModelConfiguration):
+    name: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9 _.-]*$")
+    expected_revision: int = Field(default=0, ge=0, strict=True)
+    credential_ref: str = Field(pattern=r"^VERDANT_MODEL_SECRET_[A-Z0-9_]{1,80}$")
+
+
+class Profile(ModelConfiguration):
     id: UUID
     name: str
     revision: int
-    provider: Literal["gemini", "glm"]
     endpoint: str
-    model: str
-    identity_kind: Literal["exact", "mutable_alias"]
-    settings: ModelSettings
-    capabilities: list[Literal["text", "json"]]
     config_digest: Digest
     credential_status: Literal["worker_unverified"] = "worker_unverified"
 
@@ -109,7 +122,9 @@ class ModelProfileService:
             id=row.id,
             name=row.name,
             revision=row.revision,
-            endpoint=ORIGINS[definition["provider"]],
+            endpoint=profile_endpoint(
+                definition["provider"], definition.get("transport", "native")
+            ),
             config_digest=row.config_digest,
             credential_status="worker_unverified",
             **definition,
@@ -148,7 +163,7 @@ class ModelProfileService:
                     definition
                     | {
                         "credential_ref": command.credential_ref,
-                        "endpoint": ORIGINS[command.provider],
+                        "endpoint": profile_endpoint(command.provider, command.transport),
                     }
                 ),
                 creator_id=actor.id,
@@ -212,6 +227,7 @@ class ModelAdapter:
         output_contract: str,
         deadline: float | None = None,
     ) -> ModelResult:
+        profile = Profile.model_validate(profile.model_dump())
         if output_contract not in profile.capabilities:
             raise ModelCallError("unsupported_capability")
         secret = os.environ.get(credential_ref)
@@ -220,7 +236,8 @@ class ModelAdapter:
         deadline = min(deadline or float("inf"), time.monotonic() + 30)
         value = ModelInput.model_validate(value.model_dump())
         settings = profile.settings
-        if profile.provider == "gemini":
+        native_gemini = profile.provider == "gemini" and profile.transport == "native"
+        if native_gemini:
             url = f"{ORIGINS['gemini']}/models/{profile.model}:generateContent"
             headers = {"x-goog-api-key": secret, "Accept-Encoding": "identity"}
             body = {
@@ -235,7 +252,7 @@ class ModelAdapter:
             if output_contract == "json":
                 body["generationConfig"]["responseMimeType"] = "application/json"
         else:
-            url = ORIGINS["glm"] + "/chat/completions"
+            url = profile_endpoint(profile.provider, profile.transport) + "/chat/completions"
             headers = {"Authorization": "Bearer " + secret, "Accept-Encoding": "identity"}
             body = {
                 "model": profile.model,
@@ -250,6 +267,9 @@ class ModelAdapter:
             }
             if output_contract == "json":
                 body["response_format"] = {"type": "json_object"}
+            if profile.transport == "openrouter":
+                body["reasoning"] = {"enabled": False}
+                body["provider"] = {"require_parameters": True, "allow_fallbacks": False}
         with httpx.Client(
             timeout=httpx.Timeout(5, connect=5),
             trust_env=False,
@@ -292,7 +312,7 @@ class ModelAdapter:
                                 raise ModelCallError("provider_response_too_large", uncertain=True)
                             chunks.append(chunk)
                         raw = json.loads(b"".join(chunks))
-                    if profile.provider == "gemini":
+                    if native_gemini:
                         candidate = raw["candidates"][0]
                         if candidate.get("finishReason") != "STOP":
                             raise ModelCallError("provider_output_incomplete", uncertain=True)
@@ -321,8 +341,13 @@ class ModelAdapter:
                         if choice.get("finish_reason") != "stop":
                             raise ModelCallError("provider_output_incomplete", uncertain=True)
                         usage = raw.get("usage") or {}
+                        message = choice["message"]
+                        if message.get("tool_calls") or message.get("function_call"):
+                            raise ModelCallError("provider_output_unsupported", uncertain=True)
+                        if not message.get("content"):
+                            raise ModelCallError("provider_output_missing", uncertain=True)
                         result = ModelResult(
-                            text=choice["message"]["content"],
+                            text=message["content"],
                             provider_reference=raw.get("id"),
                             resolved_model=raw.get("model"),
                             input_tokens=usage.get("prompt_tokens"),

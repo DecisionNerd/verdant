@@ -115,6 +115,18 @@ test("SSO flow versioning, profile switching, native Prefect/DataChain run, dura
     await region.getByLabel("Operator credential reference").fill("VERDANT_MODEL_SECRET_FIXTURE");
     const glm = await response(page, "/model-profiles", () => region.getByRole("button", { name: "Save profile version" }).click());
     expect(glm.revision).toBe(2); expect(glm.identity_kind).toBe("mutable_alias");
+    await region.getByRole("combobox", { name: "Transport", exact: true }).selectOption("openrouter");
+    await region.getByRole("combobox", { name: "Provider", exact: true }).selectOption("gemini");
+    await region.getByLabel("Model identifier", { exact: true }).fill("google/gemini-3.1-flash-lite");
+    await region.getByLabel("Operator credential reference").fill("VERDANT_MODEL_SECRET_FIXTURE");
+    const routedGemini = await response(page, "/model-profiles", () => region.getByRole("button", { name: "Save profile version" }).click());
+    expect(routedGemini.revision).toBe(3); expect(routedGemini.transport).toBe("openrouter");
+    expect(routedGemini.identity_kind).toBe("mutable_alias"); expect(routedGemini.endpoint).toBe("https://openrouter.ai/api/v1");
+    await region.getByRole("combobox", { name: "Provider", exact: true }).selectOption("glm");
+    await region.getByLabel("Model identifier", { exact: true }).fill("z-ai/glm-4.5-air");
+    await region.getByLabel("Operator credential reference").fill("VERDANT_MODEL_SECRET_FIXTURE");
+    const routedGlm = await response(page, "/model-profiles", () => region.getByRole("button", { name: "Save profile version" }).click());
+    expect(routedGlm.revision).toBe(4); expect(routedGlm.transport).toBe("openrouter");
     await region.getByLabel("Saved flow version").selectOption(flow1.id);
     await region.getByRole("button", { name: "Load selected flow for versioning" }).click();
     await region.getByLabel("Step type").nth(1).selectOption("model");
@@ -125,6 +137,15 @@ test("SSO flow versioning, profile switching, native Prefect/DataChain run, dura
     expect(flow2.definition.steps[1].profile_digest).toBe(gemini.config_digest);
     expect(flow3.definition.steps[1].profile_digest).toBe(glm.config_digest);
     expect(flow2.config_digest).not.toBe(flow3.config_digest);
+    await region.getByLabel("Step model profile").selectOption(routedGemini.id);
+    const flow4 = await response(page, "/process-flows", () => region.getByRole("button", { name: "Save flow version", exact: true }).click());
+    await region.getByLabel("Step model profile").selectOption(routedGlm.id);
+    const flow5 = await response(page, "/process-flows", () => region.getByRole("button", { name: "Save flow version", exact: true }).click());
+    expect(flow4.definition.steps[1].profile_digest).toBe(routedGemini.config_digest);
+    expect(flow5.definition.steps[1].profile_digest).toBe(routedGlm.config_digest);
+    await region.getByRole("button", { name: "Version Comparison r3", exact: true }).click();
+    await expect(region.getByRole("combobox", { name: "Transport", exact: true })).toHaveValue("openrouter");
+    await expect(region.getByLabel("Model identifier", { exact: true })).toHaveValue(routedGemini.model);
     expect(detail.flow.id).toBe(flow1.id); // Original run retains original flow after switching.
     await region.getByLabel("Pinned input").selectOption(fixture.candidate_id);
     const disabled = await response(page, "/process-runs", () => region.getByRole("button", { name: "Start pinned run", exact: true }).click());
@@ -136,7 +157,7 @@ test("SSO flow versioning, profile switching, native Prefect/DataChain run, dura
     await response(page, "/actions", () => selected.getByRole("button", { name: "Cancel run", exact: true }).click());
     await expect(selected).toContainText("Status: cancelled");
     await page.screenshot({ path: info.outputPath("process-browser.png"), fullPage: true });
-    writeFileSync(info.outputPath("process-receipt.json"), JSON.stringify({ scenario: "real SSO + native Prefect process + actual DataChain", run, detail, native_run: nativeRun, profile_versions: [gemini, glm], flow_versions: [flow1, flow2, flow3], disabled_provider_run: disabled, paid_calls: 0 }, null, 2));
+    writeFileSync(info.outputPath("process-receipt.json"), JSON.stringify({ scenario: "real SSO + native Prefect process + actual DataChain + OpenRouter profile versioning", run, detail, native_run: nativeRun, profile_versions: [gemini, glm, routedGemini, routedGlm], flow_versions: [flow1, flow2, flow3, flow4, flow5], disabled_provider_run: disabled, paid_calls: 0 }, null, 2));
     await context.close();
   } finally {
     for (const child of [...children].reverse()) await stop(child);

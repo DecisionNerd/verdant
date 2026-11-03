@@ -36,9 +36,19 @@ Secret rotation does not change that digest; it does not establish a model snaps
 Mutable aliases are explicitly disclosed, and observed provider model identifiers are
 recorded when returned. Provider permanence cannot be independently guaranteed.
 
+Profiles select `transport="native"` (the default) or `transport="openrouter"`.
 Only fixed HTTPS origins are supported: Gemini's
 `https://generativelanguage.googleapis.com/v1beta` and GLM's
-`https://open.bigmodel.cn/api/paas/v4`. Settings are temperature0–1, top-p(0,1], and
+`https://open.bigmodel.cn/api/paas/v4`, or OpenRouter's
+`https://openrouter.ai/api/v1`. OpenRouter uses its chat-completions protocol with
+`google/…` identifiers for Gemini and `z-ai/…` for GLM. Routed profiles must declare
+`identity_kind="mutable_alias"`: the route and identifier are pinned, not model
+weights or the selected upstream host. Routing fallbacks and reasoning are disabled;
+required parameters must be supported. A different route requires a new profile
+version and changes its digest. Old stored profiles without a transport field retain
+their native route and original digest; no migration rewrites them.
+
+Settings are temperature0–1, top-p(0,1], and
 1–4096 output tokens; unsupported settings/capabilities fail validation. The managed
 runner additionally requires `VERDANT_MODEL_CALLS_ENABLED=1`; its default is disabled.
 Use a private Compose override/env file to inject operator references into **worker**
@@ -66,7 +76,8 @@ worker deadline before every step. A provider call has a30-second total response
 budget and five-second connect/read waits; a blocked read may finish up to five
 seconds after the deadline. Responses request identity encoding, reject compressed
 encoding and oversized declared bodies before reads, and cap identity body bytes at
-256KiB. Missing usage/cost is `null`, never zero. No paid-provider call is made by
+256KiB. Empty or tool-call replies cannot be accepted as completed model outputs;
+accepted-but-unusable replies require reconciliation. Missing usage/cost is `null`, never zero. No paid-provider call is made by
 fixture tests or ordinary disabled-worker runs.
 
 ## Recovery and ownership
@@ -136,5 +147,9 @@ uv run --locked --group workflows python -m verdant.model_qualification \
 
 It uses synthetic content, emits only receipt/digest/model/usage identities and never
 prints response text. Reusing a completed key reuses its receipt; uncertain keys
-cannot create another paid call. Actual credentials/budget and the live gate remain
-parent-owned and must be recorded separately from fixture evidence.
+cannot create another paid call. Actual credentials/budget and the live gate must be
+recorded separately from fixture evidence. For an OpenRouter profile, supply its
+backend secret reference only in the qualification/worker process; OpenCode
+connectivity alone does not exercise this adapter. The qualification receipt identifies
+the provider, transport, fixed endpoint, requested/resolved model and output digest
+without printing response text or secrets.

@@ -59,14 +59,16 @@ PATCH before accepting the correct human author. Private bounded failure receipt
 remain ignored; retained original fixtures/data were not reset. Native Community
 visibility is explicitly shared trust, never project-name isolation or blindness.
 
-## Product bounds and remaining external requirement
+## Product bounds and model qualification
 
 Supported execution is fixed sequential text steps,64KiB verified UTF-8 input,
 finite pages/call/time budgets and recorded immutable outputs. Supported annotation
 is single categorical text with bounded assignments/history/truth members.
 Experiment-engine authority is explicitly unavailable in capability discovery.
-Provider protocol fixtures are not live vendor qualification. Issue21 explicitly
-requires authorized Gemini/GLM credentials and a request budget; neither was supplied
-for this delivery, so paid calls remain disabled and that live criterion stays open.
+Provider protocol fixtures are not live vendor qualification. At the initial PR54
+checkpoint no live credential/budget was supplied. The subsequent user-authorized
+[issue21 proof](../issue-21/README.md) exercises the actual Verdant OpenRouter adapter
+for Gemini and GLM with durable receipts and zero-call receipt reuse. Native vendor
+endpoints retain fixture-only evidence. Ordinary paid worker calls remain disabled.
 No production/cloud capacity, native publication dispatch or optional Evidently/MLflow
 qualification is claimed. Current operator pages document these exact boundaries.

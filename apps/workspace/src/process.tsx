@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, request } from "./api";
 
-type Profile = { id: string; name: string; revision: number; provider: string; endpoint: string; model: string; identity_kind: string; config_digest: string; credential_status: "worker_unverified"; settings: { temperature: number; top_p: number; max_output_tokens: number }; capabilities: string[] };
+type Profile = { id: string; name: string; revision: number; provider: string; transport: "native" | "openrouter"; endpoint: string; model: string; identity_kind: string; config_digest: string; credential_status: "worker_unverified"; settings: { temperature: number; top_p: number; max_output_tokens: number }; capabilities: string[] };
 type Step = { name: string; kind: "preprocess" | "model"; transform: "identity" | "strip" | "lowercase"; profile_id: string | null; prompt: string; output_contract: "text" | "json"; profile_digest?: string };
 type Flow = { id: string; name: string; revision: number; config_digest: string; definition: { steps: Step[] } };
 type Operation = { id: string; status: string; epoch: number };
@@ -33,6 +33,7 @@ export function ProcessWorkspace({ namespace, dataset, csrf, writable }: { names
   const versions = useProcessPage<{ id: string; label: string }>(["process-versions", namespace, dataset], `${path}/versions`, csrf, 5000);
   const [profileName, setProfileName] = useState("Default model");
   const [provider, setProvider] = useState("gemini");
+  const [transport, setTransport] = useState("native");
   const [model, setModel] = useState("");
   const [identityKind, setIdentityKind] = useState("exact");
   const [credentialRef, setCredentialRef] = useState("");
@@ -71,7 +72,7 @@ export function ProcessWorkspace({ namespace, dataset, csrf, writable }: { names
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
     await act(async () => {
-      const result = await request<Profile>(`${prefix}/model-profiles`, csrf, { name: profileName, expected_revision: profileRevision, provider, model, identity_kind: identityKind, credential_ref: credentialRef, settings: { temperature, top_p: topP, max_output_tokens: tokens }, capabilities: json ? ["text", "json"] : ["text"] });
+      const result = await request<Profile>(`${prefix}/model-profiles`, csrf, { name: profileName, expected_revision: profileRevision, provider, transport, model, identity_kind: identityKind, credential_ref: credentialRef, settings: { temperature, top_p: topP, max_output_tokens: tokens }, capabilities: json ? ["text", "json"] : ["text"] });
       if (!alive.current) return;
       setProfileRevision(result.revision); setCredentialRef("");
       await cache.invalidateQueries({ queryKey: ["model-profiles", namespace] });
@@ -111,14 +112,16 @@ export function ProcessWorkspace({ namespace, dataset, csrf, writable }: { names
     {readError && <p role="alert">Saved process details may be stale: {readError.message} <button onClick={() => { void profiles.refetch(); void flows.refetch(); void runs.refetch(); void candidates.refetch(); void versions.refetch(); if (runId) void detail.refetch(); }}>Refresh process details</button></p>}
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     <details><summary>Model profiles</summary>
-      <ul>{profiles.data?.items.map(p => <li key={p.id}>{p.name} · revision {p.revision} · {p.provider}/{p.model} · {p.identity_kind === "mutable_alias" ? "Mutable alias: provider may change this model" : "Exact identifier declared"} · worker credential unverified<br /><span className="identifier">{p.config_digest}</span> · {p.endpoint}
-        {writable && <button onClick={() => { setProfileName(p.name); setProfileRevision(p.revision); setProvider(p.provider); setModel(p.model); setIdentityKind(p.identity_kind); setTemperature(p.settings.temperature); setTopP(p.settings.top_p); setTokens(p.settings.max_output_tokens); setJson(p.capabilities.includes("json")); setCredentialRef(""); }}>Version {p.name} r{p.revision}</button>}</li>)}</ul>
+      <ul>{profiles.data?.items.map(p => <li key={p.id}>{p.name} · revision {p.revision} · {p.provider} via {p.transport} · {p.model} · {p.identity_kind === "mutable_alias" ? "Mutable alias: provider may change this model" : "Exact identifier declared"} · worker credential unverified<br /><span className="identifier">{p.config_digest}</span> · {p.endpoint}
+        {writable && <button onClick={() => { setProfileName(p.name); setProfileRevision(p.revision); setProvider(p.provider); setTransport(p.transport ?? "native"); setModel(p.model); setIdentityKind(p.identity_kind); setTemperature(p.settings.temperature); setTopP(p.settings.top_p); setTokens(p.settings.max_output_tokens); setJson(p.capabilities.includes("json")); setCredentialRef(""); }}>Version {p.name} r{p.revision}</button>}</li>)}</ul>
       {profiles.hasNextPage && <button disabled={profiles.isFetchingNextPage} onClick={() => void profiles.fetchNextPage()}>More model profiles</button>}
       {writable && <form onSubmit={event => void saveProfile(event)}><fieldset disabled={busy || stale}><legend>Save immutable model profile</legend>
         <label>Profile name <input required value={profileName} onChange={e => { setProfileName(e.target.value); setProfileRevision(0); }} /></label><p>Expected profile revision: {profileRevision}</p>
         <label>Provider <select value={provider} onChange={e => setProvider(e.target.value)}><option value="gemini">Gemini</option><option value="glm">GLM</option></select></label>
+        <label>Transport <select value={transport} onChange={e => { setTransport(e.target.value); if (e.target.value === "openrouter") setIdentityKind("mutable_alias"); }}><option value="native">Direct provider</option><option value="openrouter">OpenRouter</option></select></label>
+        {transport === "openrouter" && <p>Use a google/ model for Gemini or z-ai/ model for GLM. OpenRouter routing may change; the route and identifier are pinned, not model weights.</p>}
         <label>Model identifier <input required value={model} onChange={e => setModel(e.target.value)} /></label>
-        <label>Reproducibility <select value={identityKind} onChange={e => setIdentityKind(e.target.value)}><option value="exact">Exact identifier</option><option value="mutable_alias">Mutable alias (may change at provider)</option></select></label>
+        <label>Reproducibility <select value={identityKind} onChange={e => setIdentityKind(e.target.value)}><option value="exact" disabled={transport === "openrouter"}>Exact identifier</option><option value="mutable_alias">Mutable alias (may change at provider)</option></select></label>
         <label>Operator credential reference <input required autoComplete="off" placeholder="VERDANT_MODEL_SECRET_TEAM" pattern="VERDANT_MODEL_SECRET_[A-Z0-9_]+" value={credentialRef} onChange={e => setCredentialRef(e.target.value)} /></label><p>Enter an operator environment reference. Credential values are never entered here.</p>
         <label>Temperature <input type="number" min="0" max="1" step="0.1" value={temperature} onChange={e => setTemperature(Number(e.target.value))} /></label><label>Top p <input type="number" min="0.01" max="1" step="0.01" value={topP} onChange={e => setTopP(Number(e.target.value))} /></label><label>Maximum output tokens <input type="number" min="1" max="4096" value={tokens} onChange={e => setTokens(Number(e.target.value))} /></label>
         <label><input type="checkbox" checked={json} onChange={e => setJson(e.target.checked)} /> Supports JSON output</label><button>Save profile version</button>
